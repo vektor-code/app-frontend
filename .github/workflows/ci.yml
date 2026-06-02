@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ghcr.io/vektor-trace/app-frontend
+  IMAGE_NAME: ghcr.io/vektor-code/app-frontend
 
 jobs:
   build-and-push:
