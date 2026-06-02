@@ -1,0 +1,136 @@
+const API_BASE = '/api';
+
+export interface Span {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  name: string;
+  serviceName: string;
+  namespace: string;
+  podName?: string;
+  nodeName?: string;
+  startTime: string;
+  endTime: string;
+  durationMs: number;
+  status: 'OK' | 'ERROR' | 'UNSET';
+  statusCode?: number;
+  kind: 'SERVER' | 'CLIENT' | 'PRODUCER' | 'CONSUMER' | 'INTERNAL';
+  attributes?: Record<string, string>;
+  events?: SpanEvent[];
+  error?: string;
+}
+
+export interface SpanEvent {
+  name: string;
+  timestamp: string;
+  attributes?: Record<string, string>;
+}
+
+export interface Trace {
+  traceId: string;
+  rootSpan?: Span;
+  spans: Span[];
+  namespace: string;
+  serviceName: string;
+  startTime: string;
+  endTime: string;
+  durationMs: number;
+  spanCount: number;
+  hasError: boolean;
+}
+
+export interface TraceListItem {
+  traceId: string;
+  serviceName: string;
+  namespace: string;
+  rootName: string;
+  startTime: string;
+  durationMs: number;
+  spanCount: number;
+  hasError: boolean;
+}
+
+export interface ServiceStats {
+  serviceName: string;
+  namespace: string;
+  requestCount: number;
+  errorCount: number;
+  errorRate: number;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+  lastSeen: string;
+}
+
+export interface NamespaceStats {
+  namespace: string;
+  traceCount: number;
+  errorCount: number;
+  errorRate: number;
+  avgDurationMs: number;
+  services: ServiceStats[];
+  podCount: number;
+  lastActivity: string;
+}
+
+export interface ServiceMapData {
+  namespace: string;
+  nodes: ServiceStats[];
+  edges: { source: string; target: string; callCount: number; errorCount: number; avgDurationMs: number }[];
+}
+
+class ApiClient {
+  async get<T>(path: string): Promise<T> {
+    const res = await fetch(`${API_BASE}${path}`);
+    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+    return res.json();
+  }
+
+  // Core APIs
+  getHealth() { return this.get<{ status: string }>('/health'); }
+  getNamespaces() { return this.get<{ namespaces: string[] }>('/namespaces'); }
+  getStats() { return this.get<{ namespaces: NamespaceStats[] }>('/stats'); }
+
+  getTraces(params?: Record<string, string>) {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return this.get<{ traces: TraceListItem[]; total: number }>(`/traces${qs}`);
+  }
+
+  getTrace(id: string) { return this.get<Trace>(`/traces/${id}`); }
+  getServices(namespace?: string) {
+    const qs = namespace ? `?namespace=${namespace}` : '';
+    return this.get<{ services: ServiceStats[] }>(`/services${qs}`);
+  }
+  getServiceMap(namespace?: string) {
+    const qs = namespace ? `?namespace=${namespace}` : '';
+    return this.get<ServiceMapData>(`/servicemap${qs}`);
+  }
+}
+
+export const api = new ApiClient();
+
+// WebSocket for live streaming
+export function connectLiveStream(
+  namespace: string | undefined,
+  onSpan: (span: Span) => void,
+  onConnect?: () => void,
+  onDisconnect?: () => void
+): () => void {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const nsParam = namespace ? `?namespace=${namespace}` : '';
+  const ws = new WebSocket(`${protocol}//${window.location.host}/ws${nsParam}`);
+
+  ws.onopen = () => onConnect?.();
+  ws.onclose = () => onDisconnect?.();
+  ws.onerror = () => onDisconnect?.();
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'span' && msg.data) {
+        onSpan(msg.data);
+      }
+    } catch {}
+  };
+
+  return () => ws.close();
+}
