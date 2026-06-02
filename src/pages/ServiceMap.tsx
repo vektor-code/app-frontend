@@ -132,16 +132,33 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         });
       }
 
+      // Compute total outgoing duration for each source node to compute percentages
+      const outgoingTotalDuration = new Map<string, number>();
+      edges.forEach(e => {
+        const current = outgoingTotalDuration.get(e.source) || 0;
+        outgoingTotalDuration.set(e.source, current + e.avgDurationMs);
+      });
+
       // --- Draw Edges & Flow Animation ---
       edges.forEach(edge => {
         const from = positions.get(edge.source);
         const to = positions.get(edge.target);
         if (!from || !to) return;
 
-        // Visual properties based on errors
+        // Path contribution percentage calculation
+        const totalDuration = outgoingTotalDuration.get(edge.source) || 0;
+        const contributionPercent = totalDuration > 0 ? (edge.avgDurationMs / totalDuration) * 100 : 0;
+
+        // Visual properties based on errors and latency
         const isError = edge.errorCount > 0;
-        ctx.strokeStyle = isError ? 'rgba(244, 63, 94, 0.45)' : 'rgba(99, 102, 241, 0.35)';
-        ctx.lineWidth = Math.min(6, 1.5 + edge.callCount * 0.08);
+        const isCritical = contributionPercent > 50 && edge.avgDurationMs > 50; // Critical path indicator
+        
+        ctx.strokeStyle = isError 
+          ? 'rgba(244, 63, 94, 0.45)' 
+          : isCritical ? 'rgba(245, 158, 11, 0.6)' : 'rgba(99, 102, 241, 0.35)';
+        
+        // Thicker lines for critical path or higher contribution
+        ctx.lineWidth = Math.min(8, 1.5 + (contributionPercent / 100) * 4 + (isCritical ? 2 : 0));
 
         // Edge Path
         ctx.beginPath();
@@ -149,17 +166,23 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.lineTo(to.x, to.y);
         ctx.stroke();
 
-        // Moving pulse dots to represent flow direction
+        // Moving pulse dots (size proportional to contribution percentage)
         const timeScale = 0.0018;
         const flowProgress = (Date.now() * timeScale) % 1;
         const flowX = from.x + (to.x - from.x) * flowProgress;
         const flowY = from.y + (to.y - from.y) * flowProgress;
 
+        const pulseRadius = Math.max(3.5, Math.min(10, 3.5 + (contributionPercent / 100) * 6));
         ctx.beginPath();
-        ctx.arc(flowX, flowY, 4, 0, Math.PI * 2);
-        ctx.fillStyle = isError ? '#f43f5e' : '#10b981';
-        ctx.shadowColor = isError ? 'rgba(244, 63, 94, 0.8)' : 'rgba(16, 185, 129, 0.8)';
-        ctx.shadowBlur = 6;
+        ctx.arc(flowX, flowY, pulseRadius, 0, Math.PI * 2);
+        
+        let pulseColor = '#10b981';
+        if (isError) pulseColor = '#f43f5e';
+        else if (isCritical) pulseColor = '#f59e0b';
+        
+        ctx.fillStyle = pulseColor;
+        ctx.shadowColor = pulseColor;
+        ctx.shadowBlur = pulseRadius + 2;
         ctx.fill();
         ctx.shadowBlur = 0; // Reset shadow
 
@@ -173,15 +196,40 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.moveTo(midX + arrowLen * Math.cos(angle - Math.PI / 6), midY + arrowLen * Math.sin(angle - Math.PI / 6));
         ctx.lineTo(midX, midY);
         ctx.lineTo(midX + arrowLen * Math.cos(angle + Math.PI / 6), midY + arrowLen * Math.sin(angle + Math.PI / 6));
-        ctx.strokeStyle = isError ? 'rgba(244, 63, 94, 0.75)' : 'rgba(99, 102, 241, 0.65)';
+        ctx.strokeStyle = isError ? 'rgba(244, 63, 94, 0.75)' : isCritical ? 'rgba(245, 158, 11, 0.85)' : 'rgba(99, 102, 241, 0.65)';
         ctx.lineWidth = 2.5;
         ctx.stroke();
 
-        // Floating Call count text
-        ctx.fillStyle = isDark ? 'rgba(148, 163, 184, 0.85)' : 'rgba(71, 85, 105, 0.85)';
+        // Floating Call details badge with background
+        const badgeText1 = `${edge.callCount} calls`;
+        const badgeText2 = `${edge.avgDurationMs.toFixed(1)}ms (${contributionPercent.toFixed(0)}%)`;
+        
         ctx.font = '700 9px Inter';
+        const textWidth = Math.max(ctx.measureText(badgeText1).width, ctx.measureText(badgeText2).width);
+        const badgeWidth = textWidth + 12;
+        const badgeHeight = 26;
+        const bx = midX - badgeWidth / 2;
+        const by = midY - badgeHeight / 2 - 12; // Shift up slightly to clear the arrow head
+
+        ctx.fillStyle = isDark ? 'rgba(30, 41, 59, 0.95)' : 'rgba(255, 255, 255, 0.95)';
+        ctx.strokeStyle = isError ? 'rgba(244, 63, 94, 0.65)' : isCritical ? 'rgba(245, 158, 11, 0.65)' : 'rgba(99, 102, 241, 0.45)';
+        ctx.lineWidth = 1;
+        
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(bx, by, badgeWidth, badgeHeight, 4);
+        } else {
+          ctx.rect(bx, by, badgeWidth, badgeHeight);
+        }
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
         ctx.textAlign = 'center';
-        ctx.fillText(`${edge.callCount} calls`, midX, midY - 10);
+        ctx.fillText(badgeText1, midX, by + 10);
+        
+        ctx.fillStyle = isError ? '#f43f5e' : isCritical ? '#f59e0b' : (isDark ? '#94a3b8' : '#475569');
+        ctx.fillText(badgeText2, midX, by + 21);
       });
 
       // --- Draw Nodes ---

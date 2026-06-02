@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import TraceExplorer from './pages/TraceExplorer';
 import TraceDetail from './pages/TraceDetail';
 import ServiceMap from './pages/ServiceMap';
+import DbAnalytics from './pages/DbAnalytics';
 import LiveStream from './pages/LiveStream';
 
 export default function App() {
@@ -89,6 +90,7 @@ export default function App() {
             <Route path="/traces" element={<TraceExplorer namespace={selectedNamespace} />} />
             <Route path="/traces/:traceId" element={<TraceDetail />} />
             <Route path="/servicemap" element={<ServiceMap namespace={selectedNamespace} />} />
+            <Route path="/database" element={<DbAnalytics namespace={selectedNamespace} />} />
             <Route path="/live" element={<LiveStream namespace={selectedNamespace} />} />
           </Routes>
         </main>

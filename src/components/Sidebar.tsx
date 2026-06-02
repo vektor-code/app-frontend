@@ -28,6 +28,9 @@ export default function Sidebar({ namespaces, selectedNamespace, onNamespaceChan
           <NavLink to="/servicemap" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
             <span className="sidebar-link-icon">🕸️</span> Service Map
           </NavLink>
+          <NavLink to="/database" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+            <span className="sidebar-link-icon">🗄️</span> Database Analytics
+          </NavLink>
           <NavLink to="/live" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
             <span className="sidebar-link-icon">⚡</span> Live Stream
           </NavLink>

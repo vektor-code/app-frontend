@@ -97,6 +97,11 @@ class ApiClient {
   }
 
   getTrace(id: string) { return this.get<Trace>(`/traces/${id}`); }
+  getTraceDiagnostics(id: string) { return this.get<DiagnosticReport>(`/traces/${id}/diagnostics`); }
+  getDatabaseMetrics(namespace?: string) {
+    const qs = namespace ? `?namespace=${namespace}` : '';
+    return this.get<{ metrics: DatabaseQueryMetric[] }>(`/metrics/database${qs}`);
+  }
   getServices(namespace?: string) {
     const qs = namespace ? `?namespace=${namespace}` : '';
     return this.get<{ services: ServiceStats[] }>(`/services${qs}`);
@@ -105,6 +110,32 @@ class ApiClient {
     const qs = namespace ? `?namespace=${namespace}` : '';
     return this.get<ServiceMapData>(`/servicemap${qs}`);
   }
+}
+
+export interface DiagnosticReport {
+  traceId: string;
+  rootCauseSpanId?: string;
+  rootCauseService?: string;
+  rootCauseMessage?: string;
+  bottleneckSpanId: string;
+  bottleneckService: string;
+  bottleneckDurationMs: number;
+  bottleneckPercent: number;
+  summary: string;
+  issues: string[];
+  remediations: string[];
+}
+
+export interface DatabaseQueryMetric {
+  query: string;
+  system: string;
+  service: string;
+  namespace: string;
+  callCount: number;
+  errorCount: number;
+  errorRate: number;
+  avgDurationMs: number;
+  maxDurationMs: number;
 }
 
 export const api = new ApiClient();
