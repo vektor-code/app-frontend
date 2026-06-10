@@ -235,15 +235,23 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             <option value="1h">Last 1 Hour</option>
             <option value="24h">Last 24 Hours</option>
           </select>
-          <button className="btn btn-ghost btn-sm" onClick={loadDbMetrics}>
-            ↻ Refresh
+          <button className="btn btn-ghost btn-sm" onClick={loadDbMetrics} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 4v6h-6M1 20v-6h6" />
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
+            Refresh
           </button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {isEditMode && (
-            <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)} style={{ background: 'var(--accent-emerald)', borderColor: 'var(--accent-emerald)' }}>
-              ＋ Add Panel
+            <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)} style={{ background: 'var(--accent-emerald)', borderColor: 'var(--accent-emerald)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Add Panel
             </button>
           )}
           <button 
@@ -252,10 +260,30 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             style={{ 
               background: isEditMode ? 'var(--accent-indigo)' : 'var(--bg-secondary)', 
               color: isEditMode ? '#ffffff' : 'var(--text-primary)',
-              borderColor: isEditMode ? 'var(--accent-indigo)' : 'var(--border-primary)'
+              borderColor: isEditMode ? 'var(--accent-indigo)' : 'var(--border-primary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
             }}
           >
-            {isEditMode ? '💾 Save Layout' : '⚙️ Design Dashboard'}
+            {isEditMode ? (
+              <>
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                  <polyline points="17 21 17 13 7 13 7 21" />
+                  <polyline points="7 3 7 8 15 8" />
+                </svg>
+                Save Layout
+              </>
+            ) : (
+              <>
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+                Design Dashboard
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -273,10 +301,28 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
               {/* Controls */}
               {isEditMode && (
                 <div className="widget-controls">
-                  <button className="control-btn" title="Move Left" onClick={() => moveWidget(index, 'left')}>◀</button>
-                  <button className="control-btn" title="Move Right" onClick={() => moveWidget(index, 'right')}>▶</button>
-                  <button className="control-btn" title="Edit Settings" onClick={() => setEditingWidget(w)}>✏️</button>
-                  <button className="control-btn delete-btn" title="Remove Panel" onClick={() => deleteWidget(w.id)}>❌</button>
+                  <button className="control-btn" title="Move Left" onClick={() => moveWidget(index, 'left')}>
+                    <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="15 18 9 12 15 6" />
+                    </svg>
+                  </button>
+                  <button className="control-btn" title="Move Right" onClick={() => moveWidget(index, 'right')}>
+                    <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                  </button>
+                  <button className="control-btn" title="Edit Settings" onClick={() => setEditingWidget(w)}>
+                    <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  </button>
+                  <button className="control-btn delete-btn" title="Remove Panel" onClick={() => deleteWidget(w.id)}>
+                    <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
                 </div>
               )}
 
