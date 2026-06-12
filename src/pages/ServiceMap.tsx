@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { api, type ServiceMapData } from '../api/client';
+import { api, type ServiceMapData, type ServiceStats } from '../api/client';
 
 interface ServiceMapProps {
   namespace: string;
@@ -9,7 +9,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   const [data, setData] = useState<ServiceMapData | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 900, height: 500 });
+  const [dimensions, setDimensions] = useState({ width: 900, height: 600 });
 
   useEffect(() => {
     api.getServiceMap(namespace).then(setData).catch(() => {});
@@ -51,7 +51,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       const edges = data.edges || [];
       if (nodes.length === 0) return;
 
-      // --- DAG Layered Layout Algorithm ---
+      // --- DAG Layered Layout Algorithm (Cycle-Safe BFS) ---
       const positions = new Map<string, { x: number; y: number }>();
       const depthMap = new Map<string, number>();
       const adj = new Map<string, string[]>();
@@ -69,40 +69,46 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         }
       });
 
-      // BFS Starting points: Internet node, or nodes with 0 incoming dependencies
-      const queue: string[] = [];
+      // Assign depths using BFS that avoids visiting already visited nodes in the current path to break cycles
+      const visited = new Set<string>();
+      const queue: { node: string; depth: number }[] = [];
+
+      // Start with root nodes (inDegree === 0)
       nodes.forEach(n => {
         if (n.serviceName === 'Internet' || (inDegree.get(n.serviceName) || 0) === 0) {
+          queue.push({ node: n.serviceName, depth: 0 });
           depthMap.set(n.serviceName, 0);
-          queue.push(n.serviceName);
+          visited.add(n.serviceName);
         }
       });
 
-      // Cycle fallback: start with everything
+      // Fallback if no root nodes (or all nodes are part of a cycle)
       if (queue.length === 0 && nodes.length > 0) {
-        nodes.forEach(n => {
-          depthMap.set(n.serviceName, 0);
-          queue.push(n.serviceName);
-        });
+        queue.push({ node: nodes[0].serviceName, depth: 0 });
+        depthMap.set(nodes[0].serviceName, 0);
+        visited.add(nodes[0].serviceName);
       }
 
       let head = 0;
       while (head < queue.length) {
-        const u = queue[head++];
-        const uDepth = depthMap.get(u) || 0;
+        const { node: u, depth: uDepth } = queue[head++];
         const neighbors = adj.get(u) || [];
         neighbors.forEach(v => {
-          const vDepth = depthMap.get(v);
-          if (vDepth === undefined || uDepth + 1 > vDepth) {
+          if (!visited.has(v)) {
+            visited.add(v);
             depthMap.set(v, uDepth + 1);
-            queue.push(v);
+            queue.push({ node: v, depth: uDepth + 1 });
+          } else {
+            const currentDepth = depthMap.get(v) || 0;
+            if (uDepth + 1 > currentDepth && uDepth + 1 < nodes.length) {
+              depthMap.set(v, uDepth + 1);
+            }
           }
         });
       }
 
       let maxDepth = 0;
-      nodes.forEach(n => {
-        const d = depthMap.get(n.serviceName) || 0;
+      depthMap.forEach(d => {
         if (d > maxDepth) maxDepth = d;
       });
 
@@ -113,12 +119,15 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       }
       nodes.forEach(n => {
         const d = depthMap.get(n.serviceName) || 0;
+        if (!layers.has(d)) {
+          layers.set(d, []);
+        }
         layers.get(d)!.push(n.serviceName);
       });
 
       // Compute coordinate mappings (Left-to-Right layout)
-      const padX = 90;
-      const padY = 70;
+      const padX = 110;
+      const padY = 65;
       const cols = maxDepth + 1;
 
       for (let d = 0; d <= maxDepth; d++) {
@@ -139,6 +148,24 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         outgoingTotalDuration.set(e.source, current + e.avgDurationMs);
       });
 
+      // Helper for calculating points along a cubic Bezier curve
+      const getBezierPoint = (t: number, x1: number, y1: number, cp1x: number, cp1y: number, cp2x: number, cp2y: number, x2: number, y2: number) => {
+        const mt = 1 - t;
+        const mt2 = mt * mt;
+        const mt3 = mt2 * mt;
+        const t2 = t * t;
+        const t3 = t2 * t;
+
+        const x = mt3 * x1 + 3 * mt2 * t * cp1x + 3 * mt * t2 * cp2x + t3 * x2;
+        const y = mt3 * y1 + 3 * mt2 * t * cp1y + 3 * mt * t2 * cp2y + t3 * y2;
+
+        const dx = 3 * mt2 * (cp1x - x1) + 6 * mt * t * (cp2x - cp1x) + 3 * t2 * (x2 - cp2x);
+        const dy = 3 * mt2 * (cp1y - y1) + 6 * mt * t * (cp2y - cp1y) + 3 * t2 * (x2 - cp2y);
+        const angle = Math.atan2(dy, dx);
+
+        return { x, y, angle };
+      };
+
       // --- Draw Edges & Flow Animation ---
       edges.forEach(edge => {
         const from = positions.get(edge.source);
@@ -151,30 +178,56 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
         // Visual properties based on errors and latency
         const isError = edge.errorCount > 0;
-        const isCritical = contributionPercent > 50 && edge.avgDurationMs > 50; // Critical path indicator
-        
+        const isCritical = contributionPercent > 50 && edge.avgDurationMs > 50;
+
+        // Connection offsets (Cards are 150x50)
+        let x1, y1, x2, y2;
+        let cp1x, cp1y, cp2x, cp2y;
+
+        if (to.x > from.x) {
+          x1 = from.x + 75;
+          y1 = from.y;
+          x2 = to.x - 75;
+          y2 = to.y;
+
+          const dx = x2 - x1;
+          cp1x = x1 + dx * 0.45;
+          cp1y = y1;
+          cp2x = x2 - dx * 0.45;
+          cp2y = y2;
+        } else {
+          // Backward edge: connect top-centers and loop upwards
+          x1 = from.x;
+          y1 = from.y - 25;
+          x2 = to.x;
+          y2 = to.y - 25;
+
+          cp1x = x1 + 40;
+          cp1y = y1 - 60;
+          cp2x = x2 - 40;
+          cp2y = y2 - 60;
+        }
+
         ctx.strokeStyle = isError 
           ? 'rgba(244, 63, 94, 0.45)' 
           : isCritical ? 'rgba(245, 158, 11, 0.6)' : 'rgba(99, 102, 241, 0.35)';
         
-        // Thicker lines for critical path or higher contribution
         ctx.lineWidth = Math.min(8, 1.5 + (contributionPercent / 100) * 4 + (isCritical ? 2 : 0));
 
-        // Edge Path
+        // Edge Path (Curved Bezier)
         ctx.beginPath();
-        ctx.moveTo(from.x, from.y);
-        ctx.lineTo(to.x, to.y);
+        ctx.moveTo(x1, y1);
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x2, y2);
         ctx.stroke();
 
         // Moving pulse dots (size proportional to contribution percentage)
         const timeScale = 0.0018;
         const flowProgress = (Date.now() * timeScale) % 1;
-        const flowX = from.x + (to.x - from.x) * flowProgress;
-        const flowY = from.y + (to.y - from.y) * flowProgress;
+        const pulse = getBezierPoint(flowProgress, x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2);
 
-        const pulseRadius = Math.max(3.5, Math.min(10, 3.5 + (contributionPercent / 100) * 6));
+        const pulseRadius = Math.max(3.5, Math.min(8, 3.5 + (contributionPercent / 100) * 4.5));
         ctx.beginPath();
-        ctx.arc(flowX, flowY, pulseRadius, 0, Math.PI * 2);
+        ctx.arc(pulse.x, pulse.y, pulseRadius, 0, Math.PI * 2);
         
         let pulseColor = '#10b981';
         if (isError) pulseColor = '#f43f5e';
@@ -182,20 +235,18 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         
         ctx.fillStyle = pulseColor;
         ctx.shadowColor = pulseColor;
-        ctx.shadowBlur = pulseRadius + 2;
+        ctx.shadowBlur = pulseRadius + 3;
         ctx.fill();
         ctx.shadowBlur = 0; // Reset shadow
 
-        // Arrow tip at middle section
-        const angle = Math.atan2(to.y - from.y, to.x - from.x);
-        const arrowLen = 10;
-        const midX = (from.x + to.x) / 2;
-        const midY = (from.y + to.y) / 2;
+        // Arrow tip at middle section of Bezier curve
+        const midPoint = getBezierPoint(0.5, x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2);
+        const arrowLen = 9;
 
         ctx.beginPath();
-        ctx.moveTo(midX + arrowLen * Math.cos(angle - Math.PI / 6), midY + arrowLen * Math.sin(angle - Math.PI / 6));
-        ctx.lineTo(midX, midY);
-        ctx.lineTo(midX + arrowLen * Math.cos(angle + Math.PI / 6), midY + arrowLen * Math.sin(angle + Math.PI / 6));
+        ctx.moveTo(midPoint.x + arrowLen * Math.cos(midPoint.angle - Math.PI / 6), midPoint.y + arrowLen * Math.sin(midPoint.angle - Math.PI / 6));
+        ctx.lineTo(midPoint.x, midPoint.y);
+        ctx.lineTo(midPoint.x + arrowLen * Math.cos(midPoint.angle + Math.PI / 6), midPoint.y + arrowLen * Math.sin(midPoint.angle + Math.PI / 6));
         ctx.strokeStyle = isError ? 'rgba(244, 63, 94, 0.75)' : isCritical ? 'rgba(245, 158, 11, 0.85)' : 'rgba(99, 102, 241, 0.65)';
         ctx.lineWidth = 2.5;
         ctx.stroke();
@@ -208,8 +259,8 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         const textWidth = Math.max(ctx.measureText(badgeText1).width, ctx.measureText(badgeText2).width);
         const badgeWidth = textWidth + 12;
         const badgeHeight = 26;
-        const bx = midX - badgeWidth / 2;
-        const by = midY - badgeHeight / 2 - 12; // Shift up slightly to clear the arrow head
+        const bx = midPoint.x - badgeWidth / 2;
+        const by = midPoint.y - badgeHeight / 2 - 16; 
 
         ctx.fillStyle = isDark ? 'rgba(30, 41, 59, 0.95)' : 'rgba(255, 255, 255, 0.95)';
         ctx.strokeStyle = isError ? 'rgba(244, 63, 94, 0.65)' : isCritical ? 'rgba(245, 158, 11, 0.65)' : 'rgba(99, 102, 241, 0.45)';
@@ -226,30 +277,37 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         
         ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
         ctx.textAlign = 'center';
-        ctx.fillText(badgeText1, midX, by + 10);
+        ctx.fillText(badgeText1, midPoint.x, by + 10);
         
         ctx.fillStyle = isError ? '#f43f5e' : isCritical ? '#f59e0b' : (isDark ? '#94a3b8' : '#475569');
-        ctx.fillText(badgeText2, midX, by + 21);
+        ctx.fillText(badgeText2, midPoint.x, by + 21);
       });
 
-      // --- Draw Nodes ---
+      // --- Draw Nodes (Microservice Cards) ---
       nodes.forEach(node => {
         const pos = positions.get(node.serviceName);
         if (!pos) return;
 
         const isInternet = node.serviceName === 'Internet';
         const hasErrors = node.errorCount > 0;
-        const nodeRadius = isInternet ? 24 : 20 + Math.min(12, node.requestCount * 0.15);
+        const errRate = node.errorRate;
+        const reqCount = node.requestCount;
+
+        const w = 150;
+        const h = 50;
+        const rx = pos.x - w / 2;
+        const ry = pos.y - h / 2;
 
         // Core dynamic pulse ring
-        const pulse = 1 + 0.08 * Math.sin(Date.now() * 0.005);
-        const glowRadius = nodeRadius * 2 * pulse;
+        ctx.save();
+        const pulse = 1 + 0.05 * Math.sin(Date.now() * 0.005);
+        const glowRadius = 85 * pulse;
 
         const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, glowRadius);
         if (isInternet) {
-          gradient.addColorStop(0, 'rgba(56, 189, 248, 0.2)');
+          gradient.addColorStop(0, 'rgba(56, 189, 248, 0.15)');
         } else {
-          gradient.addColorStop(0, hasErrors ? 'rgba(244, 63, 94, 0.2)' : 'rgba(99, 102, 241, 0.18)');
+          gradient.addColorStop(0, hasErrors ? 'rgba(244, 63, 94, 0.15)' : 'rgba(99, 102, 241, 0.12)');
         }
         gradient.addColorStop(1, 'transparent');
         ctx.fillStyle = gradient;
@@ -257,46 +315,74 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.arc(pos.x, pos.y, glowRadius, 0, Math.PI * 2);
         ctx.fill();
 
-        if (isInternet) {
-          // Beautiful Cloud representation for incoming Internet traffic
-          ctx.beginPath();
-          const r = nodeRadius * 0.8;
-          ctx.arc(pos.x - r * 0.5, pos.y + r * 0.1, r * 0.6, 0.5 * Math.PI, 1.5 * Math.PI);
-          ctx.arc(pos.x, pos.y - r * 0.4, r * 0.8, 1.0 * Math.PI, 2.0 * Math.PI);
-          ctx.arc(pos.x + r * 0.5, pos.y + r * 0.1, r * 0.6, 1.5 * Math.PI, 0.5 * Math.PI);
-          ctx.arc(pos.x, pos.y + r * 0.3, r * 0.8, 0, Math.PI);
-          ctx.closePath();
-          ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
-          ctx.fill();
-          ctx.strokeStyle = '#38bdf8';
-          ctx.lineWidth = 2.5;
-          ctx.stroke();
+        // Card Shadow/Glow
+        ctx.shadowBlur = hasErrors ? 12 : 6;
+        ctx.shadowColor = isInternet 
+          ? 'rgba(56, 189, 248, 0.4)' 
+          : hasErrors ? 'rgba(244, 63, 94, 0.4)' : 'rgba(99, 102, 241, 0.3)';
 
-          // Icon character inside
-          ctx.fillStyle = '#38bdf8';
-          ctx.font = '14px Inter';
-          ctx.fillText("☁", pos.x, pos.y + 4);
+        // Card Background & border
+        ctx.fillStyle = isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)';
+        ctx.strokeStyle = isInternet 
+          ? '#38bdf8' 
+          : hasErrors ? '#f43f5e' : (isDark ? '#475569' : '#cbd5e1');
+        ctx.lineWidth = hasErrors ? 2.5 : 1.5;
+
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(rx, ry, w, h, 8);
         } else {
-          // Microservice Node representation
-          ctx.beginPath();
-          ctx.arc(pos.x, pos.y, nodeRadius, 0, Math.PI * 2);
-          ctx.fillStyle = hasErrors ? 'rgba(244, 63, 94, 0.25)' : 'rgba(99, 102, 241, 0.25)';
-          ctx.fill();
-          ctx.strokeStyle = hasErrors ? '#f43f5e' : '#6366f1';
-          ctx.lineWidth = 2.5;
-          ctx.stroke();
-
-          // Inside Text: Request counts
-          ctx.fillStyle = hasErrors ? '#fb7185' : '#818cf8';
-          ctx.font = '700 11px JetBrains Mono';
-          ctx.fillText(String(node.requestCount), pos.x, pos.y + 4);
+          ctx.rect(rx, ry, w, h);
         }
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
 
-        // Node Label
-        ctx.fillStyle = isInternet ? '#38bdf8' : (isDark ? '#f1f5f9' : '#0f172a');
-        ctx.font = '600 11px Inter';
-        ctx.textAlign = 'center';
-        ctx.fillText(node.serviceName, pos.x, pos.y + nodeRadius + 16);
+        // Draw Service Icon
+        let icon = '⚙️';
+        if (isInternet) icon = '🌐';
+        else if (node.serviceName.includes('gateway')) icon = '🚪';
+        else if (node.serviceName.includes('identity')) icon = '🔑';
+        else if (node.serviceName.includes('catalog')) icon = '📦';
+        else if (node.serviceName.includes('order')) icon = '🛒';
+        else if (node.serviceName.includes('payment')) icon = '💳';
+        else if (node.serviceName.includes('storage')) icon = '💾';
+        else if (node.serviceName.includes('notification')) icon = '🔔';
+        else if (node.serviceName.includes('support')) icon = '🛠️';
+        else if (node.serviceName.includes('user')) icon = '👤';
+
+        ctx.font = '16px Inter';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
+        ctx.fillText(icon, rx + 10, ry + h / 2);
+
+        // Draw Service Name
+        ctx.font = '700 11px Inter';
+        ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
+        let displayName = node.serviceName;
+        if (displayName.length > 18) displayName = displayName.slice(0, 16) + '...';
+        ctx.fillText(displayName, rx + 32, ry + 16);
+
+        // Draw Stats (Request Count + Error Rate)
+        ctx.font = '500 10px JetBrains Mono';
+        ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
+        
+        let statsText = `${reqCount} reqs`;
+        if (errRate > 0) {
+          statsText += ` · ${errRate.toFixed(1)}% err`;
+        }
+        
+        ctx.fillStyle = errRate > 5 ? '#f43f5e' : (isDark ? '#94a3b8' : '#64748b');
+        ctx.fillText(statsText, rx + 32, ry + 34);
+
+        // Status Indicator Dot in top right corner
+        ctx.beginPath();
+        ctx.arc(rx + w - 12, ry + 12, 4, 0, Math.PI * 2);
+        ctx.fillStyle = isInternet 
+          ? '#38bdf8' 
+          : hasErrors ? '#f43f5e' : '#10b981';
+        ctx.fill();
       });
 
       animationId = requestAnimationFrame(render);
@@ -312,7 +398,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   useEffect(() => {
     const handleResize = () => {
       const w = Math.max(600, window.innerWidth - 340);
-      setDimensions({ width: w, height: 500 });
+      setDimensions({ width: w, height: 600 });
     };
     handleResize();
     window.addEventListener('resize', handleResize);
@@ -320,7 +406,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   }, []);
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in" style={{ paddingBottom: '40px' }}>
       <h1 className="page-title">Service Map</h1>
       <p className="page-subtitle">
         {namespace ? `Service dependencies in ${namespace}` : 'Service dependencies across all namespaces'}
@@ -340,7 +426,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       </div>
 
       {data && data.nodes && data.nodes.length > 0 && (
-        <div className="card mt-4">
+        <div className="card mt-6">
           <div className="card-header">
             <div className="card-title">📊 Service Details</div>
           </div>

@@ -18,8 +18,30 @@ export default function App() {
 
   const loadStats = useCallback(async () => {
     try {
-      const data = await api.getStats();
-      setNamespaces(data.namespaces || []);
+      const [statsData, nsData] = await Promise.all([
+        api.getStats(),
+        api.getNamespaces().catch(() => ({ namespaces: [] as string[] })),
+      ]);
+      const statsNs = statsData.namespaces || [];
+      const statsMap = new Map(statsNs.map(ns => [ns.namespace, ns]));
+
+      // Add K8s namespaces that don't have trace data yet
+      for (const ns of (nsData.namespaces || [])) {
+        if (!statsMap.has(ns)) {
+          statsNs.push({
+            namespace: ns,
+            traceCount: 0,
+            errorCount: 0,
+            errorRate: 0,
+            avgDurationMs: 0,
+            services: [],
+            podCount: 0,
+            lastActivity: '',
+          });
+        }
+      }
+
+      setNamespaces(statsNs);
       setConnected(true);
     } catch {
       setConnected(false);
