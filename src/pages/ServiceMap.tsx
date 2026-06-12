@@ -1,8 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { api, type ServiceMapData, type ServiceStats } from '../api/client';
+import { api, type ServiceMapData, type ServiceStats, type Span, connectLiveStream } from '../api/client';
 
 interface ServiceMapProps {
   namespace: string;
+}
+
+interface Particle {
+  id: string;
+  source: string;
+  target: string;
+  startTime: number;
+  duration: number;
+  isError: boolean;
 }
 
 export default function ServiceMap({ namespace }: ServiceMapProps) {
@@ -11,9 +20,97 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 900, height: 600 });
 
+  // Refs for tracking real-time particles and cached span mappings
+  const particlesRef = useRef<Particle[]>([]);
+  const spanServiceCache = useRef<Map<string, string>>(new Map());
+
   useEffect(() => {
     api.getServiceMap(namespace).then(setData).catch(() => {});
   }, [namespace]);
+
+  // Handle incoming live spans from the WebSocket connection
+  const onSpanReceived = (span: Span) => {
+    // 1. Cache the span ID to service name
+    spanServiceCache.current.set(span.spanId, span.serviceName);
+    if (spanServiceCache.current.size > 1500) {
+      const firstKey = spanServiceCache.current.keys().next().value;
+      if (firstKey) spanServiceCache.current.delete(firstKey);
+    }
+
+    // 2. Resolve the source (caller) of this trace span
+    let source = '';
+    if (!span.parentSpanId || span.parentSpanId === '0000000000000000' || span.parentSpanId === '0') {
+      if (span.kind === 'SERVER') {
+        source = 'Internet';
+      }
+    } else {
+      source = spanServiceCache.current.get(span.parentSpanId) || '';
+    }
+
+    // Fallback heuristic for internal requests where parent span isn't in cache yet
+    if (!source && span.kind === 'SERVER') {
+      if (span.serviceName === 'gateway-backend') {
+        source = 'Internet';
+      } else {
+        source = 'gateway-backend'; // Most internal backends are called by the API gateway
+      }
+    }
+
+    const target = span.serviceName;
+
+    // 3. Trigger a dynamic particle if the call is external or inter-service
+    if (source && target && source !== target) {
+      particlesRef.current.push({
+        id: Math.random().toString(36).slice(2),
+        source,
+        target,
+        startTime: performance.now(),
+        duration: 1000, // Travel time in ms
+        isError: span.status === 'ERROR',
+      });
+    }
+
+    // 4. Update the nodes stats in real-time so stats table/cards increment dynamically
+    setData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        nodes: prev.nodes.map(node => {
+          if (node.serviceName === target) {
+            const reqs = node.requestCount + 1;
+            const errs = node.errorCount + (span.status === 'ERROR' ? 1 : 0);
+            return {
+              ...node,
+              requestCount: reqs,
+              errorCount: errs,
+              errorRate: (errs / reqs) * 100,
+              p50Ms: (node.p50Ms * node.requestCount + span.durationMs) / reqs,
+            };
+          }
+          if (source === 'Internet' && node.serviceName === 'Internet') {
+            const reqs = node.requestCount + 1;
+            const errs = node.errorCount + (span.status === 'ERROR' ? 1 : 0);
+            return {
+              ...node,
+              requestCount: reqs,
+              errorCount: errs,
+              errorRate: (errs / reqs) * 100,
+            };
+          }
+          return node;
+        }),
+      };
+    });
+  };
+
+  // Setup WebSocket connection for live telemetry streaming
+  useEffect(() => {
+    const disconnect = connectLiveStream(
+      namespace || undefined,
+      onSpanReceived
+    );
+    return () => disconnect();
+  }, [namespace, data]); // Rebind websocket if namespace changes or data is initialized
 
   useEffect(() => {
     if (!data || !canvasRef.current) return;
@@ -69,11 +166,9 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         }
       });
 
-      // Assign depths using BFS that avoids visiting already visited nodes in the current path to break cycles
       const visited = new Set<string>();
       const queue: { node: string; depth: number }[] = [];
 
-      // Start with root nodes (inDegree === 0)
       nodes.forEach(n => {
         if (n.serviceName === 'Internet' || (inDegree.get(n.serviceName) || 0) === 0) {
           queue.push({ node: n.serviceName, depth: 0 });
@@ -82,7 +177,6 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         }
       });
 
-      // Fallback if no root nodes (or all nodes are part of a cycle)
       if (queue.length === 0 && nodes.length > 0) {
         queue.push({ node: nodes[0].serviceName, depth: 0 });
         depthMap.set(nodes[0].serviceName, 0);
@@ -112,7 +206,6 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         if (d > maxDepth) maxDepth = d;
       });
 
-      // Group into layer columns
       const layers = new Map<number, string[]>();
       for (let d = 0; d <= maxDepth; d++) {
         layers.set(d, []);
@@ -141,14 +234,12 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         });
       }
 
-      // Compute total outgoing duration for each source node to compute percentages
       const outgoingTotalDuration = new Map<string, number>();
       edges.forEach(e => {
         const current = outgoingTotalDuration.get(e.source) || 0;
         outgoingTotalDuration.set(e.source, current + e.avgDurationMs);
       });
 
-      // Helper for calculating points along a cubic Bezier curve
       const getBezierPoint = (t: number, x1: number, y1: number, cp1x: number, cp1y: number, cp2x: number, cp2y: number, x2: number, y2: number) => {
         const mt = 1 - t;
         const mt2 = mt * mt;
@@ -166,21 +257,18 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         return { x, y, angle };
       };
 
-      // --- Draw Edges & Flow Animation ---
+      // --- Draw Ambient Edges ---
       edges.forEach(edge => {
         const from = positions.get(edge.source);
         const to = positions.get(edge.target);
         if (!from || !to) return;
 
-        // Path contribution percentage calculation
         const totalDuration = outgoingTotalDuration.get(edge.source) || 0;
         const contributionPercent = totalDuration > 0 ? (edge.avgDurationMs / totalDuration) * 100 : 0;
 
-        // Visual properties based on errors and latency
         const isError = edge.errorCount > 0;
         const isCritical = contributionPercent > 50 && edge.avgDurationMs > 50;
 
-        // Connection offsets (Cards are 150x50)
         let x1, y1, x2, y2;
         let cp1x, cp1y, cp2x, cp2y;
 
@@ -196,7 +284,6 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           cp2x = x2 - dx * 0.45;
           cp2y = y2;
         } else {
-          // Backward edge: connect top-centers and loop upwards
           x1 = from.x;
           y1 = from.y - 25;
           x2 = to.x;
@@ -214,32 +301,11 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         
         ctx.lineWidth = Math.min(8, 1.5 + (contributionPercent / 100) * 4 + (isCritical ? 2 : 0));
 
-        // Edge Path (Curved Bezier)
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x2, y2);
         ctx.stroke();
 
-        // Moving pulse dots (size proportional to contribution percentage)
-        const timeScale = 0.0018;
-        const flowProgress = (Date.now() * timeScale) % 1;
-        const pulse = getBezierPoint(flowProgress, x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2);
-
-        const pulseRadius = Math.max(3.5, Math.min(8, 3.5 + (contributionPercent / 100) * 4.5));
-        ctx.beginPath();
-        ctx.arc(pulse.x, pulse.y, pulseRadius, 0, Math.PI * 2);
-        
-        let pulseColor = '#10b981';
-        if (isError) pulseColor = '#f43f5e';
-        else if (isCritical) pulseColor = '#f59e0b';
-        
-        ctx.fillStyle = pulseColor;
-        ctx.shadowColor = pulseColor;
-        ctx.shadowBlur = pulseRadius + 3;
-        ctx.fill();
-        ctx.shadowBlur = 0; // Reset shadow
-
-        // Arrow tip at middle section of Bezier curve
         const midPoint = getBezierPoint(0.5, x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2);
         const arrowLen = 9;
 
@@ -251,7 +317,6 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.lineWidth = 2.5;
         ctx.stroke();
 
-        // Floating Call details badge with background
         const badgeText1 = `${edge.callCount} calls`;
         const badgeText2 = `${edge.avgDurationMs.toFixed(1)}ms (${contributionPercent.toFixed(0)}%)`;
         
@@ -283,6 +348,56 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.fillText(badgeText2, midPoint.x, by + 21);
       });
 
+      // --- Draw Active Real-Time Particles (Actual Request Flows) ---
+      const now = performance.now();
+      particlesRef.current = particlesRef.current.filter(particle => {
+        const from = positions.get(particle.source);
+        const to = positions.get(particle.target);
+        if (!from || !to) return false;
+
+        const progress = (now - particle.startTime) / particle.duration;
+        if (progress >= 1) return false; // Particle arrived, remove it
+
+        let x1, y1, x2, y2;
+        let cp1x, cp1y, cp2x, cp2y;
+
+        if (to.x > from.x) {
+          x1 = from.x + 75;
+          y1 = from.y;
+          x2 = to.x - 75;
+          y2 = to.y;
+
+          const dx = x2 - x1;
+          cp1x = x1 + dx * 0.45;
+          cp1y = y1;
+          cp2x = x2 - dx * 0.45;
+          cp2y = y2;
+        } else {
+          x1 = from.x;
+          y1 = from.y - 25;
+          x2 = to.x;
+          y2 = to.y - 25;
+
+          cp1x = x1 + 40;
+          cp1y = y1 - 60;
+          cp2x = x2 - 40;
+          cp2y = y2 - 60;
+        }
+
+        const pos = getBezierPoint(progress, x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2);
+        
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, particle.isError ? 6.5 : 5, 0, Math.PI * 2);
+        const color = particle.isError ? '#f43f5e' : '#10b981';
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = particle.isError ? 12 : 8;
+        ctx.fill();
+        ctx.shadowBlur = 0; // Reset shadow
+
+        return true;
+      });
+
       // --- Draw Nodes (Microservice Cards) ---
       nodes.forEach(node => {
         const pos = positions.get(node.serviceName);
@@ -298,7 +413,6 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         const rx = pos.x - w / 2;
         const ry = pos.y - h / 2;
 
-        // Core dynamic pulse ring
         ctx.save();
         const pulse = 1 + 0.05 * Math.sin(Date.now() * 0.005);
         const glowRadius = 85 * pulse;
@@ -315,13 +429,11 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.arc(pos.x, pos.y, glowRadius, 0, Math.PI * 2);
         ctx.fill();
 
-        // Card Shadow/Glow
         ctx.shadowBlur = hasErrors ? 12 : 6;
         ctx.shadowColor = isInternet 
           ? 'rgba(56, 189, 248, 0.4)' 
           : hasErrors ? 'rgba(244, 63, 94, 0.4)' : 'rgba(99, 102, 241, 0.3)';
 
-        // Card Background & border
         ctx.fillStyle = isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)';
         ctx.strokeStyle = isInternet 
           ? '#38bdf8' 
@@ -338,7 +450,6 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.stroke();
         ctx.restore();
 
-        // Draw Service Icon
         let icon = '⚙️';
         if (isInternet) icon = '🌐';
         else if (node.serviceName.includes('gateway')) icon = '🚪';
@@ -357,14 +468,12 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
         ctx.fillText(icon, rx + 10, ry + h / 2);
 
-        // Draw Service Name
         ctx.font = '700 11px Inter';
         ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
         let displayName = node.serviceName;
         if (displayName.length > 18) displayName = displayName.slice(0, 16) + '...';
         ctx.fillText(displayName, rx + 32, ry + 16);
 
-        // Draw Stats (Request Count + Error Rate)
         ctx.font = '500 10px JetBrains Mono';
         ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
         
@@ -376,7 +485,6 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.fillStyle = errRate > 5 ? '#f43f5e' : (isDark ? '#94a3b8' : '#64748b');
         ctx.fillText(statsText, rx + 32, ry + 34);
 
-        // Status Indicator Dot in top right corner
         ctx.beginPath();
         ctx.arc(rx + w - 12, ry + 12, 4, 0, Math.PI * 2);
         ctx.fillStyle = isInternet 
