@@ -450,29 +450,12 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.stroke();
         ctx.restore();
 
-        let icon = '⚙️';
-        if (isInternet) icon = '🌐';
-        else if (node.serviceName.includes('gateway')) icon = '🚪';
-        else if (node.serviceName.includes('identity')) icon = '🔑';
-        else if (node.serviceName.includes('catalog')) icon = '📦';
-        else if (node.serviceName.includes('order')) icon = '🛒';
-        else if (node.serviceName.includes('payment')) icon = '💳';
-        else if (node.serviceName.includes('storage')) icon = '💾';
-        else if (node.serviceName.includes('notification')) icon = '🔔';
-        else if (node.serviceName.includes('support')) icon = '🛠️';
-        else if (node.serviceName.includes('user')) icon = '👤';
-
-        ctx.font = '16px Inter';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
-        ctx.fillText(icon, rx + 10, ry + h / 2);
-
         ctx.font = '700 11px Inter';
+        ctx.textAlign = 'left';
         ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
         let displayName = node.serviceName;
         if (displayName.length > 18) displayName = displayName.slice(0, 16) + '...';
-        ctx.fillText(displayName, rx + 32, ry + 16);
+        ctx.fillText(displayName, rx + 12, ry + 20);
 
         ctx.font = '500 10px JetBrains Mono';
         ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
@@ -483,7 +466,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         }
         
         ctx.fillStyle = errRate > 5 ? '#f43f5e' : (isDark ? '#94a3b8' : '#64748b');
-        ctx.fillText(statsText, rx + 32, ry + 34);
+        ctx.fillText(statsText, rx + 12, ry + 36);
 
         ctx.beginPath();
         ctx.arc(rx + w - 12, ry + 12, 4, 0, Math.PI * 2);

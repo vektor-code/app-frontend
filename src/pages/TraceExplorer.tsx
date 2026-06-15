@@ -6,22 +6,46 @@ interface TraceExplorerProps {
   namespace: string;
 }
 
+const SERVICE_COLORS: Record<string, string> = {};
+const COLOR_PALETTE = [
+  '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316',
+  '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
+  '#a855f7', '#d946ef', '#0ea5e9', '#10b981', '#f59e0b',
+];
+
+function getServiceColor(name: string): string {
+  if (!SERVICE_COLORS[name]) {
+    const idx = Object.keys(SERVICE_COLORS).length % COLOR_PALETTE.length;
+    SERVICE_COLORS[name] = COLOR_PALETTE[idx];
+  }
+  return SERVICE_COLORS[name];
+}
+
 export default function TraceExplorer({ namespace }: TraceExplorerProps) {
   const [traces, setTraces] = useState<TraceListItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [errorFilter, setErrorFilter] = useState('');
-  const [serviceFilter, setServiceFilter] = useState('');
   const [services, setServices] = useState<string[]>([]);
   const navigate = useNavigate();
+
+  // Filters
+  const [serviceFilter, setServiceFilter] = useState('');
+  const [errorFilter, setErrorFilter] = useState('');
+  const [operationFilter, setOperationFilter] = useState('');
+  const [traceIdFilter, setTraceIdFilter] = useState('');
+  const [minSpans, setMinSpans] = useState('2');
+  const [minDuration, setMinDuration] = useState('');
 
   const loadTraces = useCallback(async () => {
     try {
       setLoading(true);
-      const params: Record<string, string> = {};
+      const params: Record<string, string> = { limit: '100' };
       if (namespace) params.namespace = namespace;
       if (serviceFilter) params.service = serviceFilter;
       if (errorFilter) params.hasError = errorFilter;
-      params.limit = '100';
+      if (operationFilter) params.operation = operationFilter;
+      if (traceIdFilter) params.traceId = traceIdFilter;
+      if (minSpans && parseInt(minSpans) > 0) params.minSpans = minSpans;
+      if (minDuration && parseFloat(minDuration) > 0) params.minDuration = minDuration;
 
       const data = await api.getTraces(params);
       setTraces(data.traces || []);
@@ -30,7 +54,7 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
     } finally {
       setLoading(false);
     }
-  }, [namespace, serviceFilter, errorFilter]);
+  }, [namespace, serviceFilter, errorFilter, operationFilter, traceIdFilter, minSpans, minDuration]);
 
   useEffect(() => { loadTraces(); }, [loadTraces]);
 
@@ -47,6 +71,8 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
     return () => clearInterval(iv);
   }, [loadTraces]);
 
+  const maxDuration = traces.length > 0 ? Math.max(...traces.map(t => t.durationMs)) : 1;
+
   return (
     <div className="animate-fade-in">
       <h1 className="page-title">Trace Explorer</h1>
@@ -54,51 +80,175 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
         {namespace ? `Traces in ${namespace}` : 'All traces across namespaces'}
       </p>
 
-      <div className="filter-bar">
-        <select className="filter-select" value={serviceFilter} onChange={e => setServiceFilter(e.target.value)}>
-          <option value="">All Services</option>
-          {services.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select className="filter-select" value={errorFilter} onChange={e => setErrorFilter(e.target.value)}>
-          <option value="">All Status</option>
-          <option value="true">Errors Only</option>
-          <option value="false">Success Only</option>
-        </select>
-        <button className="btn btn-ghost btn-sm" onClick={loadTraces}>↻ Refresh</button>
+      {/* Advanced Filter Bar */}
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <div className="card-body" style={{ padding: '16px 20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px', alignItems: 'end' }}>
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Service</label>
+              <select className="filter-select" value={serviceFilter} onChange={e => setServiceFilter(e.target.value)} style={{ width: '100%' }}>
+                <option value="">All Services</option>
+                {services.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Status</label>
+              <select className="filter-select" value={errorFilter} onChange={e => setErrorFilter(e.target.value)} style={{ width: '100%' }}>
+                <option value="">All Status</option>
+                <option value="true">Errors Only</option>
+                <option value="false">Success Only</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Operation</label>
+              <input
+                type="text"
+                className="filter-select"
+                placeholder="e.g. GET catalog"
+                value={operationFilter}
+                onChange={e => setOperationFilter(e.target.value)}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Trace ID</label>
+              <input
+                type="text"
+                className="filter-select"
+                placeholder="Search by ID..."
+                value={traceIdFilter}
+                onChange={e => setTraceIdFilter(e.target.value)}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Min Spans</label>
+              <select className="filter-select" value={minSpans} onChange={e => setMinSpans(e.target.value)} style={{ width: '100%' }}>
+                <option value="0">All (incl. DB noise)</option>
+                <option value="2">≥ 2 spans (requests)</option>
+                <option value="3">≥ 3 spans</option>
+                <option value="5">≥ 5 spans</option>
+                <option value="10">≥ 10 spans</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Min Duration</label>
+              <input
+                type="number"
+                className="filter-select"
+                placeholder="ms"
+                value={minDuration}
+                onChange={e => setMinDuration(e.target.value)}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+              <button className="btn btn-ghost btn-sm" onClick={loadTraces} style={{ width: '100%', height: '34px' }}>↻ Refresh</button>
+            </div>
+          </div>
+        </div>
       </div>
 
+      {/* Trace List */}
       <div className="card">
         <div className="card-header">
-          <div className="card-title">🔍 Traces</div>
+          <div className="card-title">Traces</div>
           <span className="text-sm text-muted">{traces.length} traces</span>
         </div>
         <div className="table-wrapper">
           <table>
             <thead>
               <tr>
-                <th>Trace ID</th>
-                <th>Service</th>
+                <th style={{ width: '130px' }}>Trace ID</th>
+                <th>Root Service</th>
                 <th>Operation</th>
-                <th>Namespace</th>
-                <th>Duration</th>
-                <th>Spans</th>
-                <th>Status</th>
-                <th>Time</th>
+                <th>Services</th>
+                <th style={{ width: '240px' }}>Duration</th>
+                <th style={{ width: '60px' }}>Spans</th>
+                <th style={{ width: '60px' }}>Status</th>
+                <th style={{ width: '80px' }}>Time</th>
               </tr>
             </thead>
             <tbody>
-              {traces.map(t => (
-                <tr key={t.traceId} onClick={() => navigate(`/traces/${t.traceId}`)}>
-                  <td><span className="mono" style={{ color: 'var(--accent-indigo-light)' }}>{t.traceId.slice(0, 12)}…</span></td>
-                  <td>{t.serviceName}</td>
-                  <td className="mono text-sm">{t.rootName || '—'}</td>
-                  <td><span className="badge badge-ns">{t.namespace}</span></td>
-                  <td className="mono">{formatDuration(t.durationMs)}</td>
-                  <td>{t.spanCount}</td>
-                  <td><span className={`badge ${t.hasError ? 'badge-error' : 'badge-ok'}`}>{t.hasError ? 'ERROR' : 'OK'}</span></td>
-                  <td className="text-sm text-muted">{formatTime(t.startTime)}</td>
-                </tr>
-              ))}
+              {traces.map(t => {
+                const durationPct = maxDuration > 0 ? (t.durationMs / maxDuration) * 100 : 0;
+                return (
+                  <tr key={t.traceId} onClick={() => navigate(`/traces/${t.traceId}`)} style={{ cursor: 'pointer' }}>
+                    <td>
+                      <span className="mono" style={{ color: 'var(--accent-indigo-light)', fontSize: '12px' }}>
+                        {t.traceId.slice(0, 14)}…
+                      </span>
+                    </td>
+                    <td style={{ fontWeight: 600, fontSize: '13px' }}>{t.serviceName}</td>
+                    <td className="mono" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{t.rootName || '—'}</td>
+                    <td>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                        {(t.services || []).slice(0, 5).map(svc => (
+                          <span
+                            key={svc}
+                            style={{
+                              fontSize: '10px',
+                              padding: '1px 6px',
+                              borderRadius: '3px',
+                              background: getServiceColor(svc) + '20',
+                              color: getServiceColor(svc),
+                              fontWeight: 600,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {svc.replace('-backend', '')}
+                          </span>
+                        ))}
+                        {(t.services || []).length > 5 && (
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>+{t.services!.length - 5}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{
+                          flex: 1,
+                          height: '6px',
+                          borderRadius: '3px',
+                          background: 'var(--bg-tertiary)',
+                          overflow: 'hidden',
+                        }}>
+                          <div style={{
+                            width: `${Math.max(2, durationPct)}%`,
+                            height: '100%',
+                            borderRadius: '3px',
+                            background: t.hasError
+                              ? 'linear-gradient(90deg, #f43f5e, #e11d48)'
+                              : t.durationMs > 1000
+                                ? 'linear-gradient(90deg, #f59e0b, #d97706)'
+                                : 'linear-gradient(90deg, #6366f1, #8b5cf6)',
+                            transition: 'width 0.3s ease',
+                          }} />
+                        </div>
+                        <span className="mono" style={{ fontSize: '12px', minWidth: '60px', textAlign: 'right' }}>
+                          {formatDuration(t.durationMs)}
+                        </span>
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        background: t.spanCount >= 10 ? 'rgba(99, 102, 241, 0.15)' : 'var(--bg-tertiary)',
+                        color: t.spanCount >= 10 ? '#818cf8' : 'var(--text-secondary)',
+                      }}>
+                        {t.spanCount}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge ${t.hasError ? 'badge-error' : 'badge-ok'}`}>{t.hasError ? 'ERR' : 'OK'}</span>
+                    </td>
+                    <td className="text-sm text-muted">{formatTime(t.startTime)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {traces.length === 0 && !loading && (
