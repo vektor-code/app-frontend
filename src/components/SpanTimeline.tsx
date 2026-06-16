@@ -28,6 +28,63 @@ const KIND_LABELS: Record<string, { label: string; color: string }> = {
   INTERNAL: { label: 'INT', color: '#64748b' },
 };
 
+const GRPC_STATUS_MAP: Record<string, { name: string; description: string }> = {
+  '0': { name: 'OK', description: 'Success' },
+  '1': { name: 'CANCELLED', description: 'The operation was cancelled (typically by the caller).' },
+  '2': { name: 'UNKNOWN', description: 'Unknown error. An error was returned by another address space.' },
+  '3': { name: 'INVALID_ARGUMENT', description: 'Client specified an invalid argument. Check client parameters.' },
+  '4': { name: 'DEADLINE_EXCEEDED', description: 'Deadline expired before operation could complete.' },
+  '5': { name: 'NOT_FOUND', description: 'Some requested entity (e.g., file or directory) was not found.' },
+  '6': { name: 'ALREADY_EXISTS', description: 'Some entity that we attempted to create (e.g., file or directory) already exists.' },
+  '7': { name: 'PERMISSION_DENIED', description: 'The caller does not have permission to execute the specified operation.' },
+  '8': { name: 'RESOURCE_EXHAUSTED', description: 'Some resource has been exhausted, perhaps a per-user quota, or the entire file system is full.' },
+  '9': { name: 'FAILED_PRECONDITION', description: 'Operation was rejected because the system is not in a state required for the operation\'s execution.' },
+  '10': { name: 'ABORTED', description: 'The operation was aborted, typically due to a concurrency issue like sequencer check failures.' },
+  '11': { name: 'OUT_OF_RANGE', description: 'Operation was attempted past the valid range. E.g., seeking or reading past end of file.' },
+  '12': { name: 'UNIMPLEMENTED', description: 'The operation is not implemented or not supported/enabled in this service (gRPC Code 12).' },
+  '13': { name: 'INTERNAL', description: 'Internal errors. Means some invariants expected by underlying system has been broken.' },
+  '14': { name: 'UNAVAILABLE', description: 'The service is currently unavailable. This is most likely a transient condition.' },
+  '15': { name: 'DATA_LOSS', description: 'Unrecoverable data loss or corruption.' },
+  '16': { name: 'UNAUTHENTICATED', description: 'The request does not have valid authentication credentials for the operation.' }
+};
+
+function getErrorFromAttributes(span: Span): string | null {
+  const attrs = span.attributes || {};
+  const errorKeys = [
+    'error.message', 'error.msg', 'error.type', 
+    'exception.message', 'exception.type', 
+    'grpc.status_description', 'http.status_text',
+    'status.message', 'status.description'
+  ];
+  for (const key of errorKeys) {
+    if (attrs[key]) return attrs[key];
+  }
+  if (attrs['rpc.grpc.status_code']) {
+    const code = attrs['rpc.grpc.status_code'];
+    const info = GRPC_STATUS_MAP[code];
+    if (info) {
+      return `gRPC Error (${info.name}): ${info.description}`;
+    }
+  }
+  if (attrs['http.status_code']) {
+    const code = attrs['http.status_code'];
+    return `HTTP Error: Server returned status code ${code}`;
+  }
+  if (span.events && span.events.length > 0) {
+    for (const ev of span.events) {
+      if (ev.attributes) {
+        if (ev.attributes['exception.message']) {
+          return `${ev.name}: ${ev.attributes['exception.message']}`;
+        }
+        if (ev.attributes['message']) {
+          return `${ev.name}: ${ev.attributes['message']}`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 const IMPORTANT_ATTRS = [
   'http.method', 'http.url', 'http.route', 'http.status_code', 'http.target',
   'db.system', 'db.statement', 'db.name',
@@ -176,19 +233,28 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration }: S
             fontSize: '12px',
             animation: 'fadeIn 0.15s ease',
           }}>
-            {/* Error message */}
-            {span.error && (
+            {/* Detailed error message */}
+            {isError && (
               <div style={{
-                padding: '6px 10px',
-                marginBottom: '8px',
-                borderRadius: '4px',
-                background: 'rgba(244, 63, 94, 0.1)',
-                border: '1px solid rgba(244, 63, 94, 0.3)',
+                padding: '10px 12px',
+                marginBottom: '10px',
+                borderRadius: '6px',
+                background: 'rgba(244, 63, 94, 0.08)',
+                border: '1px solid rgba(244, 63, 94, 0.25)',
                 color: '#f43f5e',
-                fontFamily: 'var(--font-mono)',
-                fontSize: '12px',
+                fontSize: '12.5px',
               }}>
-                ✕ {span.error}
+                <div style={{ fontWeight: 'bold', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  Span Execution Error
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: '4px', color: 'var(--text-primary)' }}>
+                  {span.error || getErrorFromAttributes(span) || 'An error occurred during this operation. Check the attributes and event logs below.'}
+                </div>
               </div>
             )}
 
@@ -241,11 +307,23 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration }: S
               <div style={{ marginTop: '8px' }}>
                 <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>Events</div>
                 {span.events.map((ev, i) => (
-                  <div key={i} style={{ padding: '3px 0', fontSize: '11px', borderBottom: '1px solid var(--border-primary)' }}>
-                    <span style={{ color: '#f59e0b', fontWeight: 600 }}>{ev.name}</span>
-                    <span style={{ color: 'var(--text-muted)', marginLeft: '8px' }}>
-                      {new Date(ev.timestamp).toLocaleTimeString()}
-                    </span>
+                  <div key={i} style={{ padding: '4px 0', fontSize: '11px', borderBottom: '1px solid var(--border-primary)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#f59e0b', fontWeight: 600 }}>{ev.name}</span>
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        {new Date(ev.timestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    {ev.attributes && Object.keys(ev.attributes).length > 0 && (
+                      <div style={{ marginLeft: '12px', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        {Object.entries(ev.attributes).map(([ek, evVal]) => (
+                          <div key={ek} style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                            <span style={{ color: 'var(--text-muted)', fontWeight: 500, marginRight: '4px' }}>{ek}:</span>
+                            <span className="mono" style={{ wordBreak: 'break-all' }}>{evVal}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
