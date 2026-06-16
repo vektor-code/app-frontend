@@ -840,7 +840,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       {data && data.nodes && data.nodes.length > 0 && (
         <div className="card mt-6">
           <div className="card-header">
-            <div className="card-title">📊 Service Details</div>
+            <div className="card-title">Service Details</div>
           </div>
           <div className="table-wrapper">
             <table>
@@ -879,7 +879,11 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         <div className="card mt-4">
           <div className="card-body">
             <div className="empty-state">
-              <div className="empty-state-icon">🕸️</div>
+              <div className="empty-state-icon" style={{ color: 'var(--text-muted)', marginBottom: '12px', display: 'flex', justifyContent: 'center' }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                </svg>
+              </div>
               <div className="empty-state-title">No services discovered</div>
               <div className="empty-state-text">Service map will populate as traces flow through your cluster</div>
             </div>

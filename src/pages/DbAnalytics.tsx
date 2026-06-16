@@ -165,17 +165,17 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           <span className="text-sm text-muted">{filteredMetrics.length} query patterns active</span>
         </div>
         <div className="table-wrapper" style={{ overflowX: 'auto' }}>
-          <table className="db-table" style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <table className="db-table" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
             <thead>
               <tr>
                 <th style={{ width: '80px' }}>System</th>
                 <th>Query / Operation</th>
-                <th>Service Source</th>
-                <th style={{ width: '100px', textAlign: 'right' }}>Calls</th>
-                <th style={{ width: '140px', textAlign: 'right' }}>Avg Latency</th>
-                <th style={{ width: '140px' }}>Relative Slowdown</th>
-                <th style={{ width: '100px', textAlign: 'right' }}>Max Latency</th>
-                <th style={{ width: '100px', textAlign: 'right' }}>Error Rate</th>
+                <th style={{ width: '120px' }}>Service</th>
+                <th style={{ width: '70px', textAlign: 'right' }}>Calls</th>
+                <th style={{ width: '90px', textAlign: 'right' }}>Avg Latency</th>
+                <th style={{ width: '120px' }}>Slowdown</th>
+                <th style={{ width: '90px', textAlign: 'right' }}>Max Latency</th>
+                <th style={{ width: '80px', textAlign: 'right' }}>Error Rate</th>
               </tr>
             </thead>
             <tbody>
@@ -196,7 +196,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                           {m.system.toUpperCase()}
                         </span>
                       </td>
-                      <td data-label="Query" style={{ maxWidth: '350px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <td data-label="Query" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         <code style={{ fontSize: '12px', color: 'var(--text-primary)' }}>{m.query}</code>
                       </td>
                       <td data-label="Service">
@@ -242,9 +242,13 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                                   e.stopPropagation();
                                   navigator.clipboard.writeText(m.query);
                                 }}
-                                style={{ padding: '2px 8px', fontSize: '11px' }}
+                                style={{ padding: '2px 8px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                               >
-                                📋 Copy SQL
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                                Copy SQL
                               </button>
                             </div>
                             <pre style={{ 
@@ -278,7 +282,11 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                                   color: 'var(--accent-rose)',
                                   marginBottom: '8px'
                                 }}>
-                                  <span style={{ fontSize: '14px' }}>⚠</span>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-rose)' }}>
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                                  </svg>
                                   Recent Error Messages
                                   <span style={{
                                     background: 'rgba(229, 62, 62, 0.15)',
@@ -326,7 +334,13 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                 <tr>
                   <td colSpan={8}>
                     <div className="empty-state">
-                      <div className="empty-state-icon">🗃️</div>
+                      <div className="empty-state-icon" style={{ color: 'var(--text-muted)', marginBottom: '12px', display: 'flex', justifyContent: 'center' }}>
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                          <path d="M3 5V19A9 3 0 0 0 21 19V5"></path>
+                          <path d="M3 12A9 3 0 0 0 21 12"></path>
+                        </svg>
+                      </div>
                       <div className="empty-state-title">No database queries found</div>
                       <div className="empty-state-text">
                         No client spans with database tags were captured for {namespace ? `namespace "${namespace}"` : 'any namespace'}.

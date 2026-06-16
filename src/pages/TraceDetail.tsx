@@ -146,7 +146,7 @@ export default function TraceDetail() {
 
       <div className="card">
         <div className="card-header">
-          <div className="card-title">⏱️ Span Waterfall</div>
+          <div className="card-title">Span Waterfall</div>
           <span className="text-sm text-muted">{trace.spanCount} spans</span>
         </div>
         <div className="card-body">
