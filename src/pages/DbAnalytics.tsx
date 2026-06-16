@@ -130,7 +130,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="filter-bar" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '20px', background: 'var(--bg-secondary)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-primary)' }}>
+      <div className="filter-bar db-filter-bar" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '20px', background: 'var(--bg-secondary)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-primary)' }}>
         <div style={{ flex: '1', minWidth: '240px' }}>
           <input
             type="text"
@@ -158,8 +158,8 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           <div className="card-title">🗃️ Database Queries Performance</div>
           <span className="text-sm text-muted">{filteredMetrics.length} query patterns active</span>
         </div>
-        <div className="table-wrapper">
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <div className="table-wrapper" style={{ overflowX: 'auto' }}>
+          <table className="db-table" style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead>
               <tr>
                 <th style={{ width: '80px' }}>System</th>
@@ -185,22 +185,22 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                       style={{ cursor: 'pointer', transition: 'background 0.2s' }}
                       className="hover-row"
                     >
-                      <td>
+                      <td data-label="System">
                         <span className={`badge ${getSystemBadgeClass(m.system)}`} style={{ fontSize: '10px', fontWeight: 'bold' }}>
                           {m.system.toUpperCase()}
                         </span>
                       </td>
-                      <td style={{ maxWidth: '350px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <td data-label="Query" style={{ maxWidth: '350px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         <code style={{ fontSize: '12px', color: 'var(--text-primary)' }}>{m.query}</code>
                       </td>
-                      <td>
+                      <td data-label="Service">
                         <span className="badge badge-ns">{m.service}</span>
                       </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{m.callCount}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: '600', color: m.avgDurationMs > 200 ? 'var(--accent-amber)' : 'var(--text-primary)' }}>
+                      <td data-label="Calls" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{m.callCount}</td>
+                      <td data-label="Avg Latency" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: '600', color: m.avgDurationMs > 200 ? 'var(--accent-amber)' : 'var(--text-primary)' }}>
                         {formatDuration(m.avgDurationMs)}
                       </td>
-                      <td style={{ verticalAlign: 'middle' }}>
+                      <td data-label="Slowdown" style={{ verticalAlign: 'middle' }}>
                         <div style={{ width: '100%', background: 'var(--bg-tertiary)', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
                           <div 
                             style={{ 
@@ -213,10 +213,10 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                           />
                         </div>
                       </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                      <td data-label="Max Latency" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
                         {formatDuration(m.maxDurationMs)}
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td data-label="Error Rate" style={{ textAlign: 'right' }}>
                         {m.errorCount > 0 ? (
                           <span className="badge badge-error" style={{ fontSize: '11px' }}>{m.errorRate.toFixed(1)}%</span>
                         ) : (
@@ -255,12 +255,60 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                             }}>
                               {m.query}
                             </pre>
-                            <div style={{ display: 'flex', gap: '20px', fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                            <div className="db-expanded-details" style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
                               <div><strong>Service:</strong> {m.service}</div>
                               <div><strong>Namespace:</strong> {m.namespace || 'N/A'}</div>
                               <div><strong>Total Executions:</strong> {m.callCount}</div>
                               <div><strong>Failures:</strong> {m.errorCount}</div>
                             </div>
+                            {m.recentErrors && m.recentErrors.length > 0 && (
+                              <div className="db-recent-errors" style={{ marginTop: '12px' }}>
+                                <div style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  fontSize: '12px',
+                                  fontWeight: 'bold',
+                                  color: 'var(--accent-rose)',
+                                  marginBottom: '8px'
+                                }}>
+                                  <span style={{ fontSize: '14px' }}>⚠</span>
+                                  Recent Error Messages
+                                  <span style={{
+                                    background: 'rgba(229, 62, 62, 0.15)',
+                                    color: 'var(--accent-rose)',
+                                    fontSize: '10px',
+                                    fontWeight: 'bold',
+                                    padding: '2px 6px',
+                                    borderRadius: '8px',
+                                    border: '1px solid rgba(229, 62, 62, 0.25)'
+                                  }}>
+                                    {m.recentErrors.length}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  {m.recentErrors.map((err, errIdx) => (
+                                    <div
+                                      key={errIdx}
+                                      style={{
+                                        borderLeft: '3px solid var(--accent-rose)',
+                                        background: 'rgba(229, 62, 62, 0.06)',
+                                        padding: '8px 12px',
+                                        borderRadius: '0 6px 6px 0',
+                                        fontSize: '12px',
+                                        fontFamily: 'var(--font-mono)',
+                                        color: 'var(--text-secondary)',
+                                        lineHeight: '1.4',
+                                        wordBreak: 'break-word',
+                                        whiteSpace: 'pre-wrap'
+                                      }}
+                                    >
+                                      {err}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -319,6 +367,81 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
         }
         .hover-row:hover {
           background: var(--bg-hover) !important;
+        }
+
+        /* Responsive: filter bar stacking */
+        @media (max-width: 768px) {
+          .db-filter-bar {
+            flex-direction: column !important;
+          }
+          .db-filter-bar > * {
+            width: 100% !important;
+            min-width: 0 !important;
+          }
+          .db-filter-bar select,
+          .db-filter-bar button {
+            width: 100% !important;
+          }
+
+          /* Expanded details stacking */
+          .db-expanded-details {
+            flex-direction: column !important;
+            gap: 6px !important;
+          }
+
+          /* Table card layout on mobile */
+          .db-table thead {
+            display: none;
+          }
+          .db-table tbody,
+          .db-table tbody tr {
+            display: block;
+            width: 100%;
+          }
+          .db-table tbody tr.hover-row {
+            display: block;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 12px;
+          }
+          .db-table tbody tr.hover-row td {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0 !important;
+            border: none !important;
+            text-align: right;
+            max-width: none !important;
+            white-space: normal !important;
+            overflow: visible !important;
+          }
+          .db-table tbody tr.hover-row td::before {
+            content: attr(data-label);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-tertiary);
+            text-align: left;
+            flex-shrink: 0;
+            margin-right: 12px;
+          }
+          /* Hide the progress bar column on mobile for cleanliness */
+          .db-table tbody tr.hover-row td:nth-child(6) {
+            display: none;
+          }
+          /* Expanded row card on mobile */
+          .db-table tbody tr:not(.hover-row) td {
+            display: block;
+            width: 100%;
+            padding: 12px !important;
+          }
+        }
+
+        /* Smooth error card hover */
+        .db-recent-errors > div > div:hover {
+          background: rgba(229, 62, 62, 0.1) !important;
         }
       `}</style>
     </div>

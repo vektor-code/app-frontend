@@ -81,10 +81,52 @@ export interface ServiceMapData {
 }
 
 class ApiClient {
-  async get<T>(path: string): Promise<T> {
-    const res = await fetch(`${API_BASE}${path}`);
+  private getHeaders(): HeadersInit {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    const token = localStorage.getItem('token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  }
+
+  async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const url = `${API_BASE}${path}`;
+    const headers = {
+      ...this.getHeaders(),
+      ...options.headers,
+    };
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      if (!path.includes('/auth/login') && !path.includes('/auth/me')) {
+        window.location.reload();
+      }
+      throw new Error('Unauthorized');
+    }
     if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
     return res.json();
+  }
+
+  get<T>(path: string): Promise<T> {
+    return this.request<T>(path, { method: 'GET' });
+  }
+
+  post<T>(path: string, body: any): Promise<T> {
+    return this.request<T>(path, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  login(credentials: { username: string; password: string; mode: string }) {
+    return this.post<{ token: string; user: any }>('/auth/login', credentials);
+  }
+
+  getCurrentUser() {
+    return this.get<any>('/auth/me');
   }
 
   // Core APIs
@@ -137,6 +179,7 @@ export interface DatabaseQueryMetric {
   errorRate: number;
   avgDurationMs: number;
   maxDurationMs: number;
+  recentErrors?: string[];
 }
 
 export const api = new ApiClient();

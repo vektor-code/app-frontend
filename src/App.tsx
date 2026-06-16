@@ -8,13 +8,44 @@ import TraceDetail from './pages/TraceDetail';
 import ServiceMap from './pages/ServiceMap';
 import DbAnalytics from './pages/DbAnalytics';
 import LiveStream from './pages/LiveStream';
+import Login from './pages/Login';
 
 export default function App() {
+  const [authChecking, setAuthChecking] = useState(true);
+  const [user, setUser] = useState<any | null>(null);
   const [namespaces, setNamespaces] = useState<NamespaceStats[]>([]);
   const [selectedNamespace, setSelectedNamespace] = useState('');
   const [connected, setConnected] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const navigate = useNavigate();
+
+  // Auth check on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const currentUser = await api.getCurrentUser();
+          setUser(currentUser);
+        } catch {
+          localStorage.removeItem('token');
+          setUser(null);
+        }
+      }
+      setAuthChecking(false);
+    };
+    checkAuth();
+  }, []);
+
+  const handleLogin = useCallback((loggedInUser: any, token: string) => {
+    localStorage.setItem('token', token);
+    setUser(loggedInUser);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('token');
+    setUser(null);
+  }, []);
 
   const loadStats = useCallback(async () => {
     try {
@@ -25,7 +56,6 @@ export default function App() {
       const statsNs = statsData.namespaces || [];
       const statsMap = new Map(statsNs.map(ns => [ns.namespace, ns]));
 
-      // Add K8s namespaces that don't have trace data yet
       for (const ns of (nsData.namespaces || [])) {
         if (!statsMap.has(ns)) {
           statsNs.push({
@@ -49,10 +79,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!user) return;
     loadStats();
     const interval = setInterval(loadStats, 5000);
     return () => clearInterval(interval);
-  }, [loadStats]);
+  }, [loadStats, user]);
 
   useEffect(() => {
     const saved = localStorage.getItem('theme');
@@ -76,6 +107,50 @@ export default function App() {
       setIsDark(true);
     }
   };
+
+  // Loading spinner while checking auth
+  if (authChecking) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        width: '100vw',
+        background: 'var(--bg-primary, #0f0f23)',
+      }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '20px',
+        }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            border: '3px solid rgba(99, 102, 241, 0.15)',
+            borderTopColor: 'var(--accent-indigo, #6366f1)',
+            borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite',
+          }} />
+          <span style={{
+            color: 'var(--text-secondary, #94a3b8)',
+            fontSize: '14px',
+            fontWeight: 500,
+            letterSpacing: '0.02em',
+          }}>
+            Authenticating…
+          </span>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      </div>
+    );
+  }
+
+  // Show login page when not authenticated
+  if (!user) {
+    return <Login onLogin={handleLogin} />;
+  }
 
   return (
     <div className="app-layout">
@@ -104,6 +179,35 @@ export default function App() {
               <div className={`live-dot${connected ? '' : ' '}`} style={connected ? {} : { background: 'var(--accent-rose)' }} />
               {connected ? 'Connected' : 'Disconnected'}
             </div>
+            <button
+              className="btn btn-ghost"
+              onClick={handleLogout}
+              title="Logout"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '13px',
+                color: 'var(--text-secondary, #94a3b8)',
+                opacity: 0.85,
+                transition: 'opacity 0.2s, color 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = '1';
+                e.currentTarget.style.color = 'var(--accent-rose, #f43f5e)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = '0.85';
+                e.currentTarget.style.color = 'var(--text-secondary, #94a3b8)';
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              Logout
+            </button>
           </div>
         </header>
         <main className="app-content">
