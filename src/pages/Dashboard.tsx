@@ -364,7 +364,14 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
         {widgets.length === 0 && (
           <div className="card w-1" style={{ padding: '40px' }}>
             <div className="empty-state">
-              <div className="empty-state-icon">📊</div>
+              <div className="empty-state-icon">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-tertiary)', opacity: 0.6 }}>
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <line x1="9" y1="9" x2="9" y2="15" />
+                  <line x1="12" y1="12" x2="12" y2="15" />
+                  <line x1="15" y1="6" x2="15" y2="15" />
+                </svg>
+              </div>
               <div className="empty-state-title">No panels on your dashboard</div>
               <div className="empty-state-text">Click "Design Dashboard" above to start adding custom analytics widgets!</div>
             </div>
@@ -376,7 +383,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
       {!isEditMode && filteredNamespaces.length > 0 && (
         <div className="card mt-6">
           <div className="card-header">
-            <div className="card-title">📦 Monitored Namespaces</div>
+            <div className="card-title">Monitored Namespaces</div>
             <span className="text-sm text-muted">{filteredNamespaces.length} online</span>
           </div>
           <div className="card-body">
@@ -420,7 +427,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
         <div className="modal-backdrop" onClick={() => setShowAddModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">＋ Add Custom Analytics Panel</h3>
+              <h3 className="modal-title">Add Custom Analytics Panel</h3>
               <button className="modal-close" onClick={() => setShowAddModal(false)}>✕</button>
             </div>
             <div className="modal-body">
@@ -515,7 +522,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
         <div className="modal-backdrop" onClick={() => setEditingWidget(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">⚙️ Configure Panel: {editingWidget.title}</h3>
+              <h3 className="modal-title">Configure Panel: {editingWidget.title}</h3>
               <button className="modal-close" onClick={() => setEditingWidget(null)}>✕</button>
             </div>
             <div className="modal-body">

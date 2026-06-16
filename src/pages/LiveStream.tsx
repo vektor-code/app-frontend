@@ -62,11 +62,23 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
             </span>
           </div>
           <div className="flex gap-2">
-            <button className="btn btn-ghost btn-sm" onClick={() => setPaused(!paused)}>
-              {paused ? '▶ Resume' : '⏸ Pause'}
+            <button className="btn btn-ghost btn-sm" onClick={() => setPaused(!paused)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                {paused ? <polygon points="5 3 19 12 5 21 5 3" /> : (
+                  <>
+                    <line x1="6" y1="4" x2="6" y2="20" />
+                    <line x1="18" y1="4" x2="18" y2="20" />
+                  </>
+                )}
+              </svg>
+              {paused ? 'Resume' : 'Pause'}
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={clearSpans}>
-              🗑 Clear
+            <button className="btn btn-ghost btn-sm" onClick={clearSpans} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+              Clear
             </button>
           </div>
         </div>
@@ -75,7 +87,11 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
           <div className="card">
             <div className="card-body">
               <div className="empty-state">
-                <div className="empty-state-icon">⚡</div>
+                <div className="empty-state-icon">
+                  <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-tertiary)', opacity: 0.6 }}>
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                  </svg>
+                </div>
                 <div className="empty-state-title">{connected ? 'Waiting for spans...' : 'Connecting...'}</div>
                 <div className="empty-state-text">
                   {connected

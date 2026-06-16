@@ -11,6 +11,21 @@ export default function Login({ onLogin }: LoginProps) {
   const [mode, setMode] = useState<'local' | 'ldap'>('ldap');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDark, setIsDark] = useState(() => {
+    return document.body.classList.contains('dark-theme');
+  });
+
+  const toggleTheme = () => {
+    if (isDark) {
+      document.body.classList.remove('dark-theme');
+      localStorage.setItem('theme', 'light');
+      setIsDark(false);
+    } else {
+      document.body.classList.add('dark-theme');
+      localStorage.setItem('theme', 'dark');
+      setIsDark(true);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,7 +37,7 @@ export default function Login({ onLogin }: LoginProps) {
       const data = await api.login({ username, password, mode });
       onLogin(data.user, data.token);
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials or network connection.');
+      setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
@@ -31,15 +46,17 @@ export default function Login({ onLogin }: LoginProps) {
   return (
     <div className="login-container">
       <div className="login-card animate-fade-in">
+        <button
+          type="button"
+          className="theme-toggle-btn"
+          onClick={toggleTheme}
+          title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        >
+          {isDark ? '☀️' : '🌙'}
+        </button>
+
         <div className="login-logo">
-          <div className="logo-icon">
-            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <polygon points="12 2 2 7 12 12 22 7 12 2" />
-              <polyline points="2 17 12 22 22 17" />
-              <polyline points="2 12 12 17 22 12" />
-            </svg>
-          </div>
-          <span className="logo-text">Vektor Trace</span>
+          <span className="logo-text">Trace</span>
         </div>
 
         <h2 className="login-title">Sign in to telemetry platform</h2>
@@ -55,7 +72,7 @@ export default function Login({ onLogin }: LoginProps) {
               setError(null);
             }}
           >
-            🌐 LDAP / Active Directory
+            LDAP Login
           </button>
           <button
             type="button"
@@ -65,20 +82,20 @@ export default function Login({ onLogin }: LoginProps) {
               setError(null);
             }}
           >
-            ⚙️ Local Admin
+            Local Login
           </button>
         </div>
 
         {error && (
           <div className="login-error">
-            <span>⚠️</span> {error}
+            {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
             <label className="form-label" htmlFor="username">
-              {mode === 'ldap' ? 'LDAP Username (sAMAccountName)' : 'Local Admin Username'}
+              Username
             </label>
             <input
               type="text"
@@ -86,7 +103,7 @@ export default function Login({ onLogin }: LoginProps) {
               className="form-input"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              placeholder={mode === 'ldap' ? 'e.g. jdoe' : 'admin'}
+              placeholder="Enter your username"
               disabled={loading}
               required
             />
@@ -102,13 +119,13 @@ export default function Login({ onLogin }: LoginProps) {
               className="form-input"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder="Enter your password"
               disabled={loading}
               required
             />
           </div>
 
-          <button type="submit" className="btn btn-primary login-submit" disabled={loading}>
+          <button type="submit" className="login-submit" disabled={loading}>
             {loading ? 'Authenticating...' : 'Sign In'}
           </button>
         </form>
@@ -121,74 +138,81 @@ export default function Login({ onLogin }: LoginProps) {
           justify-content: center;
           min-height: 100vh;
           width: 100%;
-          background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(9, 12, 24, 0.99) 100%);
+          background: var(--bg-primary);
           padding: 20px;
           box-sizing: border-box;
+          transition: background-color 0.2s ease;
         }
         .login-card {
+          position: relative;
           width: 100%;
-          max-width: 440px;
-          background: rgba(30, 41, 59, 0.45);
-          backdrop-filter: blur(16px) saturate(180%);
-          -webkit-backdrop-filter: blur(16px) saturate(180%);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: 16px;
+          max-width: 420px;
+          background: var(--bg-card);
+          border: 1px solid var(--border-primary);
+          border-radius: 12px;
           padding: 40px;
-          box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+          box-shadow: var(--shadow-lg);
+          transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
         }
-        .login-logo {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 24px;
-        }
-        .logo-icon {
+        .theme-toggle-btn {
+          position: absolute;
+          top: 24px;
+          right: 24px;
+          background: none;
+          border: none;
+          color: var(--text-secondary);
+          cursor: pointer;
+          font-size: 16px;
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 40px;
-          height: 40px;
-          background: linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-indigo-light) 100%);
-          color: white;
-          border-radius: 10px;
-          box-shadow: 0 0 16px var(--accent-indigo);
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          transition: background-color 0.2s, color 0.2s;
+        }
+        .theme-toggle-btn:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+        .login-logo {
+          margin-bottom: 24px;
         }
         .logo-text {
-          font-size: 20px;
-          font-weight: 800;
-          letter-spacing: 0.5px;
-          background: var(--gradient-primary);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-        }
-        .login-title {
           font-size: 22px;
           font-weight: 700;
-          color: #f8fafc;
+          letter-spacing: -0.03em;
+          color: var(--text-primary);
+        }
+        .login-title {
+          font-size: 20px;
+          font-weight: 600;
+          color: var(--text-primary);
           margin: 0 0 8px 0;
+          letter-spacing: -0.01em;
         }
         .login-subtitle {
-          font-size: 13.5px;
-          color: #94a3b8;
+          font-size: 14px;
+          color: var(--text-secondary);
           margin: 0 0 24px 0;
           line-height: 1.5;
         }
         .login-tabs {
           display: flex;
           gap: 4px;
-          background: rgba(15, 23, 42, 0.6);
+          background: var(--bg-tertiary);
           padding: 4px;
           border-radius: 8px;
-          border: 1px solid rgba(255, 255, 255, 0.05);
-          margin-bottom: 20px;
+          border: 1px solid var(--border-primary);
+          margin-bottom: 24px;
         }
         .login-tab-btn {
           flex: 1;
           background: none;
           border: none;
-          color: #94a3b8;
-          font-size: 12px;
-          font-weight: 600;
+          color: var(--text-secondary);
+          font-size: 13px;
+          font-weight: 500;
           padding: 8px;
           border-radius: 6px;
           cursor: pointer;
@@ -196,49 +220,81 @@ export default function Login({ onLogin }: LoginProps) {
           outline: none;
         }
         .login-tab-btn:hover {
-          color: #f8fafc;
+          color: var(--text-primary);
         }
         .login-tab-btn.active {
-          background: rgba(99, 102, 241, 0.15);
-          color: #818cf8;
-          border: 1px solid rgba(99, 102, 241, 0.25);
+          background: var(--bg-card);
+          color: var(--text-primary);
+          box-shadow: var(--shadow-sm);
+          border: 1px solid var(--border-primary);
         }
         .login-error {
-          display: flex;
-          align-items: flex-start;
-          gap: 8px;
-          padding: 12px;
-          background: rgba(244, 63, 94, 0.1);
-          border: 1px solid rgba(244, 63, 94, 0.25);
-          color: #f43f5e;
+          padding: 12px 16px;
+          background: rgba(244, 63, 94, 0.08);
+          border: 1px solid rgba(244, 63, 94, 0.2);
+          color: var(--accent-rose);
           border-radius: 8px;
-          font-size: 12.5px;
+          font-size: 13px;
           line-height: 1.5;
-          margin-bottom: 20px;
+          margin-bottom: 24px;
         }
         .login-form {
           display: flex;
           flex-direction: column;
-          gap: 18px;
+          gap: 20px;
+        }
+        .form-group {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .form-label {
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--text-secondary);
+        }
+        .form-input {
+          padding: 10px 14px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-primary);
+          border-radius: 8px;
+          color: var(--text-primary);
+          font-size: 14px;
+          font-family: inherit;
+          transition: border-color 0.2s, box-shadow 0.2s;
+          outline: none;
+        }
+        .form-input:focus {
+          border-color: var(--accent-indigo);
+          box-shadow: 0 0 0 2px var(--border-accent);
+        }
+        .form-input:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
         .login-submit {
-          margin-top: 10px;
-          padding: 10px;
+          margin-top: 8px;
+          padding: 12px;
           font-weight: 600;
-          background: var(--gradient-primary);
-          box-shadow: 0 4px 14px 0 rgba(99, 102, 241, 0.4);
+          font-size: 14px;
+          background: var(--accent-indigo);
+          color: #ffffff;
           border: none;
-          color: white;
           cursor: pointer;
           border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          width: 100%;
+          transition: background-color 0.2s, opacity 0.2s;
         }
         .login-submit:hover {
-          box-shadow: 0 6px 20px 0 rgba(99, 102, 241, 0.6);
+          background: var(--accent-indigo-light);
         }
         .login-submit:disabled {
           opacity: 0.6;
           cursor: not-allowed;
-          box-shadow: none;
         }
       `}</style>
     </div>

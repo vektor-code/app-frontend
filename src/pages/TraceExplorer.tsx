@@ -253,7 +253,12 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
           </table>
           {traces.length === 0 && !loading && (
             <div className="empty-state">
-              <div className="empty-state-icon">🔍</div>
+              <div className="empty-state-icon">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-tertiary)', opacity: 0.6 }}>
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </div>
               <div className="empty-state-title">No traces found</div>
               <div className="empty-state-text">Adjust your filters or wait for new traces to arrive</div>
             </div>

@@ -136,7 +136,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
             type="text"
             className="filter-select"
             style={{ width: '100%', padding: '8px 12px' }}
-            placeholder="🔍 Search query statements..."
+            placeholder="Search query statements..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
@@ -149,13 +149,19 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           <option value="">All Services</option>
           {services.map(svc => <option key={svc} value={svc}>{svc}</option>)}
         </select>
-        <button className="btn btn-ghost btn-sm" onClick={loadMetrics}>↻ Refresh</button>
+        <button className="btn btn-ghost btn-sm" onClick={loadMetrics} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M23 4v6h-6M1 20v-6h6" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+          </svg>
+          Refresh
+        </button>
       </div>
 
       {/* Query Performance Table */}
       <div className="card">
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="card-title">🗃️ Database Queries Performance</div>
+          <div className="card-title">Database Queries Performance</div>
           <span className="text-sm text-muted">{filteredMetrics.length} query patterns active</span>
         </div>
         <div className="table-wrapper" style={{ overflowX: 'auto' }}>

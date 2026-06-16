@@ -773,7 +773,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
       <div className="card">
         <div className="card-header">
-          <div className="card-title">🕸️ Service Topology</div>
+          <div className="card-title">Service Topology</div>
           <span className="text-sm text-muted">{data?.nodes?.length || 0} services</span>
         </div>
         <div className="card-body" ref={containerRef} style={{ padding: 0, position: 'relative', overflow: 'hidden' }}>
