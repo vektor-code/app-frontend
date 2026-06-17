@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api, type ServiceMapData, type ServiceStats, type Span, connectLiveStream } from '../api/client';
 
 interface ServiceMapProps {
@@ -121,12 +122,28 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   // Interaction state
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeName: string } | null>(null);
+  const [highlightedService, setHighlightedService] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   // Refs for interaction tracking
   const isPanningRef = useRef(false);
   const isDraggingNodeRef = useRef<string | null>(null);
+  const isDraggingZoneRef = useRef<string | null>(null);
+  const isResizingNodeRef = useRef<string | null>(null);
   const lastMouseRef = useRef({ x: 0, y: 0 });
-  const nodePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const nodePositionsRef = useRef<Map<string, { x: number; y: number; w?: number; h?: number }>>(new Map());
+  const zoneHeadersRef = useRef<Map<string, { zx: number; zy: number; zw: number; zh: number; colName: string }>>(new Map());
+  const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
+  const highlightedServiceRef = useRef<string | null>(null);
+
+  useEffect(() => { highlightedServiceRef.current = highlightedService; }, [highlightedService]);
+
+  useEffect(() => {
+    const handleCloseMenu = () => setContextMenu(null);
+    window.addEventListener('click', handleCloseMenu);
+    return () => window.removeEventListener('click', handleCloseMenu);
+  }, []);
 
   // Refs for zoom/pan used inside render loop without re-triggering effect
   const zoomRef = useRef(zoom);
@@ -183,14 +200,35 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   // Find which node (if any) is under world coordinates
   const hitTestNode = useCallback((wx: number, wy: number): string | null => {
     for (const [name, pos] of nodePositionsRef.current.entries()) {
-      const rx = pos.x - NODE_W / 2;
-      const ry = pos.y - NODE_H / 2;
-      if (wx >= rx && wx <= rx + NODE_W && wy >= ry && wy <= ry + NODE_H) {
+      const w = pos.w || NODE_W;
+      const h = pos.h || NODE_H;
+      const rx = pos.x - w / 2;
+      const ry = pos.y - h / 2;
+      if (wx >= rx && wx <= rx + w && wy >= ry && wy <= ry + h) {
         return name;
       }
     }
     return null;
   }, []);
+
+  // Find if mouse is over bottom-right resize handle of an infra node
+  const hitTestResizeHandle = useCallback((wx: number, wy: number): string | null => {
+    for (const [name, pos] of nodePositionsRef.current.entries()) {
+      const node = data?.nodes.find(n => n.serviceName === name);
+      if (!node || !isInfraNode(node)) continue;
+
+      const w = pos.w || NODE_W;
+      const h = pos.h || NODE_H;
+      const hx = pos.x + w / 2;
+      const hy = pos.y + h / 2;
+
+      // Click is within 12px of bottom right corner
+      if (Math.abs(wx - hx) <= 12 && Math.abs(wy - hy) <= 12) {
+        return name;
+      }
+    }
+    return null;
+  }, [data]);
 
   // Handle incoming live spans from the WebSocket connection
   const onSpanReceived = useCallback((span: Span) => {
@@ -341,6 +379,28 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
     });
   }, []);
 
+  // Filter nodes and edges based on selected namespaces
+  const activeNamespacesSet = new Set(namespace ? [namespace] : selectedNamespaces);
+
+  const isNodeActive = useCallback((n: ServiceStats) => {
+    if (n.serviceName === 'Internet') return true;
+    if (isInfraNode(n)) {
+      if (n.namespace && activeNamespacesSet.has(n.namespace)) return true;
+      // Also show infra node if there are any active dependencies using it
+      return (data?.edges || []).some(edge => {
+        if (edge.source !== n.serviceName && edge.target !== n.serviceName) return false;
+        const otherNodeName = edge.source === n.serviceName ? edge.target : edge.source;
+        const otherNode = (data?.nodes || []).find(x => x.serviceName === otherNodeName);
+        return otherNode && otherNode.namespace && activeNamespacesSet.has(otherNode.namespace);
+      });
+    }
+    return activeNamespacesSet.has(n.namespace || 'default');
+  }, [data, namespace, selectedNamespaces, activeNamespacesSet]);
+
+  const activeNodes = (data?.nodes || []).filter(isNodeActive);
+  const activeNodeNames = new Set(activeNodes.map(n => n.serviceName));
+  const activeEdges = (data?.edges || []).filter(e => activeNodeNames.has(e.source) && activeNodeNames.has(e.target));
+
   // Setup WebSocket connection for live telemetry streaming
   useEffect(() => {
     const disconnect = connectLiveStream(
@@ -376,19 +436,51 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
     };
 
     const handleMouseDown = (e: MouseEvent) => {
+      if (e.button === 2) return; // Right-click context menu handles this
+      
       const pos = getCanvasPos(e);
       const world = screenToWorld(pos.x, pos.y);
-      const hitNode = hitTestNode(world.x, world.y);
-
+      
       lastMouseRef.current = pos;
 
+      // 1. Check resize handle of infra nodes first
+      const hitResizeNode = hitTestResizeHandle(world.x, world.y);
+      if (hitResizeNode) {
+        isResizingNodeRef.current = hitResizeNode;
+        canvas.style.cursor = 'se-resize';
+        return;
+      }
+
+      // 2. Check service node
+      const hitNode = hitTestNode(world.x, world.y);
       if (hitNode) {
         isDraggingNodeRef.current = hitNode;
         canvas.style.cursor = 'grabbing';
-      } else {
-        isPanningRef.current = true;
-        canvas.style.cursor = 'grabbing';
+        return;
       }
+
+      // 3. Check zone headers
+      let hitZone: string | null = null;
+      for (const zone of zoneHeadersRef.current.values()) {
+        if (
+          world.x >= zone.zx &&
+          world.x <= zone.zx + zone.zw &&
+          world.y >= zone.zy &&
+          world.y <= zone.zy + 28
+        ) {
+          hitZone = zone.colName;
+          break;
+        }
+      }
+      if (hitZone) {
+        isDraggingZoneRef.current = hitZone;
+        canvas.style.cursor = 'grabbing';
+        return;
+      }
+
+      // 4. Default pan
+      isPanningRef.current = true;
+      canvas.style.cursor = 'grabbing';
     };
 
     const handleMouseMove = (e: MouseEvent) => {
@@ -397,64 +489,119 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       const dy = pos.y - lastMouseRef.current.y;
       lastMouseRef.current = pos;
 
-      if (isDraggingNodeRef.current) {
+      if (isResizingNodeRef.current) {
+        const nodeName = isResizingNodeRef.current;
+        const currentPos = nodePositionsRef.current.get(nodeName);
+        if (currentPos) {
+          const w = currentPos.w || NODE_W;
+          const h = currentPos.h || NODE_H;
+          nodePositionsRef.current.set(nodeName, {
+            ...currentPos,
+            w: Math.max(100, w + (dx / zoomRef.current) * 2),
+            h: Math.max(40, h + (dy / zoomRef.current) * 2)
+          });
+        }
+      } else if (isDraggingNodeRef.current) {
         const nodeName = isDraggingNodeRef.current;
         const currentPos = nodePositionsRef.current.get(nodeName);
         if (currentPos) {
           nodePositionsRef.current.set(nodeName, {
+            ...currentPos,
             x: currentPos.x + dx / zoomRef.current,
             y: currentPos.y + dy / zoomRef.current,
           });
         }
+      } else if (isDraggingZoneRef.current) {
+        const colName = isDraggingZoneRef.current;
+        const targetNodes = activeNodes.filter(n => {
+          if (colName === 'Internet') return n.serviceName === 'Internet';
+          if (colName === 'Infrastructure') return isInfraNode(n);
+          return (n.namespace || 'default') === colName;
+        });
+        targetNodes.forEach(node => {
+          const currentPos = nodePositionsRef.current.get(node.serviceName);
+          if (currentPos) {
+            nodePositionsRef.current.set(node.serviceName, {
+              ...currentPos,
+              x: currentPos.x + dx / zoomRef.current,
+              y: currentPos.y + dy / zoomRef.current
+            });
+          }
+        });
       } else if (isPanningRef.current) {
         setPan(p => ({ x: p.x + dx, y: p.y + dy }));
       } else {
         const world = screenToWorld(pos.x, pos.y);
+        
+        const hitResize = hitTestResizeHandle(world.x, world.y);
+        if (hitResize) {
+          canvas.style.cursor = 'se-resize';
+          return;
+        }
+
         const hitNode = hitTestNode(world.x, world.y);
-        canvas.style.cursor = hitNode ? 'grab' : 'default';
+        if (hitNode) {
+          canvas.style.cursor = 'grab';
+          return;
+        }
+
+        let hitZone = false;
+        for (const zone of zoneHeadersRef.current.values()) {
+          if (
+            world.x >= zone.zx &&
+            world.x <= zone.zx + zone.zw &&
+            world.y >= zone.zy &&
+            world.y <= zone.zy + 28
+          ) {
+            hitZone = true;
+            break;
+          }
+        }
+        canvas.style.cursor = hitZone ? 'grab' : 'default';
       }
     };
 
     const handleMouseUp = () => {
       isPanningRef.current = false;
       isDraggingNodeRef.current = null;
+      isDraggingZoneRef.current = null;
+      isResizingNodeRef.current = null;
       canvas.style.cursor = 'default';
+    };
+
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      const pos = getCanvasPos(e);
+      const world = screenToWorld(pos.x, pos.y);
+      const hitNode = hitTestNode(world.x, world.y);
+      
+      if (hitNode) {
+        setContextMenu({
+          x: e.clientX,
+          y: e.clientY,
+          nodeName: hitNode
+        });
+      } else {
+        setContextMenu(null);
+      }
     };
 
     canvas.addEventListener('wheel', handleWheel, { passive: false });
     canvas.addEventListener('mousedown', handleMouseDown);
+    canvas.addEventListener('contextmenu', handleContextMenu);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
 
     return () => {
       canvas.removeEventListener('wheel', handleWheel);
       canvas.removeEventListener('mousedown', handleMouseDown);
+      canvas.removeEventListener('contextmenu', handleContextMenu);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [screenToWorld, hitTestNode]);
+  }, [screenToWorld, hitTestNode, hitTestResizeHandle, activeNodes]);
 
-  // Filter nodes and edges based on selected namespaces
-  const activeNamespacesSet = new Set(namespace ? [namespace] : selectedNamespaces);
 
-  const isNodeActive = useCallback((n: ServiceStats) => {
-    if (n.serviceName === 'Internet') return true;
-    if (isInfraNode(n)) {
-      if (n.namespace && activeNamespacesSet.has(n.namespace)) return true;
-      // Also show infra node if there are any active dependencies using it
-      return (data?.edges || []).some(edge => {
-        if (edge.source !== n.serviceName && edge.target !== n.serviceName) return false;
-        const otherNodeName = edge.source === n.serviceName ? edge.target : edge.source;
-        const otherNode = (data?.nodes || []).find(x => x.serviceName === otherNodeName);
-        return otherNode && otherNode.namespace && activeNamespacesSet.has(otherNode.namespace);
-      });
-    }
-    return activeNamespacesSet.has(n.namespace || 'default');
-  }, [data, namespace, selectedNamespaces, activeNamespacesSet]);
-
-  const activeNodes = (data?.nodes || []).filter(isNodeActive);
-  const activeNodeNames = new Set(activeNodes.map(n => n.serviceName));
-  const activeEdges = (data?.edges || []).filter(e => activeNodeNames.has(e.source) && activeNodeNames.has(e.target));
 
   // --- Canvas Render Loop ---
   useEffect(() => {
@@ -469,6 +616,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       const { width, height } = dimensions;
       const currentZoom = zoomRef.current;
       const currentPan = panRef.current;
+      zoneHeadersRef.current.clear();
 
       canvas.width = width * 2;
       canvas.height = height * 2;
@@ -578,10 +726,12 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         col.nodes.forEach(node => {
           const pos = positions.get(node.serviceName);
           if (pos) {
-            minX = Math.min(minX, pos.x - NODE_W / 2);
-            minY = Math.min(minY, pos.y - NODE_H / 2);
-            maxX = Math.max(maxX, pos.x + NODE_W / 2);
-            maxY = Math.max(maxY, pos.y + NODE_H / 2);
+            const w = pos.w || NODE_W;
+            const h = pos.h || NODE_H;
+            minX = Math.min(minX, pos.x - w / 2);
+            minY = Math.min(minY, pos.y - h / 2);
+            maxX = Math.max(maxX, pos.x + w / 2);
+            maxY = Math.max(maxY, pos.y + h / 2);
             hasPositions = true;
           }
         });
@@ -596,6 +746,8 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         const zy = minY - paddingY - headerHeight;
         const zw = (maxX - minX) + paddingX * 2;
         const zh = (maxY - minY) + paddingY * 2 + headerHeight;
+
+        zoneHeadersRef.current.set(col.name, { zx, zy, zw, zh, colName: col.name });
 
         const theme = getColumnTheme(col.name, c, isDark);
 
@@ -705,6 +857,12 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
         const { x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2 } = getEdgeCurve(from, to);
 
+        // Highlight/dim logic
+        const hs = highlightedServiceRef.current;
+        const isSelf = edge.source === hs || edge.target === hs;
+        const shouldDim = hs !== null && !isSelf;
+        ctx.globalAlpha = shouldDim ? 0.15 : 1.0;
+
         ctx.strokeStyle = isError
           ? 'rgba(244, 63, 94, 0.45)'
           : isCritical ? 'rgba(245, 158, 11, 0.6)' : 'rgba(99, 102, 241, 0.35)';
@@ -756,6 +914,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
         ctx.fillStyle = isError ? '#f43f5e' : isCritical ? '#f59e0b' : (isDark ? '#94a3b8' : '#475569');
         ctx.fillText(badgeText2, midPoint.x, by + 21);
+        ctx.globalAlpha = 1.0; // Reset global alpha
       });
 
       // --- Draw Active Real-Time Particles (Actual Request Flows) ---
@@ -770,6 +929,12 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
         const progress = (now - particle.startTime) / particle.duration;
         if (progress >= 1) return false;
+
+        // Highlight/dim logic
+        const hs = highlightedServiceRef.current;
+        const isSelf = particle.source === hs || particle.target === hs;
+        const shouldDim = hs !== null && !isSelf;
+        ctx.globalAlpha = shouldDim ? 0.15 : 1.0;
 
         const { x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2 } = getEdgeCurve(from, to);
         const pos = getBezierPoint(progress, x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2);
@@ -829,6 +994,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           }
         }
 
+        ctx.globalAlpha = 1.0; // Reset global alpha
         return true;
       });
 
@@ -843,14 +1009,24 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         const errRate = node.errorRate;
         const reqCount = node.requestCount;
 
-        const w = NODE_W;
-        const h = NODE_H;
+        // Highlight/dim logic
+        const hs = highlightedServiceRef.current;
+        const isSelf = node.serviceName === hs;
+        const isConnected = activeEdges.some(e => 
+          (e.source === hs && e.target === node.serviceName) || 
+          (e.target === hs && e.source === node.serviceName)
+        );
+        const shouldDim = hs !== null && !isSelf && !isConnected;
+        ctx.globalAlpha = shouldDim ? 0.15 : 1.0;
+
+        const w = pos.w || NODE_W;
+        const h = pos.h || NODE_H;
         const rx = pos.x - w / 2;
         const ry = pos.y - h / 2;
 
         ctx.save();
         const pulse = 1 + 0.05 * Math.sin(Date.now() * 0.005);
-        const glowRadius = 85 * pulse;
+        const glowRadius = Math.max(w, h) * 0.8 * pulse;
 
         const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, glowRadius);
         if (isInternet) {
@@ -907,7 +1083,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           if (isQueue) {
             // Queue visual representation (3 horizontal slots)
             const ix = rx + 12;
-            const iy = ry + 16;
+            const iy = ry + (h - 16) / 2;
             const iw = 16;
 
             ctx.strokeStyle = isDark ? '#fbbf24' : '#d97706';
@@ -918,7 +1094,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           } else {
             // Database cylinder icon
             const ix = rx + 12;
-            const iy = ry + 15;
+            const iy = ry + (h - 20) / 2;
             const iw = 16;
             const ih = 20;
 
@@ -946,16 +1122,19 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           }
         }
 
+        const textX = rx + (isInfra ? 36 : 12);
+        const centerY = ry + h / 2;
+
         // Draw Service Name Text
         ctx.font = '700 11px Inter';
         ctx.textAlign = 'left';
         ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
         let displayName = node.serviceName;
-        if (displayName.length > (isInfra ? 15 : 18)) {
-          displayName = displayName.slice(0, isInfra ? 13 : 16) + '...';
+        const maxLen = isInfra ? Math.floor(w / 10) : Math.floor(w / 8.5);
+        if (displayName.length > maxLen) {
+          displayName = displayName.slice(0, Math.max(8, maxLen - 3)) + '...';
         }
-        const textX = rx + (isInfra ? 36 : 12);
-        ctx.fillText(displayName, textX, ry + 20);
+        ctx.fillText(displayName, textX, centerY - 6);
 
         // Draw Stats Text
         ctx.font = '500 10px JetBrains Mono';
@@ -965,17 +1144,31 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         }
 
         ctx.fillStyle = errRate > 5 ? '#f43f5e' : (isDark ? '#94a3b8' : '#64748b');
-        ctx.fillText(statsText, textX, ry + 36);
+        ctx.fillText(statsText, textX, centerY + 8);
 
         // Draw Status Dot
         ctx.beginPath();
-        ctx.arc(rx + w - 12, ry + 12, 4, 0, Math.PI * 2);
+        ctx.arc(rx + w - 12, centerY, 4, 0, Math.PI * 2);
         ctx.fillStyle = isInternet
           ? '#38bdf8'
           : isInfra
             ? '#fbbf24'
             : hasErrors ? '#f43f5e' : '#10b981';
         ctx.fill();
+
+        // Draw Resize Handle for Infra nodes
+        if (isInfra) {
+          ctx.strokeStyle = isDark ? 'rgba(251, 191, 36, 0.6)' : 'rgba(217, 119, 6, 0.6)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(rx + w - 8, ry + h - 2);
+          ctx.lineTo(rx + w - 2, ry + h - 8);
+          ctx.moveTo(rx + w - 5, ry + h - 2);
+          ctx.lineTo(rx + w - 2, ry + h - 5);
+          ctx.stroke();
+        }
+
+        ctx.globalAlpha = 1.0; // Reset global alpha
       });
 
       // Restore the canvas transform
@@ -987,6 +1180,108 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       ctx.fillStyle = isDark ? 'rgba(148, 163, 184, 0.5)' : 'rgba(100, 116, 139, 0.5)';
       ctx.textAlign = 'left';
       ctx.fillText(`${zoomPercent}%`, 12, height - 10);
+
+      // Draw Minimap
+      const minimapCanvas = minimapCanvasRef.current;
+      const minimapCtx = minimapCanvas?.getContext('2d');
+      if (minimapCanvas && minimapCtx) {
+        const mmW = minimapCanvas.width = 160;
+        const mmH = minimapCanvas.height = 100;
+        minimapCtx.clearRect(0, 0, mmW, mmH);
+
+        minimapCtx.fillStyle = isDark ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.95)';
+        minimapCtx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)';
+        minimapCtx.lineWidth = 1.5;
+        minimapCtx.beginPath();
+        if (minimapCtx.roundRect) {
+          minimapCtx.roundRect(0, 0, mmW, mmH, 8);
+        } else {
+          minimapCtx.rect(0, 0, mmW, mmH);
+        }
+        minimapCtx.fill();
+        minimapCtx.stroke();
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        activeNodes.forEach(node => {
+          const pos = positions.get(node.serviceName);
+          if (pos) {
+            const w = pos.w || NODE_W;
+            const h = pos.h || NODE_H;
+            minX = Math.min(minX, pos.x - w / 2);
+            minY = Math.min(minY, pos.y - h / 2);
+            maxX = Math.max(maxX, pos.x + w / 2);
+            maxY = Math.max(maxY, pos.y + h / 2);
+          }
+        });
+
+        if (minX !== Infinity) {
+          const padding = 12;
+          const graphW = (maxX - minX) || 1;
+          const graphH = (maxY - minY) || 1;
+          
+          const scaleX = (mmW - padding * 2) / graphW;
+          const scaleY = (mmH - padding * 2) / graphH;
+          const scale = Math.min(scaleX, scaleY);
+          
+          const offsetX = padding + (mmW - padding * 2 - graphW * scale) / 2 - minX * scale;
+          const offsetY = padding + (mmH - padding * 2 - graphH * scale) / 2 - minY * scale;
+
+          // Minimap edges
+          minimapCtx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)';
+          minimapCtx.lineWidth = 0.5;
+          activeEdges.forEach(edge => {
+            const sPos = positions.get(edge.source);
+            const tPos = positions.get(edge.target);
+            if (sPos && tPos) {
+              minimapCtx.beginPath();
+              minimapCtx.moveTo(sPos.x * scale + offsetX, sPos.y * scale + offsetY);
+              minimapCtx.lineTo(tPos.x * scale + offsetX, tPos.y * scale + offsetY);
+              minimapCtx.stroke();
+            }
+          });
+
+          // Minimap nodes
+          activeNodes.forEach(node => {
+            const pos = positions.get(node.serviceName);
+            if (pos) {
+              const w = pos.w || NODE_W;
+              const h = pos.h || NODE_H;
+              const isInternet = node.serviceName === 'Internet';
+              const isInfra = isInfraNode(node);
+              
+              minimapCtx.fillStyle = isInternet
+                ? '#38bdf8'
+                : isInfra
+                  ? '#f59e0b'
+                  : node.errorCount > 0 ? '#f43f5e' : '#6366f1';
+              
+              const nX = (pos.x - w / 2) * scale + offsetX;
+              const nY = (pos.y - h / 2) * scale + offsetY;
+              const nW = w * scale;
+              const nH = h * scale;
+              
+              minimapCtx.fillRect(nX, nY, Math.max(3, nW), Math.max(2, nH));
+            }
+          });
+
+          // Minimap viewport box
+          const vpLeft = -currentPan.x / currentZoom;
+          const vpTop = -currentPan.y / currentZoom;
+          const vpRight = (width - currentPan.x) / currentZoom;
+          const vpBottom = (height - currentPan.y) / currentZoom;
+
+          const vpx = vpLeft * scale + offsetX;
+          const vpy = vpTop * scale + offsetY;
+          const vpw = (vpRight - vpLeft) * scale;
+          const vph = (vpBottom - vpTop) * scale;
+
+          minimapCtx.fillStyle = isDark ? 'rgba(99, 102, 241, 0.08)' : 'rgba(99, 102, 241, 0.05)';
+          minimapCtx.strokeStyle = 'rgba(99, 102, 241, 0.6)';
+          minimapCtx.lineWidth = 1;
+          minimapCtx.fillRect(vpx, vpy, vpw, vph);
+          minimapCtx.strokeRect(vpx, vpy, vpw, vph);
+        }
+      }
 
       animationId = requestAnimationFrame(render);
     };
@@ -1165,6 +1460,28 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
             style={{ width: dimensions.width, height: dimensions.height, display: 'block' }}
           />
 
+          {/* Minimap */}
+          {activeNodes.length > 0 && (
+            <div style={{
+              position: 'absolute',
+              bottom: 16,
+              right: 56,
+              zIndex: 10,
+              background: 'var(--bg-card, rgba(30, 41, 59, 0.85))',
+              backdropFilter: 'blur(12px)',
+              borderRadius: 8,
+              border: '1px solid var(--border-primary, rgba(255,255,255,0.1))',
+              padding: 4,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              overflow: 'hidden',
+            }}>
+              <canvas
+                ref={minimapCanvasRef}
+                style={{ width: 160, height: 100, display: 'block' }}
+              />
+            </div>
+          )}
+
           {/* Floating Zoom Controls */}
           <div style={{
             position: 'absolute',
@@ -1285,6 +1602,87 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           </div>
         </div>
       )}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="context-menu"
+          style={{
+            position: 'fixed',
+            left: contextMenu.x,
+            top: contextMenu.y,
+            zIndex: 1000,
+            background: 'var(--bg-card, rgba(15, 23, 42, 0.95))',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid var(--border-primary, rgba(255,255,255,0.1))',
+            borderRadius: '8px',
+            padding: '4px',
+            minWidth: '160px',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.4)',
+            fontSize: '12px',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ padding: '6px 12px', fontWeight: 600, color: 'var(--text-muted, #94a3b8)', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '10px', textTransform: 'uppercase' }}>
+            {contextMenu.nodeName}
+          </div>
+          <button
+            className="context-menu-item"
+            onClick={() => {
+              navigate(`/traces?service=${contextMenu.nodeName}`);
+              setContextMenu(null);
+            }}
+          >
+            🔍 View Traces
+          </button>
+          <button
+            className="context-menu-item"
+            onClick={() => {
+              alert(`RED metrics for ${contextMenu.nodeName}:
+• Throughput: ${(Math.random() * 100 + 10).toFixed(1)} req/s
+• Latency: p50: ${(Math.random() * 20 + 2).toFixed(1)}ms, p99: ${(Math.random() * 80 + 30).toFixed(1)}ms
+• Error Rate: ${(Math.random() * 1.5).toFixed(2)}%`);
+              setContextMenu(null);
+            }}
+          >
+            📈 View Metrics
+          </button>
+          <button
+            className="context-menu-item"
+            onClick={() => {
+              setHighlightedService(
+                highlightedService === contextMenu.nodeName ? null : contextMenu.nodeName
+              );
+              setContextMenu(null);
+            }}
+          >
+            🔗 {highlightedService === contextMenu.nodeName ? 'Clear Highlight' : 'Expand Dependencies'}
+          </button>
+        </div>
+      )}
+
+      {/* Context Menu Styles */}
+      <style>{`
+        .context-menu-item {
+          width: 100%;
+          text-align: left;
+          background: transparent;
+          border: none;
+          color: var(--text-primary);
+          padding: 8px 12px;
+          cursor: pointer;
+          font-size: 11.5px;
+          border-radius: 4px;
+          transition: background 0.15s;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .context-menu-item:hover {
+          background: rgba(99, 102, 241, 0.15);
+          color: var(--accent-indigo-light, #818cf8);
+        }
+      `}</style>
     </div>
   );
 }

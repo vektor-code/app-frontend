@@ -117,12 +117,61 @@ function calculateCriticalPath(spans: Span[]): Set<string> {
   return critical;
 }
 
+function getStackTrace(span: Span): string | null {
+  const attrs = span.attributes || {};
+  if (attrs['exception.stacktrace']) return String(attrs['exception.stacktrace']);
+  if (attrs['error.stack']) return String(attrs['error.stack']);
+  if (span.events) {
+    for (const ev of span.events) {
+      if (ev.attributes && ev.attributes['exception.stacktrace']) {
+        return String(ev.attributes['exception.stacktrace']);
+      }
+    }
+  }
+  return null;
+}
+
+function renderHighlightedStackTrace(stack: string) {
+  const lines = stack.split('\n');
+  return lines.map((line, idx) => {
+    let content: React.ReactNode = line;
+    const fileLineMatch = line.match(/([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+):(\d+)/);
+    if (fileLineMatch) {
+      const [full, file, lineNum] = fileLineMatch;
+      const parts = line.split(full);
+      content = (
+        <>
+          {parts[0]}
+          <span 
+            className="stack-file" 
+            title="Copy reference" 
+            onClick={(e) => {
+              e.stopPropagation();
+              navigator.clipboard.writeText(`${file}:${lineNum}`);
+            }}
+          >
+            {file}:{lineNum}
+          </span>
+          {parts[1]}
+        </>
+      );
+    }
+    const isOrigin = idx === 0 || line.includes('Exception') || line.includes('Error');
+    return (
+      <div key={idx} className={`stack-line ${isOrigin ? 'stack-origin' : ''}`}>
+        {content}
+      </div>
+    );
+  });
+}
+
 export default function SpanTimeline({ spans, traceStartTime, traceDuration }: SpanTimelineProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'errors' | 'critical'>('all');
   const [activeTabs, setActiveTabs] = useState<Record<string, 'attrs' | 'infra' | 'events'>>({});
   const [attrSearch, setAttrSearch] = useState<Record<string, string>>({});
+  const [stackTraceExpanded, setStackTraceExpanded] = useState<Set<string>>(new Set());
 
   const criticalPathSet = useMemo(() => calculateCriticalPath(spans), [spans]);
 
@@ -213,6 +262,9 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration }: S
     const isDimmed = !matchesSearch || !matchesType;
 
     const attrs = span.attributes || {};
+    const filepath = attrs['code.filepath'] || attrs['code.file'];
+    const lineno = attrs['code.lineno'] || attrs['code.line'];
+    const funcName = attrs['code.function'] || attrs['code.func'];
     const currentAttrSearch = attrSearch[span.spanId] || '';
 
     // Grouping attributes
@@ -279,6 +331,21 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration }: S
             <div className="waterfall-name" title={span.name}>
               {span.name}
             </div>
+            {filepath && (
+              <span 
+                className="code-context-badge"
+                title={`Click to copy: ${filepath}:${lineno || 0}${funcName ? ` (${funcName})` : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigator.clipboard.writeText(`${filepath}:${lineno || 0}`);
+                }}
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '3px', verticalAlign: 'middle' }}>
+                  <path d="M16 18l6-6-6-6M8 6l-6 6 6 6" />
+                </svg>
+                {String(filepath).split('/').pop()}:{lineno}{funcName ? ` → ${funcName}` : ''}
+              </span>
+            )}
             {isCritical && (
               <span className="badge-critical-path">
                 Critical Path
@@ -324,6 +391,79 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration }: S
                 </div>
                 <div className="error-banner-body">
                   {span.error || getErrorFromAttributes(span) || 'An error occurred during operation. Inspect the attributes and event stack below.'}
+                </div>
+              </div>
+            )}
+
+            {/* Stack Trace Collapsible Section */}
+            {(() => {
+              const stack = getStackTrace(span);
+              if (!stack) return null;
+              const hasExpanded = stackTraceExpanded.has(span.spanId);
+              return (
+                <div className="stacktrace-container" onClick={(e) => e.stopPropagation()}>
+                  <div 
+                    className="stacktrace-header" 
+                    onClick={() => {
+                      setStackTraceExpanded(prev => {
+                        const next = new Set(prev);
+                        if (next.has(span.spanId)) next.delete(span.spanId);
+                        else next.add(span.spanId);
+                        return next;
+                      });
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <polyline points="16 18 22 12 16 6" />
+                        <polyline points="8 6 2 12 8 18" />
+                      </svg>
+                      <span>Stack Trace</span>
+                    </div>
+                    <span>{hasExpanded ? 'Hide ▾' : 'Show ▸'}</span>
+                  </div>
+                  {hasExpanded && (
+                    <pre className="stacktrace-pre">
+                      <code>{renderHighlightedStackTrace(stack)}</code>
+                    </pre>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Span Events Timeline */}
+            {span.events && span.events.length > 0 && (
+              <div className="mini-timeline-container" onClick={(e) => e.stopPropagation()}>
+                <div className="mini-timeline-title">Span Events Timeline</div>
+                <div className="mini-timeline-bar-wrapper">
+                  <div className="mini-timeline-bar" />
+                  {span.events.map((ev, i) => {
+                    const evTime = new Date(ev.timestamp).getTime();
+                    const spanStart = new Date(span.startTime).getTime();
+                    const relativeMs = evTime - spanStart;
+                    const relativePercent = span.durationMs > 0 ? (relativeMs / span.durationMs) * 100 : 0;
+                    const isErrorEvent = ev.name.toLowerCase().includes('error') || 
+                                         ev.name.toLowerCase().includes('exception') || 
+                                         (ev.attributes && (ev.attributes['exception.type'] || ev.attributes['exception.message']));
+                    
+                    return (
+                      <div 
+                        key={i} 
+                        className={`mini-timeline-dot ${isErrorEvent ? 'error-dot' : ''}`}
+                        style={{ left: `${Math.min(100, Math.max(0, relativePercent))}%` }}
+                        onClick={() => setActiveTab(span.spanId, 'events')}
+                      >
+                        <div className="mini-timeline-tooltip">
+                          <span className="tooltip-name">{ev.name}</span>
+                          <span className="tooltip-time">+{formatDuration(relativeMs)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mini-timeline-labels">
+                  <span>0ms</span>
+                  <span>{formatDuration(span.durationMs)}</span>
                 </div>
               </div>
             )}
@@ -937,6 +1077,162 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration }: S
           gap: 3px;
           border-left: 2px solid var(--border-primary);
           padding-left: 8px;
+        }
+
+        .code-context-badge {
+          display: inline-flex;
+          align-items: center;
+          font-size: 10px;
+          color: var(--accent-indigo-light);
+          background: rgba(99, 102, 241, 0.08);
+          border: 1px solid rgba(99, 102, 241, 0.15);
+          padding: 1px 6px;
+          border-radius: 4px;
+          font-family: var(--font-mono);
+          margin-left: 8px;
+          cursor: pointer;
+          transition: background 0.15s, border-color 0.15s;
+          user-select: none;
+        }
+        .code-context-badge:hover {
+          background: rgba(99, 102, 241, 0.16);
+          border-color: rgba(99, 102, 241, 0.3);
+        }
+        .stacktrace-container {
+          background: var(--bg-secondary);
+          border: 1px solid rgba(244, 63, 94, 0.25);
+          border-radius: 8px;
+          margin-bottom: 16px;
+          overflow: hidden;
+        }
+        .stacktrace-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px 12px;
+          font-weight: 600;
+          color: var(--accent-rose);
+          background: rgba(244, 63, 94, 0.04);
+          cursor: pointer;
+          user-select: none;
+          font-size: 12px;
+          border-bottom: 1px solid var(--border-primary);
+        }
+        .stacktrace-header:hover {
+          background: rgba(244, 63, 94, 0.08);
+        }
+        .stacktrace-pre {
+          margin: 0;
+          padding: 12px;
+          font-family: var(--font-mono);
+          font-size: 11px;
+          line-height: 1.5;
+          overflow-x: auto;
+          background: #0f172a;
+          color: #e2e8f0;
+          max-height: 300px;
+        }
+        .stack-line {
+          white-space: pre;
+        }
+        .stack-origin {
+          background: rgba(244, 63, 94, 0.15);
+          border-left: 2px solid var(--accent-rose);
+          padding-left: 4px;
+        }
+        .stack-file {
+          color: #38bdf8;
+          text-decoration: underline;
+          cursor: pointer;
+          font-weight: 500;
+        }
+        .stack-file:hover {
+          color: #7dd3fc;
+        }
+        .mini-timeline-container {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-primary);
+          border-radius: 8px;
+          padding: 12px;
+          margin-bottom: 16px;
+        }
+        .mini-timeline-title {
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--text-secondary);
+          margin-bottom: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .mini-timeline-bar-wrapper {
+          position: relative;
+          height: 8px;
+          margin: 16px 8px 8px 8px;
+        }
+        .mini-timeline-bar {
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: 2px;
+          height: 4px;
+          background: var(--bg-tertiary);
+          border-radius: 2px;
+        }
+        .mini-timeline-dot {
+          position: absolute;
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: var(--accent-indigo);
+          transform: translate(-50%, -1px);
+          cursor: pointer;
+          transition: transform 0.15s;
+          box-shadow: 0 0 0 2px var(--bg-secondary);
+        }
+        .mini-timeline-dot:hover {
+          transform: translate(-50%, -1px) scale(1.3);
+          z-index: 10;
+        }
+        .mini-timeline-dot.error-dot {
+          background: var(--accent-rose);
+        }
+        .mini-timeline-tooltip {
+          visibility: hidden;
+          position: absolute;
+          bottom: 120%;
+          left: 50%;
+          transform: translateX(-50%);
+          background: #0f172a;
+          color: #ffffff;
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 10px;
+          white-space: nowrap;
+          z-index: 20;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+          pointer-events: none;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
+        }
+        .mini-timeline-dot:hover .mini-timeline-tooltip {
+          visibility: visible;
+        }
+        .tooltip-name {
+          font-weight: 600;
+        }
+        .tooltip-time {
+          color: #94a3b8;
+          font-family: var(--font-mono);
+        }
+        .mini-timeline-labels {
+          display: flex;
+          justify-content: space-between;
+          font-size: 10px;
+          color: var(--text-muted);
+          font-family: var(--font-mono);
+          margin-top: 6px;
         }
       `}</style>
     </div>
