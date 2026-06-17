@@ -249,11 +249,8 @@ export default function TraceDetail() {
   const { traceId } = useParams<{ traceId: string }>();
   const [trace, setTrace] = useState<Trace | null>(null);
   const [loading, setLoading] = useState(true);
-  const [diagnostics, setDiagnostics] = useState<DiagnosticReport | null>(null);
-  const [loadingDiagnostics, setLoadingDiagnostics] = useState(false);
   const [viewMode, setViewMode] = useState<'waterfall' | 'flame'>('waterfall');
   const [selectedSpan, setSelectedSpan] = useState<Span | null>(null);
-  const [diagnosticsCollapsed, setDiagnosticsCollapsed] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -269,16 +266,6 @@ export default function TraceDetail() {
         setTrace(null);
       })
       .finally(() => setLoading(false));
-
-    setLoadingDiagnostics(true);
-    api.getTraceDiagnostics(traceId)
-      .then((data) => {
-        setDiagnostics(data);
-      })
-      .catch(() => {
-        setDiagnostics(null);
-      })
-      .finally(() => setLoadingDiagnostics(false));
   }, [traceId]);
 
   const uniqueTags = useMemo(() => {
@@ -360,78 +347,7 @@ export default function TraceDetail() {
         </div>
       )}
 
-      {/* Davis AI Diagnostics Card */}
-      {!loadingDiagnostics && diagnostics && (
-        <div className="card diagnostics-card">
-          <div 
-            className="card-header diagnostics-header"
-            onClick={() => setDiagnosticsCollapsed(!diagnosticsCollapsed)}
-            style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div className="ai-sparkle">✨</div>
-              <div className="card-title" style={{ color: 'var(--accent-amber)' }}>Davis AI Trace Diagnostics</div>
-            </div>
-            <span className="text-sm text-muted">{diagnosticsCollapsed ? 'Expand Details ▸' : 'Collapse ▾'}</span>
-          </div>
-          {!diagnosticsCollapsed && (
-            <div className="card-body" style={{ animation: 'slideDown 0.15s ease-out' }}>
-              <div className="diagnostics-summary">
-                {diagnostics.summary}
-              </div>
 
-              <div className="diagnostics-stats-grid">
-                {diagnostics.rootCauseService && (
-                  <div className="diagnostics-stat-card border-rose">
-                    <div className="stat-card-title">Suspected Root Cause</div>
-                    <div className="stat-card-value">{diagnostics.rootCauseService}</div>
-                    {diagnostics.rootCauseMessage && (
-                      <div className="stat-card-desc" style={{ color: 'var(--accent-rose)' }}>{diagnostics.rootCauseMessage}</div>
-                    )}
-                  </div>
-                )}
-                {diagnostics.bottleneckService && (
-                  <div className="diagnostics-stat-card border-amber">
-                    <div className="stat-card-title">Performance Bottleneck</div>
-                    <div className="stat-card-value">{diagnostics.bottleneckService}</div>
-                    <div className="stat-card-desc">
-                      Consumes <span style={{ color: 'var(--accent-amber)', fontWeight: 'bold' }}>{diagnostics.bottleneckPercent.toFixed(1)}%</span> of total duration ({formatDuration(diagnostics.bottleneckDurationMs)})
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {diagnostics.issues && diagnostics.issues.length > 0 && (
-                <div style={{ marginTop: '16px' }}>
-                  <div className="section-subtitle">Identified Performance Issues</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {diagnostics.issues.map((issue, idx) => (
-                      <div key={idx} className="diagnostics-issue-item">
-                        <span className="warning-dot">⚠️</span>
-                        <span>{issue}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {diagnostics.remediations && diagnostics.remediations.length > 0 && (
-                <div style={{ marginTop: '16px' }}>
-                  <div className="section-subtitle">Recommended Actions</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {diagnostics.remediations.map((rem, idx) => (
-                      <div key={idx} className="diagnostics-remediation-item">
-                        <span className="success-check">✓</span>
-                        <span>{rem}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Main Visualization Card */}
       <div className="card">
@@ -584,125 +500,6 @@ export default function TraceDetail() {
           text-overflow: ellipsis;
         }
 
-        /* Diagnostics Card */
-        .diagnostics-card {
-          border-color: rgba(245, 158, 11, 0.2) !important;
-          background: linear-gradient(180deg, rgba(245, 158, 11, 0.03) 0%, rgba(245, 158, 11, 0) 100%) !important;
-        }
-        
-        .diagnostics-header {
-          border-bottom: 1px solid rgba(245, 158, 11, 0.1) !important;
-        }
-        
-        .ai-sparkle {
-          font-size: 16px;
-          animation: pulseSparkle 2s infinite ease-in-out;
-        }
-        
-        @keyframes pulseSparkle {
-          0%, 100% { transform: scale(1); opacity: 0.8; }
-          50% { transform: scale(1.2); opacity: 1; filter: drop-shadow(0 0 4px var(--accent-amber)); }
-        }
-        
-        .diagnostics-summary {
-          font-size: 13.5px;
-          line-height: 1.6;
-          color: var(--text-primary);
-          margin-bottom: 16px;
-          padding-left: 12px;
-          border-left: 3px solid var(--accent-amber);
-        }
-        
-        .diagnostics-stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-          gap: 12px;
-          margin-bottom: 16px;
-        }
-        
-        .diagnostics-stat-card {
-          background: var(--bg-secondary);
-          border: 1px solid var(--border-primary);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        
-        .diagnostics-stat-card.border-rose {
-          border-left: 4px solid var(--accent-rose);
-        }
-        
-        .diagnostics-stat-card.border-amber {
-          border-left: 4px solid var(--accent-amber);
-        }
-        
-        .stat-card-title {
-          font-size: 10px;
-          font-weight: bold;
-          text-transform: uppercase;
-          color: var(--text-muted);
-          margin-bottom: 4px;
-        }
-        
-        .stat-card-value {
-          font-size: 15px;
-          font-weight: 700;
-          color: var(--text-primary);
-        }
-        
-        .stat-card-desc {
-          font-size: 11.5px;
-          color: var(--text-secondary);
-          margin-top: 4px;
-        }
-        
-        .section-subtitle {
-          font-size: 11px;
-          font-weight: bold;
-          text-transform: uppercase;
-          color: var(--text-tertiary);
-          margin-bottom: 8px;
-          letter-spacing: 0.05em;
-        }
-        
-        .diagnostics-issue-item {
-          display: flex;
-          align-items: flex-start;
-          gap: 8px;
-          font-size: 12.5px;
-          background: rgba(244, 63, 94, 0.03);
-          border: 1px solid rgba(244, 63, 94, 0.1);
-          border-radius: 6px;
-          padding: 8px 12px;
-        }
-        
-        .warning-dot {
-          color: var(--accent-rose);
-          flex-shrink: 0;
-        }
-        
-        .diagnostics-reremediation-item {
-          display: flex;
-          align-items: flex-start;
-          gap: 8px;
-          font-size: 12.5px;
-        }
-        
-        .diagnostics-remediation-item {
-          display: flex;
-          align-items: flex-start;
-          gap: 8px;
-          font-size: 12.5px;
-          background: rgba(16, 185, 129, 0.03);
-          border: 1px solid rgba(16, 185, 129, 0.1);
-          border-radius: 6px;
-          padding: 8px 12px;
-        }
-        
-        .success-check {
-          color: var(--accent-emerald);
-          font-weight: bold;
-          flex-shrink: 0;
-        }
 
         /* View Toggle Buttons */
         .view-toggle-buttons {
