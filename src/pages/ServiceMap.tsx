@@ -671,22 +671,16 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       // Columns 1..N: Namespace components
       const nsNames = Array.from(new Set(
         activeNodes
-          .filter(n => n.serviceName !== 'Internet' && !isInfraNode(n))
+          .filter(n => n.serviceName !== 'Internet')
           .map(n => n.namespace || 'default')
       )).sort();
 
       nsNames.forEach(ns => {
-        const nsNodes = activeNodes.filter(n => n.serviceName !== 'Internet' && !isInfraNode(n) && (n.namespace || 'default') === ns);
+        const nsNodes = activeNodes.filter(n => n.serviceName !== 'Internet' && (n.namespace || 'default') === ns);
         if (nsNodes.length > 0) {
           cols.push({ name: ns, label: `Namespace: ${ns}`, nodes: nsNodes });
         }
       });
-
-      // Column N+1: Infrastructure
-      const infraNodes = activeNodes.filter(n => n.serviceName !== 'Internet' && isInfraNode(n));
-      if (infraNodes.length > 0) {
-        cols.push({ name: 'Infrastructure', label: 'Infrastructure & Storage', nodes: infraNodes });
-      }
 
       // Compute initial DAG layout coordinates on columns if they are not already cached
       const needsLayout = activeNodes.some(n => !nodePositionsRef.current.has(n.serviceName));
