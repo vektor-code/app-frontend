@@ -208,8 +208,33 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
     const dbSystem = span.attributes?.['db.system'];
     const messagingSystem = span.attributes?.['messaging.system'];
     if (typeof dbSystem === 'string' || typeof messagingSystem === 'string') {
-      const infraVal = (dbSystem || messagingSystem) as string;
-      const infraName = infraVal.toLowerCase();
+      const baseInfra = ((dbSystem || messagingSystem) as string).toLowerCase();
+
+      let resource = '';
+      const dbName = span.attributes?.['db.name'];
+      const msgDest = span.attributes?.['messaging.destination'] || 
+                      span.attributes?.['messaging.destination.name'] || 
+                      span.attributes?.['messaging.destination_name'] || 
+                      span.attributes?.['messaging.dest'];
+
+      const peerName = span.attributes?.['net.peer.name'] || 
+                       span.attributes?.['server.address'] || 
+                       span.attributes?.['peer.service'] || 
+                       span.attributes?.['net.peer.ip'] || 
+                       span.attributes?.['network.peer.address'];
+
+      const resourceName = dbName || msgDest;
+      if (peerName && resourceName) {
+        resource = `${peerName}/${resourceName}`;
+      } else if (resourceName) {
+        resource = resourceName;
+      } else if (peerName) {
+        resource = peerName;
+      } else {
+        resource = span.serviceName;
+      }
+
+      const infraName = `${baseInfra} (${resource})`;
       const source = span.serviceName;
       if (source && infraName && source !== infraName) {
         particlesRef.current.push({
