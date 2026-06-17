@@ -22,8 +22,98 @@ const ZOOM_STEP = 0.15;
 const NODE_W = 150;
 const NODE_H = 50;
 
+// Helper to check if a service is an infrastructure component
+const isInfraNode = (node: ServiceStats) => {
+  if (node.isInfrastructure) return true;
+  const name = node.serviceName.toLowerCase();
+  return (
+    name.includes('redis') ||
+    name.includes('kafka') ||
+    name.includes('rabbitmq') ||
+    name.includes('postgres') ||
+    name.includes('mysql') ||
+    name.includes('mongo') ||
+    name.includes('database') ||
+    name.includes('db-') ||
+    name.endsWith('-db') ||
+    name.includes('nosql') ||
+    name.includes('cassandra') ||
+    name.includes('elasticsearch') ||
+    name.includes('clickhouse')
+  );
+};
+
+// Colors for column namespace zones (DrawSQL-style)
+const getColumnTheme = (name: string, index: number, isDark: boolean) => {
+  const themes = [
+    // Indigo
+    {
+      bg: isDark ? 'rgba(99, 102, 241, 0.04)' : 'rgba(99, 102, 241, 0.02)',
+      border: isDark ? 'rgba(99, 102, 241, 0.3)' : 'rgba(99, 102, 241, 0.15)',
+      headerBg: isDark ? 'rgba(99, 102, 241, 0.12)' : 'rgba(99, 102, 241, 0.05)',
+      text: isDark ? '#a5b4fc' : '#4f46e5',
+    },
+    // Purple
+    {
+      bg: isDark ? 'rgba(168, 85, 247, 0.04)' : 'rgba(168, 85, 247, 0.02)',
+      border: isDark ? 'rgba(168, 85, 247, 0.3)' : 'rgba(168, 85, 247, 0.15)',
+      headerBg: isDark ? 'rgba(168, 85, 247, 0.12)' : 'rgba(168, 85, 247, 0.05)',
+      text: isDark ? '#d8b4fe' : '#9333ea',
+    },
+    // Emerald
+    {
+      bg: isDark ? 'rgba(16, 185, 129, 0.04)' : 'rgba(16, 185, 129, 0.02)',
+      border: isDark ? 'rgba(16, 185, 129, 0.3)' : 'rgba(16, 185, 129, 0.15)',
+      headerBg: isDark ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.05)',
+      text: isDark ? '#6ee7b7' : '#059669',
+    },
+    // Rose
+    {
+      bg: isDark ? 'rgba(244, 63, 94, 0.04)' : 'rgba(244, 63, 94, 0.02)',
+      border: isDark ? 'rgba(244, 63, 94, 0.3)' : 'rgba(244, 63, 94, 0.15)',
+      headerBg: isDark ? 'rgba(244, 63, 94, 0.12)' : 'rgba(244, 63, 94, 0.05)',
+      text: isDark ? '#fda4af' : '#e11d48',
+    },
+    // Cyan
+    {
+      bg: isDark ? 'rgba(6, 182, 212, 0.04)' : 'rgba(6, 182, 212, 0.02)',
+      border: isDark ? 'rgba(6, 182, 212, 0.3)' : 'rgba(6, 182, 212, 0.15)',
+      headerBg: isDark ? 'rgba(6, 182, 212, 0.12)' : 'rgba(6, 182, 212, 0.05)',
+      text: isDark ? '#67e8f9' : '#0891b2',
+    }
+  ];
+
+  if (name === 'Internet') {
+    return {
+      bg: isDark ? 'rgba(148, 163, 184, 0.03)' : 'rgba(148, 163, 184, 0.015)',
+      border: isDark ? 'rgba(148, 163, 184, 0.25)' : 'rgba(148, 163, 184, 0.12)',
+      headerBg: isDark ? 'rgba(148, 163, 184, 0.1)' : 'rgba(148, 163, 184, 0.04)',
+      text: isDark ? '#cbd5e1' : '#475569',
+    };
+  }
+  if (name === 'Infrastructure') {
+    // Amber / orange styling for database/infrastructure
+    return {
+      bg: isDark ? 'rgba(245, 158, 11, 0.04)' : 'rgba(245, 158, 11, 0.02)',
+      border: isDark ? 'rgba(245, 158, 11, 0.3)' : 'rgba(245, 158, 11, 0.15)',
+      headerBg: isDark ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.05)',
+      text: isDark ? '#fde047' : '#d97706',
+    };
+  }
+
+  // Stable color choice based on namespace name hash
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const idx = Math.abs(hash) % themes.length;
+  return themes[idx];
+};
+
 export default function ServiceMap({ namespace }: ServiceMapProps) {
   const [data, setData] = useState<ServiceMapData | null>(null);
+  const [visibleNamespaces, setVisibleNamespaces] = useState<string[]>([]);
+  const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 900, height: 600 });
@@ -37,7 +127,6 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   const isDraggingNodeRef = useRef<string | null>(null);
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const nodePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
-  const layoutComputedForRef = useRef<Set<string>>(new Set());
 
   // Refs for zoom/pan used inside render loop without re-triggering effect
   const zoomRef = useRef(zoom);
@@ -50,8 +139,37 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   const spanServiceCache = useRef<Map<string, string>>(new Map());
   const spanNameCache = useRef<Map<string, string>>(new Map());
 
+  // Clear positions to force re-layout when active namespace selection changes
   useEffect(() => {
-    api.getServiceMap(namespace).then(setData).catch(() => {});
+    nodePositionsRef.current.clear();
+  }, [selectedNamespaces, namespace]);
+
+  useEffect(() => {
+    api.getServiceMap(namespace).then(res => {
+      setData(res);
+      if (res && res.nodes) {
+        const nsList = Array.from(new Set(res.nodes.map(n => n.namespace).filter(ns => ns && ns !== 'Internet')));
+        setVisibleNamespaces(nsList);
+
+        // Retrieve persisted namespaces or fallback to all
+        const saved = localStorage.getItem(`service_map_namespaces_${namespace || 'all'}`);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+              setSelectedNamespaces(parsed.filter(x => nsList.includes(x)));
+              return;
+            }
+          } catch {}
+        }
+
+        if (namespace) {
+          setSelectedNamespaces([namespace]);
+        } else {
+          setSelectedNamespaces(nsList);
+        }
+      }
+    }).catch(() => {});
   }, [namespace]);
 
   // Convert screen coordinates to world coordinates
@@ -84,6 +202,49 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       if (firstKey) {
         spanServiceCache.current.delete(firstKey);
         spanNameCache.current.delete(firstKey);
+      }
+    }
+
+    const dbSystem = span.attributes?.['db.system'];
+    const messagingSystem = span.attributes?.['messaging.system'];
+    if (typeof dbSystem === 'string' || typeof messagingSystem === 'string') {
+      const infraVal = (dbSystem || messagingSystem) as string;
+      const infraName = infraVal.toLowerCase();
+      const source = span.serviceName;
+      if (source && infraName && source !== infraName) {
+        particlesRef.current.push({
+          id: Math.random().toString(36).slice(2),
+          source,
+          target: infraName,
+          startTime: performance.now(),
+          duration: 1000,
+          isError: span.status === 'ERROR',
+          operationName: span.name || 'query',
+          traceIdShort: span.traceId ? span.traceId.slice(0, 8) : '',
+        });
+
+        // Update the database/infra node stats in real-time
+        setData(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            nodes: prev.nodes.map(node => {
+              if (node.serviceName === infraName) {
+                const reqs = node.requestCount + 1;
+                const errs = node.errorCount + (span.status === 'ERROR' ? 1 : 0);
+                return {
+                  ...node,
+                  requestCount: reqs,
+                  errorCount: errs,
+                  errorRate: (errs / reqs) * 100,
+                  p50Ms: (node.p50Ms * node.requestCount + span.durationMs) / reqs,
+                };
+              }
+              return node;
+            }),
+          };
+        });
+        return;
       }
     }
 
@@ -162,7 +323,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       onSpanReceived
     );
     return () => disconnect();
-  }, [namespace, data, onSpanReceived]);
+  }, [namespace, onSpanReceived]);
 
   // --- Mouse Event Handlers ---
   useEffect(() => {
@@ -181,7 +342,6 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       setZoom(prev => {
         const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prev + delta));
         const scale = newZoom / prev;
-        // Zoom towards mouse cursor
         setPan(p => ({
           x: pos.x - (pos.x - p.x) * scale,
           y: pos.y - (pos.y - p.y) * scale,
@@ -224,7 +384,6 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       } else if (isPanningRef.current) {
         setPan(p => ({ x: p.x + dx, y: p.y + dy }));
       } else {
-        // Update cursor based on hover
         const world = screenToWorld(pos.x, pos.y);
         const hitNode = hitTestNode(world.x, world.y);
         canvas.style.cursor = hitNode ? 'grab' : 'default';
@@ -250,6 +409,28 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
     };
   }, [screenToWorld, hitTestNode]);
 
+  // Filter nodes and edges based on selected namespaces
+  const activeNamespacesSet = new Set(namespace ? [namespace] : selectedNamespaces);
+
+  const isNodeActive = useCallback((n: ServiceStats) => {
+    if (n.serviceName === 'Internet') return true;
+    if (isInfraNode(n)) {
+      if (n.namespace && activeNamespacesSet.has(n.namespace)) return true;
+      // Also show infra node if there are any active dependencies using it
+      return (data?.edges || []).some(edge => {
+        if (edge.source !== n.serviceName && edge.target !== n.serviceName) return false;
+        const otherNodeName = edge.source === n.serviceName ? edge.target : edge.source;
+        const otherNode = (data?.nodes || []).find(x => x.serviceName === otherNodeName);
+        return otherNode && otherNode.namespace && activeNamespacesSet.has(otherNode.namespace);
+      });
+    }
+    return activeNamespacesSet.has(n.namespace || 'default');
+  }, [data, namespace, selectedNamespaces, activeNamespacesSet]);
+
+  const activeNodes = (data?.nodes || []).filter(isNodeActive);
+  const activeNodeNames = new Set(activeNodes.map(n => n.serviceName));
+  const activeEdges = (data?.edges || []).filter(e => activeNodeNames.has(e.source) && activeNodeNames.has(e.target));
+
   // --- Canvas Render Loop ---
   useEffect(() => {
     if (!data || !canvasRef.current) return;
@@ -272,7 +453,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
       const isDark = document.body.classList.contains('dark-theme');
 
-      // Background (drawn in screen space, before transform)
+      // Background
       ctx.fillStyle = isDark ? '#0f172a' : '#f8fafc';
       ctx.fillRect(0, 0, width, height);
 
@@ -281,7 +462,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       ctx.translate(currentPan.x, currentPan.y);
       ctx.scale(currentZoom, currentZoom);
 
-      // Grid (in world space so it scales with zoom)
+      // Grid (in world space)
       ctx.strokeStyle = isDark ? 'rgba(30, 41, 59, 0.4)' : 'rgba(226, 232, 240, 0.8)';
       ctx.lineWidth = 0.5 / currentZoom;
       const gridSize = 40;
@@ -299,110 +480,141 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.beginPath(); ctx.moveTo(worldLeft, y); ctx.lineTo(worldRight, y); ctx.stroke();
       }
 
-      const nodes = data.nodes || [];
-      const edges = data.edges || [];
-      if (nodes.length === 0) {
+      if (activeNodes.length === 0) {
         ctx.restore();
         animationId = requestAnimationFrame(render);
         return;
       }
 
-      // --- DAG Layered Layout Algorithm (Cycle-Safe BFS) ---
-      // Only compute layout for nodes that don't already have positions
-      const needsLayout = nodes.some(n => !nodePositionsRef.current.has(n.serviceName));
+      // --- Namespace-grouped column layout (Left-to-Right flow) ---
+      const cols: { name: string; label: string; nodes: ServiceStats[] }[] = [];
 
-      if (needsLayout) {
-        const depthMap = new Map<string, number>();
-        const adj = new Map<string, string[]>();
-        const inDegree = new Map<string, number>();
-
-        nodes.forEach(n => {
-          adj.set(n.serviceName, []);
-          inDegree.set(n.serviceName, 0);
-        });
-
-        edges.forEach(e => {
-          if (adj.has(e.source) && adj.has(e.target)) {
-            adj.get(e.source)!.push(e.target);
-            inDegree.set(e.target, (inDegree.get(e.target) || 0) + 1);
-          }
-        });
-
-        const visited = new Set<string>();
-        const queue: { node: string; depth: number }[] = [];
-
-        nodes.forEach(n => {
-          if (n.serviceName === 'Internet' || (inDegree.get(n.serviceName) || 0) === 0) {
-            queue.push({ node: n.serviceName, depth: 0 });
-            depthMap.set(n.serviceName, 0);
-            visited.add(n.serviceName);
-          }
-        });
-
-        if (queue.length === 0 && nodes.length > 0) {
-          queue.push({ node: nodes[0].serviceName, depth: 0 });
-          depthMap.set(nodes[0].serviceName, 0);
-          visited.add(nodes[0].serviceName);
-        }
-
-        let head = 0;
-        while (head < queue.length) {
-          const { node: u, depth: uDepth } = queue[head++];
-          const neighbors = adj.get(u) || [];
-          neighbors.forEach(v => {
-            if (!visited.has(v)) {
-              visited.add(v);
-              depthMap.set(v, uDepth + 1);
-              queue.push({ node: v, depth: uDepth + 1 });
-            } else {
-              const currentDepth = depthMap.get(v) || 0;
-              if (uDepth + 1 > currentDepth && uDepth + 1 < nodes.length) {
-                depthMap.set(v, uDepth + 1);
-              }
-            }
-          });
-        }
-
-        let maxDepth = 0;
-        depthMap.forEach(d => {
-          if (d > maxDepth) maxDepth = d;
-        });
-
-        const layers = new Map<number, string[]>();
-        for (let d = 0; d <= maxDepth; d++) {
-          layers.set(d, []);
-        }
-        nodes.forEach(n => {
-          const d = depthMap.get(n.serviceName) || 0;
-          if (!layers.has(d)) layers.set(d, []);
-          layers.get(d)!.push(n.serviceName);
-        });
-
-        const padX = 110;
-        const padY = 65;
-        const cols = maxDepth + 1;
-
-        for (let d = 0; d <= maxDepth; d++) {
-          const layerNodes = layers.get(d) || [];
-          const colX = cols > 1 ? padX + d * (width - 2 * padX) / (cols - 1) : width / 2;
-          const rows = layerNodes.length;
-
-          layerNodes.forEach((nodeName, r) => {
-            // Only set position if we don't already have one for this node
-            if (!nodePositionsRef.current.has(nodeName)) {
-              const rowY = rows > 1 ? padY + r * (height - 2 * padY) / (rows - 1) : height / 2;
-              nodePositionsRef.current.set(nodeName, { x: colX, y: rowY });
-              layoutComputedForRef.current.add(nodeName);
-            }
-          });
-        }
+      // Column 0: Internet
+      const internetNodes = activeNodes.filter(n => n.serviceName === 'Internet');
+      if (internetNodes.length > 0) {
+        cols.push({ name: 'Internet', label: 'External Clients', nodes: internetNodes });
       }
 
-      // Use the ref positions for rendering
+      // Columns 1..N: Namespace components
+      const nsNames = Array.from(new Set(
+        activeNodes
+          .filter(n => n.serviceName !== 'Internet' && !isInfraNode(n))
+          .map(n => n.namespace || 'default')
+      )).sort();
+
+      nsNames.forEach(ns => {
+        const nsNodes = activeNodes.filter(n => n.serviceName !== 'Internet' && !isInfraNode(n) && (n.namespace || 'default') === ns);
+        if (nsNodes.length > 0) {
+          cols.push({ name: ns, label: `Namespace: ${ns}`, nodes: nsNodes });
+        }
+      });
+
+      // Column N+1: Infrastructure
+      const infraNodes = activeNodes.filter(n => n.serviceName !== 'Internet' && isInfraNode(n));
+      if (infraNodes.length > 0) {
+        cols.push({ name: 'Infrastructure', label: 'Infrastructure & Storage', nodes: infraNodes });
+      }
+
+      // Compute initial DAG layout coordinates on columns if they are not already cached
+      const needsLayout = activeNodes.some(n => !nodePositionsRef.current.has(n.serviceName));
+      if (needsLayout) {
+        const colWidth = 200;
+        const colSpacing = 120;
+        const rowSpacing = 90;
+
+        const totalW = cols.length * colWidth + (cols.length - 1) * colSpacing;
+        const startX = Math.max(80, (width - totalW) / 2);
+
+        cols.forEach((col, c) => {
+          const totalH = col.nodes.length * rowSpacing;
+          const startY = Math.max(100, (height - totalH) / 2);
+          const colX = startX + c * (colWidth + colSpacing);
+
+          col.nodes.forEach((node, r) => {
+            if (!nodePositionsRef.current.has(node.serviceName)) {
+              const rowY = startY + r * rowSpacing;
+              nodePositionsRef.current.set(node.serviceName, {
+                x: colX + colWidth / 2,
+                y: rowY + NODE_H / 2
+              });
+            }
+          });
+        });
+      }
+
       const positions = nodePositionsRef.current;
 
+      // --- Draw Namespace Bounding Box Cards (DrawSQL-style zones) ---
+      cols.forEach((col, c) => {
+        if (col.nodes.length === 0) return;
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        let hasPositions = false;
+        col.nodes.forEach(node => {
+          const pos = positions.get(node.serviceName);
+          if (pos) {
+            minX = Math.min(minX, pos.x - NODE_W / 2);
+            minY = Math.min(minY, pos.y - NODE_H / 2);
+            maxX = Math.max(maxX, pos.x + NODE_W / 2);
+            maxY = Math.max(maxY, pos.y + NODE_H / 2);
+            hasPositions = true;
+          }
+        });
+
+        if (!hasPositions) return;
+
+        const paddingX = 20;
+        const paddingY = 24;
+        const headerHeight = 24;
+
+        const zx = minX - paddingX;
+        const zy = minY - paddingY - headerHeight;
+        const zw = (maxX - minX) + paddingX * 2;
+        const zh = (maxY - minY) + paddingY * 2 + headerHeight;
+
+        const theme = getColumnTheme(col.name, c, isDark);
+
+        // Draw zone bounding box background
+        ctx.fillStyle = theme.bg;
+        ctx.strokeStyle = theme.border;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(zx, zy, zw, zh, 10);
+        } else {
+          ctx.rect(zx, zy, zw, zh);
+        }
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw zone header
+        ctx.fillStyle = theme.headerBg;
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(zx, zy, zw, headerHeight + 4, [10, 10, 0, 0]);
+        } else {
+          ctx.rect(zx, zy, zw, headerHeight + 4);
+        }
+        ctx.fill();
+
+        // Header separator line
+        ctx.strokeStyle = theme.border;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(zx, zy + headerHeight + 4);
+        ctx.lineTo(zx + zw, zy + headerHeight + 4);
+        ctx.stroke();
+
+        // Label
+        ctx.fillStyle = theme.text;
+        ctx.font = 'bold 9px Inter';
+        ctx.textAlign = 'left';
+        ctx.fillText(col.label.toUpperCase(), zx + 12, zy + 16);
+      });
+
+      // Compute total outgoing call duration per node for contribution percentage
       const outgoingTotalDuration = new Map<string, number>();
-      edges.forEach(e => {
+      activeEdges.forEach(e => {
         const current = outgoingTotalDuration.get(e.source) || 0;
         outgoingTotalDuration.set(e.source, current + e.avgDurationMs);
       });
@@ -455,7 +667,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       };
 
       // --- Draw Ambient Edges ---
-      edges.forEach(edge => {
+      activeEdges.forEach(edge => {
         const from = positions.get(edge.source);
         const to = positions.get(edge.target);
         if (!from || !to) return;
@@ -528,6 +740,9 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         const to = positions.get(particle.target);
         if (!from || !to) return false;
 
+        // Ignore particles targeting nodes that are currently toggled off
+        if (!activeNodeNames.has(particle.source) || !activeNodeNames.has(particle.target)) return false;
+
         const progress = (now - particle.startTime) / particle.duration;
         if (progress >= 1) return false;
 
@@ -593,11 +808,12 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       });
 
       // --- Draw Nodes (Microservice Cards) ---
-      nodes.forEach(node => {
+      activeNodes.forEach(node => {
         const pos = positions.get(node.serviceName);
         if (!pos) return;
 
         const isInternet = node.serviceName === 'Internet';
+        const isInfra = isInfraNode(node);
         const hasErrors = node.errorCount > 0;
         const errRate = node.errorRate;
         const reqCount = node.requestCount;
@@ -614,6 +830,8 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, glowRadius);
         if (isInternet) {
           gradient.addColorStop(0, 'rgba(56, 189, 248, 0.15)');
+        } else if (isInfra) {
+          gradient.addColorStop(0, 'rgba(245, 158, 11, 0.15)');
         } else {
           gradient.addColorStop(0, hasErrors ? 'rgba(244, 63, 94, 0.15)' : 'rgba(99, 102, 241, 0.12)');
         }
@@ -626,13 +844,24 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.shadowBlur = hasErrors ? 12 : 6;
         ctx.shadowColor = isInternet
           ? 'rgba(56, 189, 248, 0.4)'
-          : hasErrors ? 'rgba(244, 63, 94, 0.4)' : 'rgba(99, 102, 241, 0.3)';
+          : isInfra
+            ? 'rgba(245, 158, 11, 0.4)'
+            : hasErrors ? 'rgba(244, 63, 94, 0.4)' : 'rgba(99, 102, 241, 0.3)';
 
         ctx.fillStyle = isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)';
         ctx.strokeStyle = isInternet
           ? '#38bdf8'
-          : hasErrors ? '#f43f5e' : (isDark ? '#475569' : '#cbd5e1');
+          : isInfra
+            ? '#f59e0b'
+            : hasErrors ? '#f43f5e' : (isDark ? '#475569' : '#cbd5e1');
         ctx.lineWidth = hasErrors ? 2.5 : 1.5;
+
+        // Custom borders for Infrastructure nodes (dashed)
+        if (isInfra) {
+          ctx.setLineDash([4, 3]);
+        } else {
+          ctx.setLineDash([]);
+        }
 
         ctx.beginPath();
         if (ctx.roundRect) {
@@ -642,38 +871,92 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         }
         ctx.fill();
         ctx.stroke();
+        ctx.setLineDash([]); // Reset line dash
         ctx.restore();
 
+        // Draw Infrastructure Icons
+        if (isInfra) {
+          const nameLower = node.serviceName.toLowerCase();
+          const isQueue = nameLower.includes('kafka') || nameLower.includes('rabbitmq') || nameLower.includes('queue');
+
+          if (isQueue) {
+            // Queue visual representation (3 horizontal slots)
+            const ix = rx + 12;
+            const iy = ry + 16;
+            const iw = 16;
+
+            ctx.strokeStyle = isDark ? '#fbbf24' : '#d97706';
+            ctx.lineWidth = 1.5;
+            for (let i = 0; i < 3; i++) {
+              ctx.strokeRect(ix, iy + i * 6, iw, 4);
+            }
+          } else {
+            // Database cylinder icon
+            const ix = rx + 12;
+            const iy = ry + 15;
+            const iw = 16;
+            const ih = 20;
+
+            ctx.strokeStyle = isDark ? '#fbbf24' : '#d97706';
+            ctx.lineWidth = 1.5;
+
+            ctx.beginPath();
+            ctx.ellipse(ix + iw/2, iy + ih - 3, iw/2, 3, 0, 0, Math.PI);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.ellipse(ix + iw/2, iy + ih/2, iw/2, 3, 0, 0, Math.PI);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.ellipse(ix + iw/2, iy + 3, iw/2, 3, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(ix, iy + 3);
+            ctx.lineTo(ix, iy + ih - 3);
+            ctx.moveTo(ix + iw, iy + 3);
+            ctx.lineTo(ix + iw, iy + ih - 3);
+            ctx.stroke();
+          }
+        }
+
+        // Draw Service Name Text
         ctx.font = '700 11px Inter';
         ctx.textAlign = 'left';
         ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
         let displayName = node.serviceName;
-        if (displayName.length > 18) displayName = displayName.slice(0, 16) + '...';
-        ctx.fillText(displayName, rx + 12, ry + 20);
+        if (displayName.length > (isInfra ? 15 : 18)) {
+          displayName = displayName.slice(0, isInfra ? 13 : 16) + '...';
+        }
+        const textX = rx + (isInfra ? 36 : 12);
+        ctx.fillText(displayName, textX, ry + 20);
 
+        // Draw Stats Text
         ctx.font = '500 10px JetBrains Mono';
-        ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
-
         let statsText = `${reqCount} reqs`;
         if (errRate > 0) {
           statsText += ` · ${errRate.toFixed(1)}% err`;
         }
 
         ctx.fillStyle = errRate > 5 ? '#f43f5e' : (isDark ? '#94a3b8' : '#64748b');
-        ctx.fillText(statsText, rx + 12, ry + 36);
+        ctx.fillText(statsText, textX, ry + 36);
 
+        // Draw Status Dot
         ctx.beginPath();
         ctx.arc(rx + w - 12, ry + 12, 4, 0, Math.PI * 2);
         ctx.fillStyle = isInternet
           ? '#38bdf8'
-          : hasErrors ? '#f43f5e' : '#10b981';
+          : isInfra
+            ? '#fbbf24'
+            : hasErrors ? '#f43f5e' : '#10b981';
         ctx.fill();
       });
 
       // Restore the canvas transform
       ctx.restore();
 
-      // --- Zoom level indicator (screen space, drawn after restore) ---
+      // Zoom level indicator (screen space)
       const zoomPercent = Math.round(currentZoom * 100);
       ctx.font = '500 10px JetBrains Mono';
       ctx.fillStyle = isDark ? 'rgba(148, 163, 184, 0.5)' : 'rgba(100, 116, 139, 0.5)';
@@ -688,7 +971,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [data, dimensions]);
+  }, [data, dimensions, activeNodes, activeEdges]);
 
   // --- Window resize handler ---
   useEffect(() => {
@@ -731,7 +1014,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   };
 
   const handleFitView = () => {
-    if (!data || !data.nodes || data.nodes.length === 0) return;
+    if (activeNodes.length === 0) return;
     const positions = nodePositionsRef.current;
     if (positions.size === 0) return;
 
@@ -764,6 +1047,30 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
     setPan({ x: 0, y: 0 });
   };
 
+  const handleToggleNamespace = (ns: string) => {
+    let next: string[];
+    if (selectedNamespaces.includes(ns)) {
+      next = selectedNamespaces.filter(x => x !== ns);
+    } else {
+      next = [...selectedNamespaces, ns];
+    }
+    setSelectedNamespaces(next);
+    localStorage.setItem(`service_map_namespaces_${namespace || 'all'}`, JSON.stringify(next));
+  };
+
+  const handleToggleAll = () => {
+    let next: string[];
+    if (selectedNamespaces.length === visibleNamespaces.length) {
+      next = [];
+    } else {
+      next = [...visibleNamespaces];
+    }
+    setSelectedNamespaces(next);
+    localStorage.setItem(`service_map_namespaces_${namespace || 'all'}`, JSON.stringify(next));
+  };
+
+  const isDarkTheme = document.body.classList.contains('dark-theme');
+
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '40px' }}>
       <h1 className="page-title">Service Map</h1>
@@ -771,10 +1078,61 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         {namespace ? `Service dependencies in ${namespace}` : 'Service dependencies across all namespaces'}
       </p>
 
+      {/* Namespace Filter Pills */}
+      {!namespace && visibleNamespaces.length > 0 && (
+        <div className="card" style={{ marginBottom: '16px' }}>
+          <div className="card-body" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginRight: '8px' }}>
+              Filter Namespaces:
+            </span>
+            <button
+              onClick={handleToggleAll}
+              className="btn btn-ghost btn-sm"
+              style={{ padding: '4px 8px', fontSize: '11px', borderRadius: '4px' }}
+            >
+              {selectedNamespaces.length === visibleNamespaces.length ? 'Clear All' : 'Select All'}
+            </button>
+            {visibleNamespaces.map((ns, idx) => {
+              const theme = getColumnTheme(ns, idx, isDarkTheme);
+              const isSelected = selectedNamespaces.includes(ns);
+              return (
+                <button
+                  key={ns}
+                  onClick={() => handleToggleNamespace(ns)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '20px',
+                    border: `1.5px solid ${isSelected ? theme.border : 'var(--border-color, rgba(255, 255, 255, 0.1))'}`,
+                    background: isSelected ? theme.headerBg : 'transparent',
+                    color: isSelected ? theme.text : 'var(--text-muted, #94a3b8)',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <span style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: isSelected ? theme.text : 'transparent',
+                    border: `1px solid ${isSelected ? 'transparent' : 'var(--text-muted, #94a3b8)'}`,
+                  }} />
+                  {ns}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <div className="card-header">
           <div className="card-title">Service Topology</div>
-          <span className="text-sm text-muted">{data?.nodes?.length || 0} services</span>
+          <span className="text-sm text-muted">{activeNodes.length} services</span>
         </div>
         <div className="card-body" ref={containerRef} style={{ padding: 0, position: 'relative', overflow: 'hidden' }}>
           <canvas
@@ -837,7 +1195,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         </div>
       </div>
 
-      {data && data.nodes && data.nodes.length > 0 && (
+      {activeNodes.length > 0 && (
         <div className="card mt-6">
           <div className="card-header">
             <div className="card-title">Service Details</div>
@@ -857,10 +1215,22 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
                 </tr>
               </thead>
               <tbody>
-                {data.nodes.map(node => (
+                {activeNodes.map(node => (
                   <tr key={node.serviceName}>
                     <td style={{ fontWeight: 600 }}>{node.serviceName}</td>
-                    <td><span className="badge badge-ns">{node.namespace}</span></td>
+                    <td>
+                      <span className="badge badge-ns" style={{
+                        background: getColumnTheme(node.namespace || 'default', 0, isDarkTheme).headerBg,
+                        color: getColumnTheme(node.namespace || 'default', 0, isDarkTheme).text,
+                        border: `1px solid ${getColumnTheme(node.namespace || 'default', 0, isDarkTheme).border}`,
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        fontSize: '10px',
+                        fontWeight: 600
+                      }}>
+                        {node.namespace || 'default'}
+                      </span>
+                    </td>
                     <td className="mono">{node.requestCount}</td>
                     <td className="mono" style={{ color: node.errorCount > 0 ? 'var(--accent-rose)' : 'var(--text-secondary)' }}>{node.errorCount}</td>
                     <td className="mono" style={{ color: node.errorRate > 5 ? 'var(--accent-rose)' : 'var(--text-secondary)' }}>{node.errorRate.toFixed(1)}%</td>
@@ -875,7 +1245,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         </div>
       )}
 
-      {(!data || !data.nodes || data.nodes.length === 0) && (
+      {activeNodes.length === 0 && (
         <div className="card mt-4">
           <div className="card-body">
             <div className="empty-state">
@@ -884,8 +1254,8 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
                   <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
                 </svg>
               </div>
-              <div className="empty-state-title">No services discovered</div>
-              <div className="empty-state-text">Service map will populate as traces flow through your cluster</div>
+              <div className="empty-state-title">No active services visible</div>
+              <div className="empty-state-text">Toggle on namespaces to display service topology</div>
             </div>
           </div>
         </div>

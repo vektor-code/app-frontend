@@ -14,7 +14,15 @@ export default function App() {
   const [authChecking, setAuthChecking] = useState(true);
   const [user, setUser] = useState<any | null>(null);
   const [namespaces, setNamespaces] = useState<NamespaceStats[]>([]);
-  const [selectedNamespace, setSelectedNamespace] = useState('');
+  const [selectedNamespace, setSelectedNamespace] = useState(() => {
+    return localStorage.getItem('selectedNamespace') || '';
+  });
+
+  const handleNamespaceChange = useCallback((ns: string) => {
+    setSelectedNamespace(ns);
+    localStorage.setItem('selectedNamespace', ns);
+  }, []);
+
   const [connected, setConnected] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const navigate = useNavigate();
@@ -158,7 +166,7 @@ export default function App() {
         namespaces={namespaces}
         selectedNamespace={selectedNamespace}
         onNamespaceChange={(ns) => {
-          setSelectedNamespace(ns);
+          handleNamespaceChange(ns);
           navigate('/');
         }}
       />
@@ -228,7 +236,7 @@ export default function App() {
         </header>
         <main className="app-content">
           <Routes>
-            <Route path="/" element={<Dashboard namespaces={namespaces} selectedNamespace={selectedNamespace} onSelectNamespace={setSelectedNamespace} />} />
+            <Route path="/" element={<Dashboard namespaces={namespaces} selectedNamespace={selectedNamespace} onSelectNamespace={handleNamespaceChange} />} />
             <Route path="/traces" element={<TraceExplorer namespace={selectedNamespace} />} />
             <Route path="/traces/:traceId" element={<TraceDetail />} />
             <Route path="/servicemap" element={<ServiceMap namespace={selectedNamespace} />} />
