@@ -154,6 +154,7 @@ body {
   bottom: 0;
   z-index: 100;
   overflow-y: auto;
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .app-main {
@@ -164,6 +165,7 @@ body {
   min-height: 100vh;
   min-width: 0;
   overflow: hidden;
+  transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .app-header {
@@ -1264,5 +1266,35 @@ tbody td {
 body.drawer-open .app-main {
   position: relative;
   z-index: 150;
+  overflow: visible !important;
+}
+
+/* Sidebar Collapse System */
+.sidebar-collapsed .app-sidebar {
+  width: 64px;
+  min-width: 64px;
+  overflow: hidden;
+}
+
+.sidebar-collapsed .app-main {
+  margin-left: 64px;
+}
+
+.sidebar-collapsed .sidebar-link {
+  justify-content: center;
+  padding: 10px 0;
+  gap: 0;
+}
+
+.sidebar-collapsed .sidebar-link-icon {
+  margin-right: 0;
+}
+
+/* Drawer backdrop global overrides to blur whole screen */
+.drawer-backdrop {
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  background: rgba(10, 14, 23, 0.6) !important;
+  z-index: 999 !important;
 }
 

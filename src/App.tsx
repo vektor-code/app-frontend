@@ -24,6 +24,18 @@ export default function App() {
     localStorage.setItem('selectedNamespace', ns);
   }, []);
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('sidebarCollapsed') === 'true';
+  });
+
+  const handleToggleSidebar = useCallback(() => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('sidebarCollapsed', String(next));
+      return next;
+    });
+  }, []);
+
   const [connected, setConnected] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const navigate = useNavigate();
@@ -162,7 +174,7 @@ export default function App() {
   }
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <Sidebar
         namespaces={namespaces}
         selectedNamespace={selectedNamespace}
@@ -170,6 +182,8 @@ export default function App() {
           handleNamespaceChange(ns);
           navigate('/');
         }}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={handleToggleSidebar}
       />
       <div className="app-main">
         <header className="app-header">
@@ -240,7 +254,7 @@ export default function App() {
             <Route path="/" element={<Dashboard namespaces={namespaces} selectedNamespace={selectedNamespace} onSelectNamespace={handleNamespaceChange} />} />
             <Route path="/traces" element={<TraceExplorer namespace={selectedNamespace} />} />
             <Route path="/traces/:traceId" element={<TraceDetail />} />
-            <Route path="/servicemap" element={<ServiceMap namespace={selectedNamespace} />} />
+            <Route path="/servicemap" element={<ServiceMap namespace={selectedNamespace} collapsed={sidebarCollapsed} />} />
             <Route path="/database" element={<DbAnalytics namespace={selectedNamespace} />} />
             <Route path="/live" element={<LiveStream namespace={selectedNamespace} />} />
 

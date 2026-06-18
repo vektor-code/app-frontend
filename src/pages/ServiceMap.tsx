@@ -4,6 +4,7 @@ import { api, type ServiceMapData, type ServiceStats, type Span, connectLiveStre
 
 interface ServiceMapProps {
   namespace: string;
+  collapsed?: boolean;
 }
 
 interface Particle {
@@ -489,7 +490,7 @@ const getColumnTheme = (name: string, index: number, isDark: boolean) => {
   return themes[idx];
 };
 
-export default function ServiceMap({ namespace }: ServiceMapProps) {
+export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
   const [data, setData] = useState<ServiceMapData | null>(null);
   const [visibleNamespaces, setVisibleNamespaces] = useState<string[]>([]);
   const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
@@ -1841,13 +1842,20 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   // --- Window resize handler ---
   useEffect(() => {
     const handleResize = () => {
-      const w = Math.max(600, window.innerWidth - 340);
-      setDimensions({ width: w, height: 600 });
+      let w = window.innerWidth - (collapsed ? 144 : 340);
+      if (containerRef.current) {
+        w = containerRef.current.clientWidth;
+      }
+      setDimensions({ width: Math.max(600, w), height: 600 });
     };
     handleResize();
+    const timer = setTimeout(handleResize, 200); // Account for sidebar transition
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(timer);
+    };
+  }, [collapsed]);
 
   // --- Zoom Control Handlers ---
   const handleZoomIn = () => {
