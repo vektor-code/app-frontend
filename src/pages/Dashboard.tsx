@@ -44,6 +44,18 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
   // Single Unified state for configuration modal (null means hidden)
   const [tempWidget, setTempWidget] = useState<Widget | null>(null);
 
+  // Toggle body class for full-screen blur layout override
+  useEffect(() => {
+    if (tempWidget) {
+      document.body.classList.add('modal-open');
+    } else {
+      document.body.classList.remove('modal-open');
+    }
+    return () => {
+      document.body.classList.remove('modal-open');
+    };
+  }, [tempWidget]);
+
   // Load widgets configuration
   useEffect(() => {
     const saved = localStorage.getItem('vektor_dashboard_widgets');

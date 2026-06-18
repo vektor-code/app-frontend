@@ -13,23 +13,60 @@ interface SidebarProps {
 export default function Sidebar({ namespaces, selectedNamespace, onNamespaceChange, collapsed, onToggleCollapse }: SidebarProps) {
   return (
     <aside className="app-sidebar">
-      <div className="sidebar-logo" style={{ display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', padding: collapsed ? '16px 0' : '16px 20px', borderBottom: '1px solid var(--border-primary)', height: '64px', boxSizing: 'border-box' }}>
-        <img 
-          src="/logo.png" 
-          alt="Vektor Logo" 
+      <div className="sidebar-logo" style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: collapsed ? 'center' : 'space-between', 
+        padding: collapsed ? '12px 0' : '16px 16px 16px 20px', 
+        borderBottom: '1px solid var(--border-primary)', 
+        height: collapsed ? '80px' : '64px', 
+        flexDirection: collapsed ? 'column' : 'row',
+        gap: collapsed ? '8px' : '0',
+        boxSizing: 'border-box',
+        transition: 'all 0.2s ease'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img 
+            src="/logo.png" 
+            alt="Vektor Logo" 
+            style={{ 
+              width: '26px', 
+              height: '26px', 
+              flexShrink: 0,
+              objectFit: 'contain'
+            }} 
+          />
+          {!collapsed && (
+            <span className="sidebar-logo-text" style={{ color: 'var(--text-primary)', fontSize: '18px', fontWeight: '800', letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              Vektor
+            </span>
+          )}
+        </div>
+        
+        <button 
+          className="btn btn-ghost" 
+          onClick={onToggleCollapse}
           style={{ 
-            width: '26px', 
-            height: '26px', 
-            marginRight: collapsed ? '0' : '10px', 
-            flexShrink: 0,
-            objectFit: 'contain'
-          }} 
-        />
-        {!collapsed && (
-          <span className="sidebar-logo-text" style={{ color: 'var(--text-primary)', fontSize: '18px', fontWeight: '800', letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            Vektor
-          </span>
-        )}
+            padding: '4px', 
+            borderRadius: 'var(--radius-sm)', 
+            color: 'var(--text-secondary)', 
+            display: 'inline-flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            width: '28px',
+            height: '28px',
+            flexShrink: 0
+          }}
+          title={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
       </div>
 
       <div className="sidebar-section" style={{ padding: collapsed ? '12px 8px' : '16px' }}>
@@ -128,31 +165,6 @@ export default function Sidebar({ namespaces, selectedNamespace, onNamespaceChan
         </div>
       )}
 
-      <div className="sidebar-footer" style={{ borderTop: '1px solid var(--border-primary)', padding: '12px 16px', display: 'flex', justifyContent: collapsed ? 'center' : 'flex-end', alignItems: 'center' }}>
-        <button 
-          className="btn btn-ghost" 
-          onClick={onToggleCollapse}
-          style={{ 
-            padding: '6px', 
-            borderRadius: 'var(--radius-sm)', 
-            color: 'var(--text-secondary)', 
-            display: 'inline-flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            width: '32px',
-            height: '32px'
-          }}
-          title={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-      </div>
     </aside>
   );
 }
