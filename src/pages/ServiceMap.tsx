@@ -40,9 +40,241 @@ const isInfraNode = (node: ServiceStats) => {
     name.includes('nosql') ||
     name.includes('cassandra') ||
     name.includes('elasticsearch') ||
-    name.includes('clickhouse')
+    name.includes('clickhouse') ||
+    name.includes('vault') ||
+    name.includes('minio')
   );
 };
+
+// Helper to get node dimensions based on its type and custom resize settings
+const getNodeSize = (
+  nodeName: string,
+  nodesList?: ServiceStats[],
+  posSize?: { w?: number; h?: number }
+) => {
+  const node = nodesList?.find(n => n.serviceName === nodeName);
+  const isInfra = node ? isInfraNode(node) : false;
+  const defaultW = isInfra ? 190 : NODE_W;
+  const defaultH = isInfra ? 80 : NODE_H;
+  return {
+    w: posSize?.w || defaultW,
+    h: posSize?.h || defaultH,
+  };
+};
+
+// Helper to parse infrastructure details from name (e.g. system (host/detail))
+const parseInfraName = (name: string): { system: string; host?: string; detail?: string } => {
+  const match = name.match(/^([^(]+)\(([^)]+)\)$/);
+  if (!match) {
+    return { system: name };
+  }
+  const system = match[1].trim();
+  const inner = match[2].trim();
+  const slashIndex = inner.indexOf('/');
+  if (slashIndex !== -1) {
+    return {
+      system,
+      host: inner.slice(0, slashIndex).trim(),
+      detail: inner.slice(slashIndex + 1).trim(),
+    };
+  }
+  return {
+    system,
+    host: inner,
+  };
+};
+
+// Vector canvas drawer for different infrastructure types
+const drawInfraIcon = (
+  ctx: CanvasRenderingContext2D,
+  system: string,
+  x: number,
+  y: number,
+  size: number,
+  isDark: boolean,
+  iconImages?: Map<string, HTMLImageElement>
+) => {
+  const sys = system.toLowerCase();
+
+  let matchedKey = '';
+  if (sys.includes('redis')) matchedKey = 'redis';
+  else if (sys.includes('kafka')) matchedKey = 'kafka';
+  else if (sys.includes('rabbitmq')) matchedKey = 'rabbitmq';
+  else if (sys.includes('vault')) matchedKey = 'vault';
+  else if (sys.includes('elastic')) matchedKey = 'elasticsearch';
+  else if (sys.includes('minio')) matchedKey = 'minio';
+  else if (sys.includes('postgres')) matchedKey = 'postgres';
+  else if (sys.includes('mysql')) matchedKey = 'mysql';
+  else if (sys.includes('mongo')) matchedKey = 'mongodb';
+
+  const img = (iconImages && matchedKey) ? iconImages.get(matchedKey) : null;
+  if (img && img.complete && img.naturalWidth !== 0) {
+    ctx.save();
+    ctx.drawImage(img, x, y, size, size);
+    ctx.restore();
+    return;
+  }
+
+  ctx.save();
+  ctx.shadowBlur = 0;
+
+  if (sys.includes('redis')) {
+    // Redis: Crimson stacked slabs
+    ctx.fillStyle = '#dc2626';
+    ctx.strokeStyle = '#991b1b';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      const sy = y + i * 6;
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(x, sy + 2, size, 4, 1.5);
+      } else {
+        ctx.rect(x, sy + 2, size, 4);
+      }
+      ctx.fill();
+      ctx.stroke();
+    }
+  } else if (sys.includes('kafka')) {
+    // Kafka: 3 connected broker circles
+    const strokeColor = isDark ? '#38bdf8' : '#0284c7';
+    ctx.strokeStyle = strokeColor;
+    ctx.fillStyle = isDark ? '#0284c7' : '#bae6fd';
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    ctx.moveTo(x + 3, y + size / 2);
+    ctx.lineTo(x + size - 3, y + 4);
+    ctx.moveTo(x + 3, y + size / 2);
+    ctx.lineTo(x + size - 3, y + size - 4);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(x + 4, y + size / 2, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(x + size - 4, y + 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(x + size - 4, y + size - 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  } else if (sys.includes('rabbitmq')) {
+    // RabbitMQ: Orange bunny outline
+    ctx.strokeStyle = '#ea580c';
+    ctx.fillStyle = isDark ? 'rgba(234, 88, 12, 0.15)' : 'rgba(234, 88, 12, 0.08)';
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    ctx.moveTo(x + 4, y + size - 4);
+    ctx.quadraticCurveTo(x + 2, y + 2, x + 6, y + 2);
+    ctx.quadraticCurveTo(x + 8, y + 8, x + 9, y + size - 6);
+    
+    ctx.moveTo(x + size - 4, y + size - 4);
+    ctx.quadraticCurveTo(x + size - 2, y + 2, x + size - 6, y + 2);
+    ctx.quadraticCurveTo(x + size - 8, y + 8, x + size - 9, y + size - 6);
+
+    ctx.moveTo(x + 5, y + size - 6);
+    ctx.bezierCurveTo(x + 2, y + size - 2, x + size - 2, y + size - 2, x + size - 5, y + size - 6);
+    ctx.stroke();
+    
+    ctx.fillStyle = '#ea580c';
+    ctx.beginPath();
+    ctx.arc(x + size / 2, y + size - 4, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (sys.includes('vault')) {
+    // Vault: Safe box with keyhole/combination lock dial
+    ctx.strokeStyle = isDark ? '#e2e8f0' : '#475569';
+    ctx.fillStyle = isDark ? '#334155' : '#cbd5e1';
+    ctx.lineWidth = 1.5;
+
+    ctx.strokeRect(x, y, size, size);
+
+    ctx.beginPath();
+    ctx.arc(x + size / 2, y + size / 2, 4, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(x + size / 2, y + size / 2);
+    ctx.lineTo(x + size / 2, y + size / 2 - 4);
+    ctx.stroke();
+  } else if (sys.includes('elastic')) {
+    // Elasticsearch: Magnifying glass
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+    ctx.arc(x + 7, y + 7, 5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#059669';
+    ctx.beginPath();
+    ctx.moveTo(x + 11, y + 11);
+    ctx.lineTo(x + size - 2, y + size - 2);
+    ctx.stroke();
+  } else if (sys.includes('minio')) {
+    // MinIO: 3D isometric storage cube
+    ctx.strokeStyle = '#c2410c';
+    ctx.fillStyle = isDark ? '#ea580c' : '#ffedd5';
+    ctx.lineWidth = 1.2;
+
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    const r = size / 2;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, y + 1);
+    ctx.lineTo(x + size - 1, cy - r / 2);
+    ctx.lineTo(cx, y + size - 1);
+    ctx.lineTo(x + 1, cy - r / 2);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(cx, y + size - 1);
+    ctx.lineTo(cx, cy - r / 2);
+    ctx.moveTo(x + 1, cy - r / 2);
+    ctx.lineTo(cx, y + 1);
+    ctx.moveTo(x + size - 1, cy - r / 2);
+    ctx.lineTo(cx, y + 1);
+    ctx.stroke();
+  } else {
+    // Default standard database cylinder
+    const iw = size * 0.8;
+    const ih = size;
+    const ix = x + (size - iw) / 2;
+    const iy = y;
+
+    ctx.strokeStyle = isDark ? '#fbbf24' : '#d97706';
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    ctx.ellipse(ix + iw / 2, iy + ih - 3, iw / 2, 3, 0, 0, Math.PI);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.ellipse(ix + iw / 2, iy + ih / 2, iw / 2, 3, 0, 0, Math.PI);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.ellipse(ix + iw / 2, iy + 3, iw / 2, 3, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(ix, iy + 3);
+    ctx.lineTo(ix, iy + ih - 3);
+    ctx.moveTo(ix + iw, iy + 3);
+    ctx.lineTo(ix + iw, iy + ih - 3);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+};
+
 
 // Colors for column namespace zones (DrawSQL-style)
 const getColumnTheme = (name: string, index: number, isDark: boolean) => {
@@ -151,6 +383,31 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   useEffect(() => { panRef.current = pan; }, [pan]);
 
+  // Refs for preloaded brand icons from Devicon CDN
+  const iconImagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  useEffect(() => {
+    const urls = {
+      redis: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/redis/redis-original.svg',
+      kafka: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/apachekafka/apachekafka-original.svg',
+      rabbitmq: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/rabbitmq/rabbitmq-original.svg',
+      vault: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/vault/vault-original.svg',
+      elasticsearch: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/elasticsearch/elasticsearch-original.svg',
+      minio: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/minio/minio-original.svg',
+      postgres: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/postgresql/postgresql-original.svg',
+      mysql: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mysql/mysql-original.svg',
+      mongodb: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mongodb/mongodb-original.svg',
+    };
+
+    Object.entries(urls).forEach(([key, url]) => {
+      const img = new Image();
+      img.src = url;
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        iconImagesRef.current.set(key, img);
+      };
+    });
+  }, []);
+
   // Refs for tracking real-time particles and cached span mappings
   const particlesRef = useRef<Particle[]>([]);
   const spanServiceCache = useRef<Map<string, string>>(new Map());
@@ -200,8 +457,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   // Find which node (if any) is under world coordinates
   const hitTestNode = useCallback((wx: number, wy: number): string | null => {
     for (const [name, pos] of nodePositionsRef.current.entries()) {
-      const w = pos.w || NODE_W;
-      const h = pos.h || NODE_H;
+      const { w, h } = getNodeSize(name, data?.nodes, pos);
       const rx = pos.x - w / 2;
       const ry = pos.y - h / 2;
       if (wx >= rx && wx <= rx + w && wy >= ry && wy <= ry + h) {
@@ -209,7 +465,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       }
     }
     return null;
-  }, []);
+  }, [data]);
 
   // Find if mouse is over bottom-right resize handle of an infra node
   const hitTestResizeHandle = useCallback((wx: number, wy: number): string | null => {
@@ -217,8 +473,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       const node = data?.nodes.find(n => n.serviceName === name);
       if (!node || !isInfraNode(node)) continue;
 
-      const w = pos.w || NODE_W;
-      const h = pos.h || NODE_H;
+      const { w, h } = getNodeSize(name, data?.nodes, pos);
       const hx = pos.x + w / 2;
       const hy = pos.y + h / 2;
 
@@ -493,8 +748,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         const nodeName = isResizingNodeRef.current;
         const currentPos = nodePositionsRef.current.get(nodeName);
         if (currentPos) {
-          const w = currentPos.w || NODE_W;
-          const h = currentPos.h || NODE_H;
+          const { w, h } = getNodeSize(nodeName, data?.nodes, currentPos);
           nodePositionsRef.current.set(nodeName, {
             ...currentPos,
             w: Math.max(100, w + (dx / zoomRef.current) * 2),
@@ -687,24 +941,32 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       if (needsLayout) {
         const colWidth = 200;
         const colSpacing = 120;
-        const rowSpacing = 90;
 
         const totalW = cols.length * colWidth + (cols.length - 1) * colSpacing;
         const startX = Math.max(80, (width - totalW) / 2);
 
         cols.forEach((col, c) => {
-          const totalH = col.nodes.length * rowSpacing;
+          // Calculate total height of this column based on node heights plus gaps
+          let totalH = 0;
+          col.nodes.forEach(node => {
+            const { h } = getNodeSize(node.serviceName, data?.nodes);
+            totalH += h + 40; // 40px gap
+          });
+          totalH -= 40; // remove last gap
+
           const startY = Math.max(100, (height - totalH) / 2);
           const colX = startX + c * (colWidth + colSpacing);
 
-          col.nodes.forEach((node, r) => {
+          let currentY = startY;
+          col.nodes.forEach((node) => {
+            const { h } = getNodeSize(node.serviceName, data?.nodes);
             if (!nodePositionsRef.current.has(node.serviceName)) {
-              const rowY = startY + r * rowSpacing;
               nodePositionsRef.current.set(node.serviceName, {
                 x: colX + colWidth / 2,
-                y: rowY + NODE_H / 2
+                y: currentY + h / 2
               });
             }
+            currentY += h + 40;
           });
         });
       }
@@ -720,8 +982,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         col.nodes.forEach(node => {
           const pos = positions.get(node.serviceName);
           if (pos) {
-            const w = pos.w || NODE_W;
-            const h = pos.h || NODE_H;
+            const { w, h } = getNodeSize(node.serviceName, data?.nodes, pos);
             minX = Math.min(minX, pos.x - w / 2);
             minY = Math.min(minY, pos.y - h / 2);
             maxX = Math.max(maxX, pos.x + w / 2);
@@ -807,15 +1068,23 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         return { x, y, angle };
       };
 
-      const getEdgeCurve = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+      const getEdgeCurve = (
+        fromName: string,
+        fromPos: { x: number; y: number; w?: number; h?: number },
+        toName: string,
+        toPos: { x: number; y: number; w?: number; h?: number }
+      ) => {
         let x1: number, y1: number, x2: number, y2: number;
         let cp1x: number, cp1y: number, cp2x: number, cp2y: number;
 
-        if (to.x > from.x) {
-          x1 = from.x + 75;
-          y1 = from.y;
-          x2 = to.x - 75;
-          y2 = to.y;
+        const fromSize = getNodeSize(fromName, data?.nodes, fromPos);
+        const toSize = getNodeSize(toName, data?.nodes, toPos);
+
+        if (toPos.x > fromPos.x) {
+          x1 = fromPos.x + fromSize.w / 2;
+          y1 = fromPos.y;
+          x2 = toPos.x - toSize.w / 2;
+          y2 = toPos.y;
 
           const dx = x2 - x1;
           cp1x = x1 + dx * 0.45;
@@ -823,10 +1092,10 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           cp2x = x2 - dx * 0.45;
           cp2y = y2;
         } else {
-          x1 = from.x;
-          y1 = from.y - 25;
-          x2 = to.x;
-          y2 = to.y - 25;
+          x1 = fromPos.x;
+          y1 = fromPos.y - fromSize.h / 2;
+          x2 = toPos.x;
+          y2 = toPos.y - toSize.h / 2;
 
           cp1x = x1 + 40;
           cp1y = y1 - 60;
@@ -849,7 +1118,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         const isError = edge.errorCount > 0;
         const isCritical = contributionPercent > 50 && edge.avgDurationMs > 50;
 
-        const { x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2 } = getEdgeCurve(from, to);
+        const { x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2 } = getEdgeCurve(edge.source, from, edge.target, to);
 
         // Highlight/dim logic
         const hs = highlightedServiceRef.current;
@@ -930,7 +1199,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         const shouldDim = hs !== null && !isSelf;
         ctx.globalAlpha = shouldDim ? 0.15 : 1.0;
 
-        const { x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2 } = getEdgeCurve(from, to);
+        const { x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2 } = getEdgeCurve(particle.source, from, particle.target, to);
         const pos = getBezierPoint(progress, x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2);
 
         // Glowing dot
@@ -1013,8 +1282,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         const shouldDim = hs !== null && !isSelf && !isConnected;
         ctx.globalAlpha = shouldDim ? 0.15 : 1.0;
 
-        const w = pos.w || NODE_W;
-        const h = pos.h || NODE_H;
+        const { w, h } = getNodeSize(node.serviceName, data?.nodes, pos);
         const rx = pos.x - w / 2;
         const ry = pos.y - h / 2;
 
@@ -1069,86 +1337,94 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.setLineDash([]); // Reset line dash
         ctx.restore();
 
-        // Draw Infrastructure Icons
         if (isInfra) {
-          const nameLower = node.serviceName.toLowerCase();
-          const isQueue = nameLower.includes('kafka') || nameLower.includes('rabbitmq') || nameLower.includes('queue');
+          const parsed = parseInfraName(node.serviceName);
+          const iconSize = 20;
+          const iconX = rx + 12;
+          const iconY = ry + 12;
 
-          if (isQueue) {
-            // Queue visual representation (3 horizontal slots)
-            const ix = rx + 12;
-            const iy = ry + (h - 16) / 2;
-            const iw = 16;
+          // Draw the custom icon at (iconX, iconY) with size (iconSize, iconSize)
+          drawInfraIcon(ctx, parsed.system, iconX, iconY, iconSize, isDark, iconImagesRef.current);
 
-            ctx.strokeStyle = isDark ? '#fbbf24' : '#d97706';
-            ctx.lineWidth = 1.5;
-            for (let i = 0; i < 3; i++) {
-              ctx.strokeRect(ix, iy + i * 6, iw, 4);
-            }
-          } else {
-            // Database cylinder icon
-            const ix = rx + 12;
-            const iy = ry + (h - 20) / 2;
-            const iw = 16;
-            const ih = 20;
+          // Draw System Name in bold uppercase
+          ctx.font = '800 11px Inter';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = isDark ? '#fbbf24' : '#d97706'; // Amber accent for infra system name
+          const systemName = parsed.system.toUpperCase();
+          ctx.fillText(systemName, rx + 38, iconY + iconSize / 2);
 
-            ctx.strokeStyle = isDark ? '#fbbf24' : '#d97706';
-            ctx.lineWidth = 1.5;
-
-            ctx.beginPath();
-            ctx.ellipse(ix + iw/2, iy + ih - 3, iw/2, 3, 0, 0, Math.PI);
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.ellipse(ix + iw/2, iy + ih/2, iw/2, 3, 0, 0, Math.PI);
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.ellipse(ix + iw/2, iy + 3, iw/2, 3, 0, 0, Math.PI * 2);
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.moveTo(ix, iy + 3);
-            ctx.lineTo(ix, iy + ih - 3);
-            ctx.moveTo(ix + iw, iy + 3);
-            ctx.lineTo(ix + iw, iy + ih - 3);
-            ctx.stroke();
+          // Prepare lines for body
+          const bodyLines: string[] = [];
+          if (parsed.host) {
+            bodyLines.push(parsed.host);
           }
-        }
+          if (parsed.detail) {
+            bodyLines.push(parsed.detail);
+          }
 
-        const textX = rx + (isInfra ? 36 : 12);
-        const centerY = ry + h / 2;
+          // Draw body lines (Host/Detail)
+          ctx.font = '500 10px JetBrains Mono';
+          ctx.fillStyle = isDark ? '#cbd5e1' : '#334155';
+          bodyLines.forEach((line, index) => {
+            const lineY = ry + 42 + index * 12;
+            let displayLine = line;
+            const maxChars = Math.floor((w - 24) / 6.5); // Estimate char width in mono
+            if (displayLine.length > maxChars) {
+              displayLine = displayLine.slice(0, maxChars - 2) + '…';
+            }
+            ctx.fillText(displayLine, rx + 12, lineY);
+          });
 
-        // Draw Service Name Text
-        ctx.font = '700 11px Inter';
-        ctx.textAlign = 'left';
-        ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
-        let displayName = node.serviceName;
-        const maxLen = isInfra ? Math.floor(w / 10) : Math.floor(w / 8.5);
-        if (displayName.length > maxLen) {
-          displayName = displayName.slice(0, Math.max(8, maxLen - 3)) + '...';
-        }
-        ctx.fillText(displayName, textX, centerY - 6);
+          // Draw Stats
+          ctx.font = '600 9px Inter';
+          let statsText = `${reqCount} reqs`;
+          if (errRate > 0) {
+            statsText += ` · ${errRate.toFixed(1)}% err`;
+          }
+          ctx.fillStyle = errRate > 5 ? '#f43f5e' : (isDark ? '#94a3b8' : '#64748b');
+          ctx.fillText(statsText, rx + 12, ry + h - 12);
 
-        // Draw Stats Text
-        ctx.font = '500 10px JetBrains Mono';
-        let statsText = `${reqCount} reqs`;
-        if (errRate > 0) {
-          statsText += ` · ${errRate.toFixed(1)}% err`;
-        }
+          // Status Dot (placed near the top right header)
+          ctx.beginPath();
+          ctx.arc(rx + w - 12, ry + 22, 4, 0, Math.PI * 2);
+          ctx.fillStyle = hasErrors ? '#f43f5e' : '#10b981';
+          ctx.fill();
+        } else {
+          // Standard/internet node
+          const textX = rx + 12;
+          const centerY = ry + h / 2;
 
-        ctx.fillStyle = errRate > 5 ? '#f43f5e' : (isDark ? '#94a3b8' : '#64748b');
-        ctx.fillText(statsText, textX, centerY + 8);
+          // Draw Service Name Text
+          ctx.font = '700 11px Inter';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
+          let displayName = node.serviceName;
+          const maxLen = Math.floor(w / 8.5);
+          if (displayName.length > maxLen) {
+            displayName = displayName.slice(0, Math.max(8, maxLen - 3)) + '...';
+          }
+          ctx.fillText(displayName, textX, centerY - 6);
 
-        // Draw Status Dot
-        ctx.beginPath();
-        ctx.arc(rx + w - 12, centerY, 4, 0, Math.PI * 2);
-        ctx.fillStyle = isInternet
-          ? '#38bdf8'
-          : isInfra
-            ? '#fbbf24'
+          // Draw Stats Text
+          ctx.font = '500 10px JetBrains Mono';
+          let statsText = `${reqCount} reqs`;
+          if (errRate > 0) {
+            statsText += ` · ${errRate.toFixed(1)}% err`;
+          }
+
+          ctx.fillStyle = errRate > 5 ? '#f43f5e' : (isDark ? '#94a3b8' : '#64748b');
+          ctx.fillText(statsText, textX, centerY + 8);
+
+          // Draw Status Dot
+          ctx.beginPath();
+          ctx.arc(rx + w - 12, centerY, 4, 0, Math.PI * 2);
+          ctx.fillStyle = isInternet
+            ? '#38bdf8'
             : hasErrors ? '#f43f5e' : '#10b981';
-        ctx.fill();
+          ctx.fill();
+        }
 
         // Draw Resize Handle for Infra nodes
         if (isInfra) {
@@ -1199,8 +1475,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         activeNodes.forEach(node => {
           const pos = positions.get(node.serviceName);
           if (pos) {
-            const w = pos.w || NODE_W;
-            const h = pos.h || NODE_H;
+            const { w, h } = getNodeSize(node.serviceName, data?.nodes, pos);
             minX = Math.min(minX, pos.x - w / 2);
             minY = Math.min(minY, pos.y - h / 2);
             maxX = Math.max(maxX, pos.x + w / 2);
@@ -1238,8 +1513,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           activeNodes.forEach(node => {
             const pos = positions.get(node.serviceName);
             if (pos) {
-              const w = pos.w || NODE_W;
-              const h = pos.h || NODE_H;
+              const { w, h } = getNodeSize(node.serviceName, data?.nodes, pos);
               const isInternet = node.serviceName === 'Internet';
               const isInfra = isInfraNode(node);
               
@@ -1333,11 +1607,12 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
     if (positions.size === 0) return;
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    positions.forEach(pos => {
-      minX = Math.min(minX, pos.x - NODE_W / 2);
-      minY = Math.min(minY, pos.y - NODE_H / 2);
-      maxX = Math.max(maxX, pos.x + NODE_W / 2);
-      maxY = Math.max(maxY, pos.y + NODE_H / 2);
+    positions.forEach((pos, name) => {
+      const { w, h } = getNodeSize(name, data?.nodes, pos);
+      minX = Math.min(minX, pos.x - w / 2);
+      minY = Math.min(minY, pos.y - h / 2);
+      maxX = Math.max(maxX, pos.x + w / 2);
+      maxY = Math.max(maxY, pos.y + h / 2);
     });
 
     const contentW = maxX - minX;
