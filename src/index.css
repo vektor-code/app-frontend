@@ -1260,3 +1260,9 @@ tbody td {
   background: var(--bg-hover);
 }
 
+/* Layout overrides when drawer is open to let backdrop cover the sidebar */
+body.drawer-open .app-main {
+  position: relative;
+  z-index: 150;
+}
+

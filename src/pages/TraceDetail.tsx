@@ -1131,6 +1131,17 @@ export default function TraceDetail() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (selectedSpan) {
+      document.body.classList.add('drawer-open');
+    } else {
+      document.body.classList.remove('drawer-open');
+    }
+    return () => {
+      document.body.classList.remove('drawer-open');
+    };
+  }, [selectedSpan]);
+
+  useEffect(() => {
     if (!traceId) return;
     setLoading(true);
     

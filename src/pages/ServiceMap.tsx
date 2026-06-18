@@ -512,6 +512,17 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   const mouseDownPosRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
+    if (selectedService) {
+      document.body.classList.add('drawer-open');
+    } else {
+      document.body.classList.remove('drawer-open');
+    }
+    return () => {
+      document.body.classList.remove('drawer-open');
+    };
+  }, [selectedService]);
+
+  useEffect(() => {
     if (!selectedService) {
       setServiceTraces([]);
       return;
