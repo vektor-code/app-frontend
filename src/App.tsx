@@ -9,6 +9,7 @@ import ServiceMap from './pages/ServiceMap';
 import DbAnalytics from './pages/DbAnalytics';
 import LiveStream from './pages/LiveStream';
 import Login from './pages/Login';
+import SystemMetrics from './pages/SystemMetrics';
 
 export default function App() {
   const [authChecking, setAuthChecking] = useState(true);
@@ -242,6 +243,7 @@ export default function App() {
             <Route path="/servicemap" element={<ServiceMap namespace={selectedNamespace} />} />
             <Route path="/database" element={<DbAnalytics namespace={selectedNamespace} />} />
             <Route path="/live" element={<LiveStream namespace={selectedNamespace} />} />
+            <Route path="/metrics" element={<SystemMetrics namespace={selectedNamespace} />} />
           </Routes>
         </main>
       </div>

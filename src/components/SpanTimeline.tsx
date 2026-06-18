@@ -169,6 +169,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration }: S
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'errors' | 'critical'>('all');
+  const [hideInternalDb, setHideInternalDb] = useState(false);
   const [activeTabs, setActiveTabs] = useState<Record<string, 'attrs' | 'infra' | 'events'>>({});
   const [attrSearch, setAttrSearch] = useState<Record<string, string>>({});
   const [stackTraceExpanded, setStackTraceExpanded] = useState<Set<string>>(new Set());
@@ -247,12 +248,22 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration }: S
     const isCritical = criticalPathSet.has(span.spanId);
     const kindInfo = KIND_LABELS[span.kind] || KIND_LABELS.INTERNAL;
     const color = svcColor(span.serviceName);
+    const attrs = span.attributes || {};
+
+    const isDbOrInternal = span.kind === 'INTERNAL' || kindInfo.label === 'INT' || kindInfo.label === 'CLI' || !!attrs['db.system'] || !!attrs['db.statement'];
+    if (hideInternalDb && isDbOrInternal) {
+      return (
+        <React.Fragment key={span.spanId}>
+          {children.map((child, idx) => renderSpan(child, depth, idx === children.length - 1))}
+        </React.Fragment>
+      );
+    }
 
     // Filters check
     const matchesSearch = 
       span.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       span.serviceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      Object.values(span.attributes || {}).some(v => String(v).toLowerCase().includes(searchTerm.toLowerCase()));
+      Object.values(attrs).some(v => String(v).toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesType = 
       filterType === 'all' || 
@@ -261,7 +272,6 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration }: S
 
     const isDimmed = !matchesSearch || !matchesType;
 
-    const attrs = span.attributes || {};
     const filepath = attrs['code.filepath'] || attrs['code.file'];
     const lineno = attrs['code.lineno'] || attrs['code.line'];
     const funcName = attrs['code.function'] || attrs['code.func'];
@@ -677,7 +687,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration }: S
             style={{ width: '100%', paddingLeft: '32px' }}
           />
         </div>
-        <div className="filter-tabs">
+        <div className="filter-tabs" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <button 
             className={`tab-btn ${filterType === 'all' ? 'active' : ''}`}
             onClick={() => setFilterType('all')}
@@ -696,6 +706,16 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration }: S
           >
             Critical Path ({criticalPathSet.size})
           </button>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: 'var(--text-secondary)', marginLeft: '12px', cursor: 'pointer', userSelect: 'none' }}>
+            <input 
+              type="checkbox" 
+              checked={hideInternalDb} 
+              onChange={(e) => setHideInternalDb(e.target.checked)}
+              style={{ accentColor: 'var(--accent-indigo)' }}
+            />
+            Hide DB & Internal Spans
+          </label>
         </div>
       </div>
 

@@ -10,6 +10,8 @@ interface Particle {
   id: string;
   source: string;
   target: string;
+  sourceNamespace?: string;
+  targetNamespace?: string;
   startTime: number;
   duration: number;
   isError: boolean;
@@ -42,17 +44,40 @@ const isInfraNode = (node: ServiceStats) => {
     name.includes('elasticsearch') ||
     name.includes('clickhouse') ||
     name.includes('vault') ||
-    name.includes('minio')
+    name.includes('minio') ||
+    name.includes('dns') ||
+    name.includes('config') ||
+    name.includes('liqui') ||
+    name.includes('liquid') ||
+    name.includes('nginx') ||
+    name.includes('kong')
   );
+};
+
+// Helper to get unique key for a node (Internet is global, others are namespace-scoped)
+const getNodeKey = (node: { serviceName: string; namespace?: string } | string, fallbackNs?: string): string => {
+  if (typeof node === 'string') {
+    if (node === 'Internet') return 'Internet';
+    return `${fallbackNs || 'default'}/${node}`;
+  }
+  if (node.serviceName === 'Internet') return 'Internet';
+  return `${node.namespace || fallbackNs || 'default'}/${node.serviceName}`;
 };
 
 // Helper to get node dimensions based on its type and custom resize settings
 const getNodeSize = (
-  nodeName: string,
+  nodeKey: string,
   nodesList?: ServiceStats[],
   posSize?: { w?: number; h?: number }
 ) => {
-  const node = nodesList?.find(n => n.serviceName === nodeName);
+  const parts = nodeKey.split('/');
+  const nodeName = parts.length > 1 ? parts[1] : nodeKey;
+  const nodeNs = parts.length > 1 ? parts[0] : '';
+
+  const node = nodesList?.find(n => 
+    n.serviceName === nodeName && 
+    (nodeName === 'Internet' || (n.namespace || 'default') === (nodeNs || 'default'))
+  );
   const isInfra = node ? isInfraNode(node) : false;
   const defaultW = isInfra ? 190 : NODE_W;
   const defaultH = isInfra ? 80 : NODE_H;
@@ -106,6 +131,9 @@ const drawInfraIcon = (
   else if (sys.includes('postgres')) matchedKey = 'postgres';
   else if (sys.includes('mysql')) matchedKey = 'mysql';
   else if (sys.includes('mongo')) matchedKey = 'mongodb';
+  else if (sys.includes('liqui') || sys.includes('liquid')) matchedKey = 'liquibase';
+  else if (sys.includes('nginx')) matchedKey = 'nginx';
+  else if (sys.includes('kong')) matchedKey = 'kong';
 
   const img = (iconImages && matchedKey) ? iconImages.get(matchedKey) : null;
   if (img && img.complete && img.naturalWidth !== 0) {
@@ -241,6 +269,102 @@ const drawInfraIcon = (
     ctx.lineTo(cx, y + 1);
     ctx.moveTo(x + size - 1, cy - r / 2);
     ctx.lineTo(cx, y + 1);
+    ctx.stroke();
+  } else if (sys.includes('config')) {
+    // Config: Gear/Cog icon
+    ctx.strokeStyle = isDark ? '#fbbf24' : '#d97706';
+    ctx.lineWidth = 1.5;
+    ctx.fillStyle = isDark ? '#d97706' : '#fef3c7';
+
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    const rOuter = size * 0.4;
+    const rInner = size * 0.18;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, rInner, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, rOuter * 0.7, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    for (let i = 0; i < 8; i++) {
+      ctx.rotate(Math.PI / 4);
+      ctx.fillRect(-2, -rOuter, 4, 3);
+      ctx.strokeRect(-2, -rOuter, 4, 3);
+    }
+    ctx.restore();
+  } else if (sys.includes('dns')) {
+    // DNS: Network globe
+    ctx.strokeStyle = isDark ? '#fbbf24' : '#d97706';
+    ctx.lineWidth = 1.5;
+
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    const r = size * 0.4;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r * 0.5, r, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(cx - r, cy);
+    ctx.lineTo(cx + r, cy);
+    ctx.stroke();
+  } else if (sys.includes('liqui') || sys.includes('liquid')) {
+    // Liquibase: Droplet
+    ctx.strokeStyle = isDark ? '#fbbf24' : '#d97706';
+    ctx.fillStyle = isDark ? 'rgba(217, 119, 6, 0.2)' : 'rgba(254, 243, 199, 0.6)';
+    ctx.lineWidth = 1.5;
+
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, y + 2);
+    ctx.bezierCurveTo(x + size - 2, cy + 2, x + size - 4, y + size - 2, cx, y + size - 2);
+    ctx.bezierCurveTo(x + 4, y + size - 2, x + 2, cy + 2, cx, y + 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (sys.includes('nginx')) {
+    // Nginx: Green diamond/rhombus
+    ctx.strokeStyle = '#009639';
+    ctx.fillStyle = isDark ? 'rgba(0, 150, 57, 0.2)' : 'rgba(230, 244, 234, 0.8)';
+    ctx.lineWidth = 2;
+
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, y + 1);
+    ctx.lineTo(x + size - 1, cy);
+    ctx.lineTo(cx, y + size - 1);
+    ctx.lineTo(x + 1, cy);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (sys.includes('kong')) {
+    // Kong: Orange/Royal Blue geometric crown/shield
+    ctx.strokeStyle = '#1155cc';
+    ctx.fillStyle = isDark ? 'rgba(17, 85, 204, 0.2)' : 'rgba(230, 240, 250, 0.8)';
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+    ctx.moveTo(x + 2, y + 4);
+    ctx.lineTo(x + size / 2, y + 1);
+    ctx.lineTo(x + size - 2, y + 4);
+    ctx.lineTo(x + size - 6, y + size - 2);
+    ctx.lineTo(x + 6, y + size - 2);
+    ctx.closePath();
+    ctx.fill();
     ctx.stroke();
   } else {
     // Default standard database cylinder
@@ -396,6 +520,9 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       postgres: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/postgresql/postgresql-original.svg',
       mysql: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mysql/mysql-original.svg',
       mongodb: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mongodb/mongodb-original.svg',
+      liquibase: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/liquibase/liquibase-original.svg',
+      nginx: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nginx/nginx-original.svg',
+      kong: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/kong.svg',
     };
 
     Object.entries(urls).forEach(([key, url]) => {
@@ -411,6 +538,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   // Refs for tracking real-time particles and cached span mappings
   const particlesRef = useRef<Particle[]>([]);
   const spanServiceCache = useRef<Map<string, string>>(new Map());
+  const spanNamespaceCache = useRef<Map<string, string>>(new Map());
   const spanNameCache = useRef<Map<string, string>>(new Map());
 
   // Clear positions to force re-layout when active namespace selection changes
@@ -487,13 +615,15 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
   // Handle incoming live spans from the WebSocket connection
   const onSpanReceived = useCallback((span: Span) => {
-    // 1. Cache the span ID to service name and operation name
+    // 1. Cache the span ID to service name, namespace and operation name
     spanServiceCache.current.set(span.spanId, span.serviceName);
+    spanNamespaceCache.current.set(span.spanId, span.namespace);
     spanNameCache.current.set(span.spanId, span.name);
     if (spanServiceCache.current.size > 1500) {
       const firstKey = spanServiceCache.current.keys().next().value;
       if (firstKey) {
         spanServiceCache.current.delete(firstKey);
+        spanNamespaceCache.current.delete(firstKey);
         spanNameCache.current.delete(firstKey);
       }
     }
@@ -534,6 +664,8 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           id: Math.random().toString(36).slice(2),
           source,
           target: infraName,
+          sourceNamespace: span.namespace,
+          targetNamespace: span.namespace,
           startTime: performance.now(),
           duration: 1000,
           isError: span.status === 'ERROR',
@@ -547,7 +679,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           return {
             ...prev,
             nodes: prev.nodes.map(node => {
-              if (node.serviceName === infraName) {
+              if (node.serviceName === infraName && (node.namespace || 'default') === (span.namespace || 'default')) {
                 const reqs = node.requestCount + 1;
                 const errs = node.errorCount + (span.status === 'ERROR' ? 1 : 0);
                 return {
@@ -568,21 +700,30 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
     // 2. Resolve the source (caller) of this trace span
     let source = '';
+    let sourceNamespace = '';
     if (!span.parentSpanId || span.parentSpanId === '0000000000000000' || span.parentSpanId === '0') {
       if (span.kind === 'SERVER') {
         source = 'Internet';
+        sourceNamespace = span.namespace;
       }
     } else {
       source = spanServiceCache.current.get(span.parentSpanId) || '';
+      sourceNamespace = spanNamespaceCache.current.get(span.parentSpanId) || '';
     }
 
     // Fallback heuristic for internal requests where parent span isn't in cache yet
     if (!source && span.kind === 'SERVER') {
       if (span.serviceName === 'gateway-backend') {
         source = 'Internet';
+        sourceNamespace = span.namespace;
       } else {
         source = 'gateway-backend';
+        sourceNamespace = span.namespace;
       }
+    }
+
+    if (!sourceNamespace) {
+      sourceNamespace = span.namespace;
     }
 
     const target = span.serviceName;
@@ -593,6 +734,8 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         id: Math.random().toString(36).slice(2),
         source,
         target,
+        sourceNamespace,
+        targetNamespace: span.namespace,
         startTime: performance.now(),
         duration: 1000,
         isError: span.status === 'ERROR',
@@ -607,7 +750,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       return {
         ...prev,
         nodes: prev.nodes.map(node => {
-          if (node.serviceName === target) {
+          if (node.serviceName === target && (node.namespace || 'default') === (span.namespace || 'default')) {
             const reqs = node.requestCount + 1;
             const errs = node.errorCount + (span.status === 'ERROR' ? 1 : 0);
             return {
@@ -618,7 +761,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
               p50Ms: (node.p50Ms * node.requestCount + span.durationMs) / reqs,
             };
           }
-          if (source === 'Internet' && node.serviceName === 'Internet') {
+          if (source === 'Internet' && node.serviceName === 'Internet' && (node.namespace || 'default') === (span.namespace || 'default')) {
             const reqs = node.requestCount + 1;
             const errs = node.errorCount + (span.status === 'ERROR' ? 1 : 0);
             return {
@@ -653,8 +796,12 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   }, [data, namespace, selectedNamespaces, activeNamespacesSet]);
 
   const activeNodes = (data?.nodes || []).filter(isNodeActive);
-  const activeNodeNames = new Set(activeNodes.map(n => n.serviceName));
-  const activeEdges = (data?.edges || []).filter(e => activeNodeNames.has(e.source) && activeNodeNames.has(e.target));
+  const activeNodeKeys = new Set(activeNodes.map(n => getNodeKey(n)));
+  const activeEdges = (data?.edges || []).filter(e => {
+    const sourceKey = getNodeKey({ serviceName: e.source, namespace: e.sourceNamespace || namespace });
+    const targetKey = getNodeKey({ serviceName: e.target, namespace: e.targetNamespace || namespace });
+    return activeNodeKeys.has(sourceKey) && activeNodeKeys.has(targetKey);
+  });
 
   // Setup WebSocket connection for live telemetry streaming
   useEffect(() => {
@@ -773,9 +920,10 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           return (n.namespace || 'default') === colName;
         });
         targetNodes.forEach(node => {
-          const currentPos = nodePositionsRef.current.get(node.serviceName);
+          const key = getNodeKey(node);
+          const currentPos = nodePositionsRef.current.get(key);
           if (currentPos) {
-            nodePositionsRef.current.set(node.serviceName, {
+            nodePositionsRef.current.set(key, {
               ...currentPos,
               x: currentPos.x + dx / zoomRef.current,
               y: currentPos.y + dy / zoomRef.current
@@ -827,13 +975,15 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       e.preventDefault();
       const pos = getCanvasPos(e);
       const world = screenToWorld(pos.x, pos.y);
-      const hitNode = hitTestNode(world.x, world.y);
+      const hitNodeKey = hitTestNode(world.x, world.y);
       
-      if (hitNode) {
+      if (hitNodeKey) {
+        const parts = hitNodeKey.split('/');
+        const serviceName = parts.length > 1 ? parts[1] : hitNodeKey;
         setContextMenu({
           x: e.clientX,
           y: e.clientY,
-          nodeName: hitNode
+          nodeName: serviceName
         });
       } else {
         setContextMenu(null);
@@ -937,7 +1087,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       });
 
       // Compute initial DAG layout coordinates on columns if they are not already cached
-      const needsLayout = activeNodes.some(n => !nodePositionsRef.current.has(n.serviceName));
+      const needsLayout = activeNodes.some(n => !nodePositionsRef.current.has(getNodeKey(n)));
       if (needsLayout) {
         const colWidth = 200;
         const colSpacing = 120;
@@ -949,7 +1099,8 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           // Calculate total height of this column based on node heights plus gaps
           let totalH = 0;
           col.nodes.forEach(node => {
-            const { h } = getNodeSize(node.serviceName, data?.nodes);
+            const key = getNodeKey(node);
+            const { h } = getNodeSize(key, data?.nodes);
             totalH += h + 40; // 40px gap
           });
           totalH -= 40; // remove last gap
@@ -959,9 +1110,10 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
           let currentY = startY;
           col.nodes.forEach((node) => {
-            const { h } = getNodeSize(node.serviceName, data?.nodes);
-            if (!nodePositionsRef.current.has(node.serviceName)) {
-              nodePositionsRef.current.set(node.serviceName, {
+            const key = getNodeKey(node);
+            const { h } = getNodeSize(key, data?.nodes);
+            if (!nodePositionsRef.current.has(key)) {
+              nodePositionsRef.current.set(key, {
                 x: colX + colWidth / 2,
                 y: currentY + h / 2
               });
@@ -980,9 +1132,10 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         let hasPositions = false;
         col.nodes.forEach(node => {
-          const pos = positions.get(node.serviceName);
+          const key = getNodeKey(node);
+          const pos = positions.get(key);
           if (pos) {
-            const { w, h } = getNodeSize(node.serviceName, data?.nodes, pos);
+            const { w, h } = getNodeSize(key, data?.nodes, pos);
             minX = Math.min(minX, pos.x - w / 2);
             minY = Math.min(minY, pos.y - h / 2);
             maxX = Math.max(maxX, pos.x + w / 2);
@@ -1047,8 +1200,9 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       // Compute total outgoing call duration per node for contribution percentage
       const outgoingTotalDuration = new Map<string, number>();
       activeEdges.forEach(e => {
-        const current = outgoingTotalDuration.get(e.source) || 0;
-        outgoingTotalDuration.set(e.source, current + e.avgDurationMs);
+        const sourceKey = getNodeKey({ serviceName: e.source, namespace: e.sourceNamespace || namespace });
+        const current = outgoingTotalDuration.get(sourceKey) || 0;
+        outgoingTotalDuration.set(sourceKey, current + e.avgDurationMs);
       });
 
       const getBezierPoint = (t: number, x1: number, y1: number, cp1x: number, cp1y: number, cp2x: number, cp2y: number, x2: number, y2: number) => {
@@ -1108,17 +1262,19 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
       // --- Draw Ambient Edges ---
       activeEdges.forEach(edge => {
-        const from = positions.get(edge.source);
-        const to = positions.get(edge.target);
+        const sourceKey = getNodeKey({ serviceName: edge.source, namespace: edge.sourceNamespace || namespace });
+        const targetKey = getNodeKey({ serviceName: edge.target, namespace: edge.targetNamespace || namespace });
+        const from = positions.get(sourceKey);
+        const to = positions.get(targetKey);
         if (!from || !to) return;
 
-        const totalDuration = outgoingTotalDuration.get(edge.source) || 0;
+        const totalDuration = outgoingTotalDuration.get(sourceKey) || 0;
         const contributionPercent = totalDuration > 0 ? (edge.avgDurationMs / totalDuration) * 100 : 0;
 
         const isError = edge.errorCount > 0;
         const isCritical = contributionPercent > 50 && edge.avgDurationMs > 50;
 
-        const { x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2 } = getEdgeCurve(edge.source, from, edge.target, to);
+        const { x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2 } = getEdgeCurve(sourceKey, from, targetKey, to);
 
         // Highlight/dim logic
         const hs = highlightedServiceRef.current;
@@ -1183,12 +1339,14 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       // --- Draw Active Real-Time Particles (Actual Request Flows) ---
       const now = performance.now();
       particlesRef.current = particlesRef.current.filter(particle => {
-        const from = positions.get(particle.source);
-        const to = positions.get(particle.target);
+        const sourceKey = getNodeKey({ serviceName: particle.source, namespace: particle.sourceNamespace || namespace });
+        const targetKey = getNodeKey({ serviceName: particle.target, namespace: particle.targetNamespace || namespace });
+        const from = positions.get(sourceKey);
+        const to = positions.get(targetKey);
         if (!from || !to) return false;
 
         // Ignore particles targeting nodes that are currently toggled off
-        if (!activeNodeNames.has(particle.source) || !activeNodeNames.has(particle.target)) return false;
+        if (!activeNodeKeys.has(sourceKey) || !activeNodeKeys.has(targetKey)) return false;
 
         const progress = (now - particle.startTime) / particle.duration;
         if (progress >= 1) return false;
@@ -1199,7 +1357,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         const shouldDim = hs !== null && !isSelf;
         ctx.globalAlpha = shouldDim ? 0.15 : 1.0;
 
-        const { x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2 } = getEdgeCurve(particle.source, from, particle.target, to);
+        const { x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2 } = getEdgeCurve(sourceKey, from, targetKey, to);
         const pos = getBezierPoint(progress, x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2);
 
         // Glowing dot

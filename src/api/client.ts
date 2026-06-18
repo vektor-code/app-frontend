@@ -78,7 +78,15 @@ export interface NamespaceStats {
 export interface ServiceMapData {
   namespace: string;
   nodes: ServiceStats[];
-  edges: { source: string; target: string; callCount: number; errorCount: number; avgDurationMs: number }[];
+  edges: {
+    source: string;
+    target: string;
+    sourceNamespace?: string;
+    targetNamespace?: string;
+    callCount: number;
+    errorCount: number;
+    avgDurationMs: number;
+  }[];
 }
 
 class ApiClient {
@@ -154,6 +162,10 @@ class ApiClient {
     const qs = namespace ? `?namespace=${namespace}` : '';
     return this.get<ServiceMapData>(`/servicemap${qs}`);
   }
+  getPods(namespace?: string) {
+    const qs = namespace ? `?namespace=${namespace}` : '';
+    return this.get<{ pods: PodMetricInfo[]; count: number }>(`/pods${qs}`);
+  }
 }
 
 export interface DiagnosticReport {
@@ -181,6 +193,19 @@ export interface DatabaseQueryMetric {
   avgDurationMs: number;
   maxDurationMs: number;
   recentErrors?: string[];
+}
+
+export interface PodMetricInfo {
+  name: string;
+  namespace: string;
+  nodeName: string;
+  labels: Record<string, string>;
+  phase: string;
+  cpuUsage: number;
+  cpuLimit: number;
+  memoryUsage: number;
+  memoryLimit: number;
+  restartCount: number;
 }
 
 export const api = new ApiClient();
