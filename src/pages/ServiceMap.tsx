@@ -638,59 +638,85 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
   }, [selectedNamespaces, namespace]);
 
   useEffect(() => {
-    api.getServiceMap(namespace).then(res => {
-      setData(res);
-      const nsList = res && res.nodes
-        ? Array.from(new Set(res.nodes.map(n => n.namespace).filter(ns => ns && ns !== 'Internet')))
-        : [];
+    let active = true;
 
-      // Retrieve persisted namespaces or fallback to all
-      let loadedNamespaces: string[] = [];
-      let hasSaved = false;
-      const saved = localStorage.getItem(`service_map_namespaces_${namespace || 'all'}`);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) {
-            loadedNamespaces = parsed;
-            hasSaved = true;
-          }
-        } catch {}
-      }
+    const loadMap = () => {
+      api.getServiceMap(namespace).then(res => {
+        if (!active) return;
+        setData(res);
+        const nsList = res && res.nodes
+          ? Array.from(new Set(res.nodes.map(n => n.namespace).filter(ns => ns && ns !== 'Internet')))
+          : [];
 
-      if (!hasSaved) {
-        if (namespace) {
-          loadedNamespaces = [namespace];
-        } else {
-          loadedNamespaces = nsList;
+        // Retrieve persisted namespaces or fallback to all
+        let loadedNamespaces: string[] = [];
+        let hasSaved = false;
+        const saved = localStorage.getItem(`service_map_namespaces_${namespace || 'all'}`);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+              loadedNamespaces = parsed;
+              hasSaved = true;
+            }
+          } catch {}
         }
-      }
 
-      const allVisible = Array.from(new Set([...nsList, ...loadedNamespaces]));
-      setVisibleNamespaces(allVisible);
-      setSelectedNamespaces(loadedNamespaces);
-    }).catch(() => {
-      // Fallback in case of error: initialize namespaces from localStorage
-      let loadedNamespaces: string[] = [];
-      let hasSaved = false;
-      const saved = localStorage.getItem(`service_map_namespaces_${namespace || 'all'}`);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) {
-            loadedNamespaces = parsed;
-            hasSaved = true;
+        if (!hasSaved) {
+          if (namespace) {
+            loadedNamespaces = [namespace];
+          } else {
+            loadedNamespaces = nsList;
           }
-        } catch {}
-      }
+        }
 
-      if (!hasSaved && namespace) {
-        loadedNamespaces = [namespace];
-      }
+        setVisibleNamespaces(prev => {
+          const union = Array.from(new Set([...prev, ...nsList, ...loadedNamespaces]));
+          return union;
+        });
 
-      setVisibleNamespaces(loadedNamespaces);
-      setSelectedNamespaces(loadedNamespaces);
-    });
+        setSelectedNamespaces(prev => {
+          if (prev.length > 0) return prev;
+          return loadedNamespaces;
+        });
+      }).catch(() => {
+        if (!active) return;
+        // Fallback in case of error: initialize namespaces from localStorage
+        let loadedNamespaces: string[] = [];
+        let hasSaved = false;
+        const saved = localStorage.getItem(`service_map_namespaces_${namespace || 'all'}`);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+              loadedNamespaces = parsed;
+              hasSaved = true;
+            }
+          } catch {}
+        }
+
+        if (!hasSaved && namespace) {
+          loadedNamespaces = [namespace];
+        }
+
+        setVisibleNamespaces(prev => {
+          if (prev.length > 0) return prev;
+          return loadedNamespaces;
+        });
+        setSelectedNamespaces(prev => {
+          if (prev.length > 0) return prev;
+          return loadedNamespaces;
+        });
+      });
+    };
+
+    loadMap();
+    const interval = setInterval(loadMap, 10000); // reload map data every 10 seconds
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [namespace]);
 
   // Convert screen coordinates to world coordinates
