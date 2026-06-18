@@ -11,9 +11,22 @@ interface SidebarProps {
 export default function Sidebar({ namespaces, selectedNamespace, onNamespaceChange }: SidebarProps) {
   return (
     <aside className="app-sidebar">
-      <div className="sidebar-logo">
-        <span className="sidebar-logo-text" style={{ color: 'var(--text-primary)', fontSize: '20px', fontWeight: '700', letterSpacing: '-0.02em' }}>
-          Trace
+      <div className="sidebar-logo" style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border-primary)' }}>
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="url(#vektor-grad)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '8px', flexShrink: 0 }}>
+          <defs>
+            <linearGradient id="vektor-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#38bdf8" />
+              <stop offset="100%" stopColor="#818cf8" />
+            </linearGradient>
+          </defs>
+          {/* Cyber raptor outline */}
+          <path d="M3 18l5-3.5 1-4.5 4-2.5 3-4.5 3.5 4.5h4L17 13l2.5 5.5-6.5-2.5-4 3-6-1z" />
+          <path d="M12 7.5l2 2.5 4-1" />
+          <path d="M8 14.5l3.5-1 4.5 2" />
+          <circle cx="15" cy="7.5" r="1.2" fill="#38bdf8" />
+        </svg>
+        <span className="sidebar-logo-text" style={{ color: 'var(--text-primary)', fontSize: '18px', fontWeight: '800', letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+          Vektor
         </span>
       </div>
 
