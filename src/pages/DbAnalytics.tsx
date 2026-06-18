@@ -15,6 +15,41 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
   const [systems, setSystems] = useState<string[]>([]);
   const [expandedQuery, setExpandedQuery] = useState<string | null>(null);
 
+  // Column width state for resizable columns
+  const [colWidths, setColWidths] = useState({
+    system: 90,
+    query: 300,
+    service: 140,
+    calls: 70,
+    avgLatency: 95,
+    slowdown: 110,
+    maxLatency: 95,
+    errorRate: 85,
+  });
+
+  const startResize = (e: React.MouseEvent, col: keyof typeof colWidths) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = colWidths[col];
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const newWidth = Math.max(50, startWidth + (moveEvent.clientX - startX));
+      setColWidths(prev => ({
+        ...prev,
+        [col]: newWidth
+      }));
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   const loadMetrics = useCallback(async () => {
     try {
       setLoading(true);
@@ -171,14 +206,38 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           <table className="db-table" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
             <thead>
               <tr>
-                <th style={{ width: '80px' }}>System</th>
-                <th>Query / Operation</th>
-                <th style={{ width: '120px' }}>Service</th>
-                <th style={{ width: '70px', textAlign: 'right' }}>Calls</th>
-                <th style={{ width: '90px', textAlign: 'right' }}>Avg Latency</th>
-                <th style={{ width: '120px' }}>Slowdown</th>
-                <th style={{ width: '90px', textAlign: 'right' }}>Max Latency</th>
-                <th style={{ width: '80px', textAlign: 'right' }}>Error Rate</th>
+                <th style={{ width: colWidths.system, position: 'relative' }}>
+                  System
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'system')} />
+                </th>
+                <th style={{ width: colWidths.query, position: 'relative' }}>
+                  Query / Operation
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'query')} />
+                </th>
+                <th style={{ width: colWidths.service, position: 'relative' }}>
+                  Service
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'service')} />
+                </th>
+                <th style={{ width: colWidths.calls, textAlign: 'right', position: 'relative' }}>
+                  Calls
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'calls')} />
+                </th>
+                <th style={{ width: colWidths.avgLatency, textAlign: 'right', position: 'relative' }}>
+                  Avg Latency
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'avgLatency')} />
+                </th>
+                <th style={{ width: colWidths.slowdown, position: 'relative' }}>
+                  Slowdown
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'slowdown')} />
+                </th>
+                <th style={{ width: colWidths.maxLatency, textAlign: 'right', position: 'relative' }}>
+                  Max Latency
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'maxLatency')} />
+                </th>
+                <th style={{ width: colWidths.errorRate, textAlign: 'right', position: 'relative' }}>
+                  Error Rate
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'errorRate')} />
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -194,22 +253,22 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                       style={{ cursor: 'pointer', transition: 'background 0.2s' }}
                       className="hover-row"
                     >
-                      <td data-label="System">
+                      <td data-label="System" style={{ width: colWidths.system, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <span className={`badge ${getSystemBadgeClass(m.system)}`} style={{ fontSize: '10px', fontWeight: 'bold' }}>
                           {m.system.toUpperCase()}
                         </span>
                       </td>
-                      <td data-label="Query" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <td data-label="Query" style={{ width: colWidths.query, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <code style={{ fontSize: '12px', color: 'var(--text-primary)' }}>{m.query}</code>
                       </td>
-                      <td data-label="Service">
+                      <td data-label="Service" style={{ width: colWidths.service, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <span className="badge badge-ns">{m.service}</span>
                       </td>
-                      <td data-label="Calls" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{m.callCount}</td>
-                      <td data-label="Avg Latency" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: '600', color: m.avgDurationMs > 200 ? 'var(--accent-amber)' : 'var(--text-primary)' }}>
+                      <td data-label="Calls" style={{ width: colWidths.calls, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{m.callCount}</td>
+                      <td data-label="Avg Latency" style={{ width: colWidths.avgLatency, textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: '600', color: m.avgDurationMs > 200 ? 'var(--accent-amber)' : 'var(--text-primary)' }}>
                         {formatDuration(m.avgDurationMs)}
                       </td>
-                      <td data-label="Slowdown" style={{ verticalAlign: 'middle' }}>
+                      <td data-label="Slowdown" style={{ width: colWidths.slowdown, verticalAlign: 'middle' }}>
                         <div style={{ width: '100%', background: 'var(--bg-tertiary)', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
                           <div 
                             style={{ 
@@ -222,10 +281,10 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                           />
                         </div>
                       </td>
-                      <td data-label="Max Latency" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                      <td data-label="Max Latency" style={{ width: colWidths.maxLatency, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
                         {formatDuration(m.maxDurationMs)}
                       </td>
-                      <td data-label="Error Rate" style={{ textAlign: 'right' }}>
+                      <td data-label="Error Rate" style={{ width: colWidths.errorRate, textAlign: 'right' }}>
                         {m.errorCount > 0 ? (
                           <span className="badge badge-error" style={{ fontSize: '11px' }}>{m.errorRate.toFixed(1)}%</span>
                         ) : (
@@ -480,6 +539,22 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
         /* Smooth error card hover */
         .db-recent-errors > div > div:hover {
           background: rgba(229, 62, 62, 0.1) !important;
+        }
+
+        /* Resizable Column Handles */
+        .resize-handle {
+          position: absolute;
+          right: 0;
+          top: 0;
+          bottom: 0;
+          width: 6px;
+          cursor: col-resize;
+          user-select: none;
+          z-index: 10;
+          transition: background 0.15s;
+        }
+        .resize-handle:hover {
+          background: rgba(99, 102, 241, 0.45) !important;
         }
       `}</style>
     </div>

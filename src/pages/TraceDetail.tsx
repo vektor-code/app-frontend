@@ -362,31 +362,9 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
 
-        // Choose database/gateway icon prefix
-        let icon = '';
-        if (item.span.attributes) {
-          const dbSys = item.span.attributes['db.system'];
-          const httpMethod = item.span.attributes['http.method'];
-          const msgSys = item.span.attributes['messaging.system'];
-          
-          if (dbSys) {
-            if (dbSys === 'redis') icon = '🔴 ';
-            else if (dbSys === 'postgresql') icon = '🐘 ';
-            else if (dbSys === 'mysql') icon = '🐬 ';
-            else icon = '🗄️ ';
-          } else if (httpMethod) {
-            icon = '🌐 ';
-          } else if (msgSys) {
-            if (msgSys === 'kafka') icon = '📨 ';
-            else icon = '🐇 ';
-          } else if (item.span.name.toLowerCase().includes('dns')) {
-            icon = '🔍 ';
-          }
-        }
-
-        const labelText = `${icon}${item.span.serviceName} - ${item.span.name}`;
+        const labelText = `${item.span.serviceName} - ${item.span.name}`;
         const fitsLabel = ctx.measureText(labelText).width < rw - 12;
-        const dispText = fitsLabel ? labelText : `${icon}${item.span.name}`;
+        const dispText = fitsLabel ? labelText : item.span.name;
         
         ctx.fillText(dispText, rx + 6, ry + barHeight / 2);
         ctx.restore();
