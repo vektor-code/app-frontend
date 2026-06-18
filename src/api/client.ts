@@ -237,3 +237,19 @@ export function connectLiveStream(
 
   return () => ws.close();
 }
+
+export function isSpanError(span: any): boolean {
+  if (!span) return false;
+  return (
+    span.status === 'ERROR' ||
+    span.statusCode === 'ERROR' ||
+    span.statusCode === 2 ||
+    span.statusCode === '2' ||
+    !!span.error ||
+    span.attributes?.['error'] === 'true' ||
+    span.attributes?.['error'] === true ||
+    span.attributes?.['failed'] === 'true' ||
+    span.attributes?.['failed'] === true ||
+    (span.events && span.events.some((e: any) => e.name === 'exception'))
+  );
+}

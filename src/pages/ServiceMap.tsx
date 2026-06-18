@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, type ServiceMapData, type ServiceStats, type Span, connectLiveStream } from '../api/client';
+import { api, type ServiceMapData, type ServiceStats, type Span, connectLiveStream, isSpanError } from '../api/client';
 
 interface ServiceMapProps {
   namespace: string;
@@ -758,7 +758,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           targetNamespace: span.namespace,
           startTime: performance.now(),
           duration: 1000,
-          isError: span.status === 'ERROR',
+          isError: isSpanError(span),
           operationName: span.name || 'query',
           traceIdShort: span.traceId ? span.traceId.slice(0, 8) : '',
         });
@@ -771,7 +771,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             nodes: prev.nodes.map(node => {
               if (node.serviceName === infraName && (node.namespace || 'default') === (span.namespace || 'default')) {
                 const reqs = node.requestCount + 1;
-                const errs = node.errorCount + (span.status === 'ERROR' ? 1 : 0);
+                const errs = node.errorCount + (isSpanError(span) ? 1 : 0);
                 return {
                   ...node,
                   requestCount: reqs,
@@ -828,7 +828,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         targetNamespace: span.namespace,
         startTime: performance.now(),
         duration: 1000,
-        isError: span.status === 'ERROR',
+        isError: isSpanError(span),
         operationName: span.name || 'unknown',
         traceIdShort: span.traceId ? span.traceId.slice(0, 8) : '',
       });
@@ -842,7 +842,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         nodes: prev.nodes.map(node => {
           if (node.serviceName === target && (node.namespace || 'default') === (span.namespace || 'default')) {
             const reqs = node.requestCount + 1;
-            const errs = node.errorCount + (span.status === 'ERROR' ? 1 : 0);
+            const errs = node.errorCount + (isSpanError(span) ? 1 : 0);
             return {
               ...node,
               requestCount: reqs,
@@ -853,7 +853,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           }
           if (source === 'Internet' && node.serviceName === 'Internet' && (node.namespace || 'default') === (span.namespace || 'default')) {
             const reqs = node.requestCount + 1;
-            const errs = node.errorCount + (span.status === 'ERROR' ? 1 : 0);
+            const errs = node.errorCount + (isSpanError(span) ? 1 : 0);
             return {
               ...node,
               requestCount: reqs,

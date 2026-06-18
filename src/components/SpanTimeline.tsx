@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import type { Span } from '../api/client';
+import { type Span, isSpanError } from '../api/client';
 
 interface SpanTimelineProps {
   spans: Span[];
@@ -29,6 +29,8 @@ const KIND_LABELS: Record<string, { label: string; color: string }> = {
   CONSUMER: { label: 'SUB', color: '#f97316' },
   INTERNAL: { label: 'INT', color: '#64748b' },
 };
+
+
 
 // Heuristic to calculate the critical path (longest sequential delay path)
 function calculateCriticalPath(spans: Span[]): Set<string> {
@@ -150,7 +152,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
     const widthPercent = traceDuration > 0 ? (span.durationMs / traceDuration) * 100 : 100;
     const children = getChildren(span.spanId);
     const isCollapsed = collapsed.has(span.spanId);
-    const isError = span.status === 'ERROR';
+    const isError = isSpanError(span);
     const isCritical = criticalPathSet.has(span.spanId);
     const kindInfo = KIND_LABELS[span.kind] || KIND_LABELS.INTERNAL;
     const color = svcColor(span.serviceName);
@@ -441,7 +443,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
             onClick={() => setFilterType('errors')}
             style={{ padding: '4px 8px', fontSize: '11px' }}
           >
-            Errors ({spans.filter(s => s.status === 'ERROR').length})
+            Errors ({spans.filter(isSpanError).length})
           </button>
           <button 
             className={`tab-btn critical-path ${filterType === 'critical' ? 'active' : ''}`}

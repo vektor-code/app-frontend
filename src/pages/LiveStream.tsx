@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { connectLiveStream, type Span } from '../api/client';
+import { connectLiveStream, type Span, isSpanError } from '../api/client';
 
 interface LiveStreamProps {
   namespace: string;
@@ -106,8 +106,8 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
 
         {spans.map(span => (
           <div key={span._id} className="live-span-item">
-            <span className={`badge ${span.status === 'ERROR' ? 'badge-error' : 'badge-ok'}`} style={{ minWidth: '52px', justifyContent: 'center' }}>
-              {span.status === 'ERROR' ? 'ERR' : 'OK'}
+            <span className={`badge ${isSpanError(span) ? 'badge-error' : 'badge-ok'}`} style={{ minWidth: '52px', justifyContent: 'center' }}>
+              {isSpanError(span) ? 'ERR' : 'OK'}
             </span>
             <span className="live-span-svc">{span.serviceName}</span>
             <span className="live-span-name" title={span.name}>{span.name}</span>

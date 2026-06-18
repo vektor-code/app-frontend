@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, type Trace, type Span, type DiagnosticReport } from '../api/client';
+import { api, type Trace, type Span, type DiagnosticReport, isSpanError } from '../api/client';
 import SpanTimeline from '../components/SpanTimeline';
 
 const SERVICE_COLORS: Record<string, string> = {};
@@ -272,7 +272,7 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
       }
 
       const isHovered = hoveredSpan?.span.spanId === item.span.spanId;
-      const hasError = item.span.status === 'ERROR';
+      const hasError = isSpanError(item.span);
 
       // Search matching logic
       let matches = true;
@@ -743,9 +743,9 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '4px', paddingTop: '4px', color: '#cbd5e1', fontFamily: 'var(--font-mono)' }}>
             Duration: {formatDuration(hoveredSpan.span.durationMs)} ({(hoveredSpan.span.durationMs / traceDuration * 100).toFixed(1)}%)
           </div>
-          {hoveredSpan.span.status === 'ERROR' && (
+          {isSpanError(hoveredSpan.span) && (
             <div style={{ color: '#f43f5e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-              ⚠️ Execution Failed
+              Execution Failed
             </div>
           )}
         </div>
@@ -762,7 +762,7 @@ interface SpanDrawerContentProps {
 
 function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'attributes' | 'json' | 'error'>(
-    span.status === 'ERROR' ? 'error' : 'overview'
+    isSpanError(span) ? 'error' : 'overview'
   );
   const [filterQuery, setFilterQuery] = useState('');
 
@@ -774,7 +774,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
     }
   }, [span.startTime]);
 
-  const hasError = span.status === 'ERROR';
+  const hasError = isSpanError(span);
   const hasEvents = span.events && span.events.length > 0;
 
   // JSON syntax highlighting helper
@@ -815,19 +815,49 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
   // Extract stack trace and error message
   const errorMsg = useMemo(() => {
     if (span.error) return span.error;
+    
+    // Check main attributes
     const attrs = span.attributes || {};
-    return (
+    const directMsg = (
       attrs['error.message'] ||
       attrs['error.msg'] ||
       attrs['exception.message'] ||
       attrs['status.message'] ||
-      'Unknown operation failure.'
+      attrs['message'] ||
+      attrs['errorMessage'] ||
+      attrs['error_message'] ||
+      attrs['err'] ||
+      attrs['msg']
     );
+    if (directMsg) return String(directMsg);
+
+    // Check events for exceptions
+    if (span.events) {
+      const excEvent = span.events.find(e => e.name === 'exception' || e.name === 'error');
+      if (excEvent && excEvent.attributes) {
+        const evMsg = excEvent.attributes['exception.message'] || excEvent.attributes['error.message'] || excEvent.attributes['message'];
+        if (evMsg) return String(evMsg);
+      }
+    }
+
+    return 'Unknown operation failure.';
   }, [span]);
 
   const stackTrace = useMemo(() => {
     const attrs = span.attributes || {};
-    return attrs['exception.stacktrace'] || attrs['error.stack'] || null;
+    const directStack = attrs['exception.stacktrace'] || attrs['error.stack'] || attrs['stacktrace'] || attrs['stack'] || attrs['error.stacktrace'];
+    if (directStack) return String(directStack);
+
+    // Check events for exceptions
+    if (span.events) {
+      const excEvent = span.events.find(e => e.name === 'exception' || e.name === 'error');
+      if (excEvent && excEvent.attributes) {
+        const evStack = excEvent.attributes['exception.stacktrace'] || excEvent.attributes['error.stack'] || excEvent.attributes['stacktrace'];
+        if (evStack) return String(evStack);
+      }
+    }
+
+    return null;
   }, [span]);
 
   // Filtered attributes
@@ -906,7 +936,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
             onClick={() => setActiveTab('error')}
             style={{ color: 'var(--accent-rose, #f43f5e)', borderBottomColor: activeTab === 'error' ? 'var(--accent-rose)' : 'transparent' }}
           >
-            ⚠️ Failure Details
+            Failure Details
           </button>
         )}
         <button 
@@ -934,8 +964,8 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
               <div style={{ background: 'var(--bg-tertiary)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-primary)' }}>
                 <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Status</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                  <span className={`badge ${span.status === 'ERROR' ? 'badge-error' : 'badge-ok'}`} style={{ fontSize: '11px', padding: '2px 8px' }}>
-                    {span.status}
+                  <span className={`badge ${isSpanError(span) ? 'badge-error' : 'badge-ok'}`} style={{ fontSize: '11px', padding: '2px 8px' }}>
+                    {isSpanError(span) ? 'ERROR' : 'OK'}
                   </span>
                 </div>
               </div>
@@ -960,7 +990,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                       <td className="attr-val">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontSize: '11px', wordBreak: 'break-all' }}>{span.podName}</span>
-                          <button className="copy-btn-cell" onClick={() => copyToClipboard(span.podName!)}>📋</button>
+                          <button className="copy-btn-cell" onClick={() => copyToClipboard(span.podName!)} style={{ fontSize: '10px', padding: '2px 6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'var(--font-sans)', display: 'inline-flex', alignItems: 'center' }}>Copy</button>
                         </div>
                       </td>
                     </tr>
@@ -976,7 +1006,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                     <td className="attr-val">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'var(--font-mono)' }}>
                         <span style={{ fontSize: '11px' }}>{span.spanId}</span>
-                        <button className="copy-btn-cell" onClick={() => copyToClipboard(span.spanId)}>📋</button>
+                        <button className="copy-btn-cell" onClick={() => copyToClipboard(span.spanId)} style={{ fontSize: '10px', padding: '2px 6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'var(--font-sans)', display: 'inline-flex', alignItems: 'center' }}>Copy</button>
                       </div>
                     </td>
                   </tr>
@@ -986,7 +1016,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                       <td className="attr-val">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'var(--font-mono)' }}>
                           <span style={{ fontSize: '11px' }}>{span.parentSpanId}</span>
-                          <button className="copy-btn-cell" onClick={() => copyToClipboard(span.parentSpanId!)}>📋</button>
+                          <button className="copy-btn-cell" onClick={() => copyToClipboard(span.parentSpanId!)} style={{ fontSize: '10px', padding: '2px 6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'var(--font-sans)', display: 'inline-flex', alignItems: 'center' }}>Copy</button>
                         </div>
                       </td>
                     </tr>
@@ -1058,11 +1088,11 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                           <span style={{ wordBreak: 'break-all' }}>{String(v)}</span>
                           <button 
                             className="copy-btn-cell" 
-                            style={{ flexShrink: 0 }}
+                            style={{ flexShrink: 0, fontSize: '10px', padding: '2px 6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'var(--font-sans)' }}
                             onClick={() => copyToClipboard(String(v))}
                             title="Copy Value"
                           >
-                            📋
+                            Copy
                           </button>
                         </div>
                       </td>
@@ -1079,7 +1109,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div style={{ background: 'rgba(244, 63, 94, 0.08)', border: '1px solid rgba(244, 63, 94, 0.3)', padding: '12px 14px', borderRadius: '8px', borderLeft: '4px solid var(--accent-rose)' }}>
               <div style={{ color: 'var(--accent-rose)', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                ⚠️ Error Summary
+                Error Summary
               </div>
               <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', wordBreak: 'break-all' }}>{errorMsg}</div>
             </div>
