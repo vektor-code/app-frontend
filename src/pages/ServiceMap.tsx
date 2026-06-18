@@ -504,6 +504,37 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   const [highlightedService, setHighlightedService] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  // Click/Selection details drawer state
+  const [selectedService, setSelectedService] = useState<string | null>(null);
+  const [serviceTraces, setServiceTraces] = useState<any[]>([]);
+  const [loadingTraces, setLoadingTraces] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<'traces' | 'metrics'>('traces');
+  const mouseDownPosRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (!selectedService) {
+      setServiceTraces([]);
+      return;
+    }
+    setLoadingTraces(true);
+    
+    const params: Record<string, string> = { limit: '15' };
+    if (namespace) params.namespace = namespace;
+    if (selectedService) params.service = selectedService;
+
+    api.getTraces(params)
+      .then((res) => {
+        setServiceTraces(res?.traces || []);
+      })
+      .catch((err) => {
+        console.error('Error fetching traces for service', selectedService, err);
+        setServiceTraces([]);
+      })
+      .finally(() => {
+        setLoadingTraces(false);
+      });
+  }, [selectedService, namespace]);
+
   // Refs for interaction tracking
   const isPanningRef = useRef(false);
   const isDraggingNodeRef = useRef<string | null>(null);
@@ -887,6 +918,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
     const handleMouseDown = (e: MouseEvent) => {
       if (e.button === 2) return; // Right-click context menu handles this
       
+      mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
       const pos = getCanvasPos(e);
       const world = screenToWorld(pos.x, pos.y);
       
@@ -1010,13 +1042,29 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
+      const dx = Math.abs(e.clientX - mouseDownPosRef.current.x);
+      const dy = Math.abs(e.clientY - mouseDownPosRef.current.y);
+      const isClick = dx < 4 && dy < 4;
+
+      if (isClick) {
+        const pos = getCanvasPos(e);
+        const world = screenToWorld(pos.x, pos.y);
+        const hitNodeKey = hitTestNode(world.x, world.y);
+        if (hitNodeKey) {
+          const parts = hitNodeKey.split('/');
+          const serviceName = parts.length > 1 ? parts[1] : hitNodeKey;
+          setSelectedService(serviceName);
+          setDrawerTab('traces');
+        }
+      }
+
       if (isDraggingNodeRef.current || isDraggingZoneRef.current || isResizingNodeRef.current) {
         try {
           const entries = Array.from(nodePositionsRef.current.entries());
           localStorage.setItem('service_map_custom_positions', JSON.stringify(entries));
-        } catch (e) {
-          console.error('Error saving custom positions:', e);
+        } catch (err) {
+          console.error('Error saving custom positions:', err);
         }
       }
       isPanningRef.current = false;
@@ -2150,6 +2198,273 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         </div>
       )}
 
+      {/* Sliding Drawer for Clicked Service Details */}
+      <div 
+        className={`drawer-backdrop ${selectedService ? 'open' : ''}`} 
+        onClick={() => setSelectedService(null)} 
+      />
+      
+      <div className={`span-drawer ${selectedService ? 'open' : ''}`}>
+        {selectedService && (
+          <>
+            <div className="drawer-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '14px 18px', borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-tertiary)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxWidth: '85%' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span className="badge badge-ns" style={{ fontSize: '9px', background: 'rgba(99, 102, 241, 0.12)', color: 'var(--accent-indigo-light)' }}>
+                    {namespace || 'default'}
+                  </span>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                    Service Details
+                  </span>
+                </div>
+                <h2 style={{ fontSize: '14px', fontWeight: 700, margin: '2px 0 0 0', color: 'var(--text-primary)' }}>
+                  {selectedService}
+                </h2>
+              </div>
+              <button 
+                onClick={() => setSelectedService(null)} 
+                style={{ 
+                  background: 'transparent', 
+                  border: 'none', 
+                  color: 'var(--text-secondary)', 
+                  fontSize: '16px', 
+                  cursor: 'pointer',
+                  padding: '4px'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Drawer tabs */}
+            <div className="drawer-tabs" style={{ display: 'flex', borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-secondary)' }}>
+              <button 
+                className={`drawer-tab-btn ${drawerTab === 'traces' ? 'active' : ''}`}
+                onClick={() => setDrawerTab('traces')}
+                style={{ 
+                  flex: 1, 
+                  padding: '10px', 
+                  background: 'transparent', 
+                  border: 'none', 
+                  borderBottom: drawerTab === 'traces' ? '2px solid var(--accent-indigo)' : '2px solid transparent', 
+                  color: drawerTab === 'traces' ? 'var(--accent-indigo)' : 'var(--text-secondary)',
+                  cursor: 'pointer', 
+                  fontSize: '11px', 
+                  fontWeight: 600, 
+                  textAlign: 'center' 
+                }}
+              >
+                Recent Traces
+              </button>
+              <button 
+                className={`drawer-tab-btn ${drawerTab === 'metrics' ? 'active' : ''}`}
+                onClick={() => setDrawerTab('metrics')}
+                style={{ 
+                  flex: 1, 
+                  padding: '10px', 
+                  background: 'transparent', 
+                  border: 'none', 
+                  borderBottom: drawerTab === 'metrics' ? '2px solid var(--accent-indigo)' : '2px solid transparent', 
+                  color: drawerTab === 'metrics' ? 'var(--accent-indigo)' : 'var(--text-secondary)',
+                  cursor: 'pointer', 
+                  fontSize: '11px', 
+                  fontWeight: 600, 
+                  textAlign: 'center' 
+                }}
+              >
+                Info & Topology
+              </button>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="drawer-content-scroll" style={{ flex: 1, overflowY: 'auto', padding: '14px 18px' }}>
+              {drawerTab === 'traces' ? (
+                <div>
+                  <h3 style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                    15 Most Recent Transactions
+                  </h3>
+                  
+                  {loadingTraces ? (
+                    <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '11.5px' }}>
+                      Loading traces...
+                    </div>
+                  ) : serviceTraces.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '11.5px', border: '1px dashed var(--border-primary)', borderRadius: '8px' }}>
+                      No recent transactions recorded for this service.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {serviceTraces.map((item) => (
+                        <div 
+                          key={item.traceId} 
+                          style={{ 
+                            background: 'var(--bg-secondary)', 
+                            border: '1px solid var(--border-primary)', 
+                            borderRadius: '8px', 
+                            padding: '10px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                            <span 
+                              style={{ 
+                                fontWeight: 600, 
+                                fontSize: '11px', 
+                                color: 'var(--text-primary)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}
+                              title={item.rootName || 'Transaction'}
+                            >
+                              {item.rootName || 'Transaction'}
+                            </span>
+                            <span className={`badge ${item.hasError ? 'badge-error' : 'badge-ok'}`} style={{ fontSize: '8.5px', padding: '1px 5px' }}>
+                              {item.hasError ? 'ERROR' : 'OK'}
+                            </span>
+                          </div>
+                          
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', color: 'var(--text-muted)' }}>
+                            <span style={{ fontFamily: 'var(--font-mono)' }}>
+                              {new Date(item.startTime).toLocaleTimeString()}
+                            </span>
+                            <span style={{ color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)' }}>
+                              {item.durationMs.toFixed(1)}ms
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-primary)', paddingTop: '6px', marginTop: '2px' }}>
+                            <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '60%' }}>
+                              ID: {item.traceId.slice(0, 8)}...
+                            </span>
+                            <button 
+                              className="btn btn-ghost btn-sm" 
+                              style={{ fontSize: '9px', padding: '2px 8px' }}
+                              onClick={() => navigate(`/traces/${item.traceId}`)}
+                            >
+                              Open Trace Details →
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {/* Stats segment */}
+                  {(() => {
+                    const stats = data?.nodes.find(n => n.serviceName === selectedService);
+                    return (
+                      <div>
+                        <h3 style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', borderBottom: '1px solid var(--border-primary)', paddingBottom: '3px' }}>
+                          Performance Metrics (Last 5m)
+                        </h3>
+                        {stats ? (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div style={{ background: 'var(--bg-tertiary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-primary)' }}>
+                              <div style={{ fontSize: '8.5px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Throughput</div>
+                              <div style={{ fontSize: '13px', fontWeight: 700, marginTop: '2px' }}>{stats.requestCount} calls</div>
+                            </div>
+                            <div style={{ background: 'var(--bg-tertiary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-primary)' }}>
+                              <div style={{ fontSize: '8.5px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Error Rate</div>
+                              <div style={{ fontSize: '13px', fontWeight: 700, color: stats.errorRate > 0 ? 'var(--accent-rose)' : 'var(--text-primary)', marginTop: '2px' }}>
+                                {stats.errorRate.toFixed(2)}%
+                              </div>
+                            </div>
+                            <div style={{ background: 'var(--bg-tertiary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-primary)', gridColumn: 'span 2' }}>
+                              <div style={{ fontSize: '8.5px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>Latency Percentiles</div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontFamily: 'var(--font-mono)' }}>
+                                <span>p50: <strong style={{ color: 'var(--accent-cyan)' }}>{stats.p50Ms.toFixed(1)}ms</strong></span>
+                                <span>p95: <strong style={{ color: 'var(--accent-amber)' }}>{stats.p95Ms.toFixed(1)}ms</strong></span>
+                                <span>p99: <strong style={{ color: 'var(--accent-rose)' }}>{stats.p99Ms.toFixed(1)}ms</strong></span>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ color: 'var(--text-muted)', fontSize: '11px', padding: '6px 0' }}>Metrics are unavailable for this component.</div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Connected Dependencies segment */}
+                  {(() => {
+                    const incoming = activeEdges.filter(e => e.target === selectedService);
+                    const outgoing = activeEdges.filter(e => e.source === selectedService);
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        <div>
+                          <h3 style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', borderBottom: '1px solid var(--border-primary)', paddingBottom: '3px' }}>
+                            Incoming Callers (Called By)
+                          </h3>
+                          {incoming.length === 0 ? (
+                            <div style={{ color: 'var(--text-muted)', fontSize: '11px', padding: '4px 0' }}>No incoming callers.</div>
+                          ) : (
+                            <table className="attr-table" style={{ fontSize: '11px' }}>
+                              <thead>
+                                <tr style={{ background: 'var(--bg-tertiary)', fontSize: '9px', textTransform: 'uppercase' }}>
+                                  <th style={{ padding: '4px 8px', textAlign: 'left' }}>Caller Service</th>
+                                  <th style={{ padding: '4px 8px', textAlign: 'right' }}>Calls</th>
+                                  <th style={{ padding: '4px 8px', textAlign: 'right' }}>Avg Latency</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {incoming.map((edge, idx) => (
+                                  <tr key={idx}>
+                                    <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--accent-indigo-light)', cursor: 'pointer' }} onClick={() => setSelectedService(edge.source)}>
+                                      {edge.source}
+                                    </td>
+                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{edge.callCount}</td>
+                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)' }}>{edge.avgDurationMs.toFixed(1)}ms</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+
+                        <div>
+                          <h3 style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', borderBottom: '1px solid var(--border-primary)', paddingBottom: '3px' }}>
+                            Outgoing Dependencies (Calls)
+                          </h3>
+                          {outgoing.length === 0 ? (
+                            <div style={{ color: 'var(--text-muted)', fontSize: '11px', padding: '4px 0' }}>No outgoing calls.</div>
+                          ) : (
+                            <table className="attr-table" style={{ fontSize: '11px' }}>
+                              <thead>
+                                <tr style={{ background: 'var(--bg-tertiary)', fontSize: '9px', textTransform: 'uppercase' }}>
+                                  <th style={{ padding: '4px 8px', textAlign: 'left' }}>Target Service</th>
+                                  <th style={{ padding: '4px 8px', textAlign: 'right' }}>Calls</th>
+                                  <th style={{ padding: '4px 8px', textAlign: 'right' }}>Avg Latency</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {outgoing.map((edge, idx) => (
+                                  <tr key={idx}>
+                                    <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--accent-indigo-light)', cursor: 'pointer' }} onClick={() => setSelectedService(edge.target)}>
+                                      {edge.target}
+                                    </td>
+                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{edge.callCount}</td>
+                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)' }}>{edge.avgDurationMs.toFixed(1)}ms</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
       {/* Context Menu Styles */}
       <style>{`
         .context-menu-item {
@@ -2170,6 +2485,79 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         .context-menu-item:hover {
           background: rgba(99, 102, 241, 0.15);
           color: var(--accent-indigo-light, #818cf8);
+        }
+
+        /* Drawer backdrop overlay */
+        .drawer-backdrop {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(15, 23, 42, 0.4);
+          backdrop-filter: blur(4px);
+          z-index: 999;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .drawer-backdrop.open {
+          opacity: 1;
+          pointer-events: auto;
+        }
+
+        /* Span drawer container sliding from the right */
+        .span-drawer {
+          position: fixed;
+          top: 0;
+          right: 0;
+          bottom: 0;
+          width: 520px;
+          background: var(--bg-secondary);
+          border-left: 1px solid var(--border-primary);
+          box-shadow: -10px 0 30px rgba(0, 0, 0, 0.25);
+          z-index: 1000;
+          transform: translateX(100%);
+          transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .span-drawer.open {
+          transform: translateX(0);
+        }
+
+        .attr-table {
+          width: 100%;
+          border-collapse: collapse;
+          background: var(--bg-secondary);
+          border-radius: 6px;
+          overflow: hidden;
+          border: 1px solid var(--border-primary);
+        }
+        .attr-table tr {
+          border-bottom: 1px solid var(--border-primary);
+        }
+        .attr-table tr:last-child {
+          border-bottom: none;
+        }
+        .attr-table th {
+          padding: 6px 12px;
+          font-weight: 600;
+          color: var(--text-secondary);
+          border-bottom: 1px solid var(--border-primary);
+          border-right: 1px solid var(--border-primary);
+        }
+        .attr-table th:last-child {
+          border-right: none;
+        }
+        .attr-table td {
+          padding: 6px 12px;
+          color: var(--text-primary);
+          border-right: 1px solid var(--border-primary);
+        }
+        .attr-table td:last-child {
+          border-right: none;
         }
       `}</style>
     </div>
