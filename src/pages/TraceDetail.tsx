@@ -9,6 +9,16 @@ const PALETTE = [
   '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
 ];
 
+function getContrastColor(hexColor: string): string {
+  const hex = hexColor.replace('#', '');
+  if (hex.length !== 6) return '#ffffff';
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  return (yiq >= 155) ? '#0f172a' : '#ffffff';
+}
+
 function getSvcColor(name: string): string {
   if (!SERVICE_COLORS[name]) {
     SERVICE_COLORS[name] = PALETTE[Object.keys(SERVICE_COLORS).length % PALETTE.length];
@@ -333,9 +343,21 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
         ctx.strokeRect(rx + 0.5, ry + 0.5, Math.max(1, rw - 1), barHeight - 1);
       }
 
-      // Draw label text
-      if (rw > 24) {
-        ctx.fillStyle = '#ffffff';
+      // Draw label text (only if bar is wide enough to display at least some text)
+      if (rw > 32) {
+        ctx.save();
+        
+        // Clip text drawing to the individual bar boundary (rounded rect)
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(rx + 1, ry + 1, Math.max(1, rw - 2), barHeight - 2, 2.5);
+        } else {
+          ctx.rect(rx + 1, ry + 1, Math.max(1, rw - 2), barHeight - 2);
+        }
+        ctx.clip();
+
+        // Use smart contrast text color (dark for light bg, white for dark bg)
+        ctx.fillStyle = getContrastColor(baseColor);
         ctx.font = 'bold 10px Inter';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
@@ -366,7 +388,8 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
         const fitsLabel = ctx.measureText(labelText).width < rw - 12;
         const dispText = fitsLabel ? labelText : `${icon}${item.span.name}`;
         
-        ctx.fillText(dispText, rx + 6, ry + barHeight / 2, rw - 12);
+        ctx.fillText(dispText, rx + 6, ry + barHeight / 2);
+        ctx.restore();
       }
       ctx.restore();
     });
@@ -1337,7 +1360,7 @@ export default function TraceDetail() {
         .tag-val {
           padding: 2px 6px;
           color: var(--text-primary);
-          max-width: 250px;
+          max-width: 600px;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
