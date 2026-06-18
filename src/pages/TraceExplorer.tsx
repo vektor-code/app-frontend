@@ -156,17 +156,17 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
           <span className="text-sm text-muted">{traces.length} traces</span>
         </div>
         <div className="table-wrapper">
-          <table>
+          <table style={{ tableLayout: 'fixed', width: '100%' }}>
             <thead>
               <tr>
-                <th style={{ width: '130px' }}>Trace ID</th>
-                <th>Root Service</th>
-                <th>Operation</th>
-                <th>Services</th>
-                <th style={{ width: '240px' }}>Duration</th>
-                <th style={{ width: '60px' }}>Spans</th>
-                <th style={{ width: '60px' }}>Status</th>
-                <th style={{ width: '80px' }}>Time</th>
+                <th style={{ width: '110px' }}>Trace ID</th>
+                <th style={{ width: '150px' }}>Root Service</th>
+                <th style={{ width: '280px' }}>Operation</th>
+                <th style={{ width: '180px' }}>Services</th>
+                <th style={{ width: '200px' }}>Duration</th>
+                <th style={{ width: '65px', textAlign: 'center' }}>Spans</th>
+                <th style={{ width: '65px', textAlign: 'center' }}>Status</th>
+                <th style={{ width: '85px' }}>Time</th>
               </tr>
             </thead>
             <tbody>
@@ -174,14 +174,18 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
                 const durationPct = maxDuration > 0 ? (t.durationMs / maxDuration) * 100 : 0;
                 return (
                   <tr key={t.traceId} onClick={() => navigate(`/traces/${t.traceId}`)} style={{ cursor: 'pointer' }}>
-                    <td>
+                    <td style={{ width: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       <span className="mono" style={{ color: 'var(--accent-indigo-light)', fontSize: '12px' }}>
                         {t.traceId.slice(0, 14)}…
                       </span>
                     </td>
-                    <td style={{ fontWeight: 600, fontSize: '13px' }}>{t.serviceName}</td>
-                    <td className="mono" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      <div>{t.rootName || '—'}</div>
+                    <td style={{ fontWeight: 600, fontSize: '13px', width: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.serviceName}>
+                      {t.serviceName}
+                    </td>
+                    <td className="mono" style={{ fontSize: '12px', color: 'var(--text-secondary)', width: '280px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.rootName || '—'}>
+                        {t.rootName || '—'}
+                      </div>
                       {t.hasError && t.errorSummary && (
                         <div style={{ 
                           display: 'inline-flex', 
@@ -195,7 +199,7 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
                           fontSize: '10.5px',
                           color: 'var(--accent-rose)',
                           fontWeight: 500,
-                          maxWidth: '320px',
+                          maxWidth: '100%',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap'
@@ -208,17 +212,20 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
                             borderRadius: '3px', 
                             background: 'var(--accent-rose)', 
                             color: '#ffffff',
-                            marginRight: '2px'
+                            marginRight: '2px',
+                            flexShrink: 0
                           }}>
                             {t.errorType || 'err'}
                           </span>
-                          {t.errorSummary}
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {t.errorSummary}
+                          </span>
                         </div>
                       )}
                     </td>
-                    <td>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
-                        {(t.services || []).slice(0, 5).map(svc => (
+                    <td style={{ width: '180px', overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', gap: '3px', overflow: 'hidden', whiteSpace: 'nowrap', alignItems: 'center' }}>
+                        {(t.services || []).slice(0, 4).map(svc => (
                           <span
                             key={svc}
                             style={{
@@ -234,12 +241,12 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
                             {svc.replace('-backend', '')}
                           </span>
                         ))}
-                        {(t.services || []).length > 5 && (
-                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>+{t.services!.length - 5}</span>
+                        {(t.services || []).length > 4 && (
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>+{t.services!.length - 4}</span>
                         )}
                       </div>
                     </td>
-                    <td>
+                    <td style={{ width: '200px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <div style={{
                           flex: 1,
@@ -260,12 +267,12 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
                             transition: 'width 0.3s ease',
                           }} />
                         </div>
-                        <span className="mono" style={{ fontSize: '12px', minWidth: '60px', textAlign: 'right' }}>
+                        <span className="mono" style={{ fontSize: '12px', minWidth: '55px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                           {formatDuration(t.durationMs)}
                         </span>
                       </div>
                     </td>
-                    <td style={{ textAlign: 'center' }}>
+                    <td style={{ width: '65px', textAlign: 'center' }}>
                       <span style={{
                         fontSize: '11px',
                         fontWeight: 700,
@@ -277,10 +284,10 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
                         {t.spanCount}
                       </span>
                     </td>
-                    <td>
+                    <td style={{ width: '65px', textAlign: 'center' }}>
                       <span className={`badge ${t.hasError ? 'badge-error' : 'badge-ok'}`}>{t.hasError ? 'ERR' : 'OK'}</span>
                     </td>
-                    <td className="text-sm text-muted">{formatTime(t.startTime)}</td>
+                    <td className="text-sm text-muted" style={{ width: '85px', whiteSpace: 'nowrap' }}>{formatTime(t.startTime)}</td>
                   </tr>
                 );
               })}
