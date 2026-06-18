@@ -78,6 +78,9 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
     if (sys.includes('redis')) return 'badge-system-redis';
     if (sys.includes('mongo')) return 'badge-system-mongo';
     if (sys.includes('clickhouse')) return 'badge-system-ch';
+    if (sys.includes('oracle')) return 'badge-system-oracle';
+    if (sys.includes('mssql') || sys.includes('sqlserver')) return 'badge-system-mssql';
+    if (sys === 'sql') return 'badge-system-sql';
     return 'badge-system-generic';
   };
 
@@ -379,6 +382,21 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           background: rgba(245, 158, 11, 0.15) !important;
           color: #f59e0b !important;
           border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+        .badge-system-oracle {
+          background: rgba(239, 68, 68, 0.15) !important;
+          color: #ef4444 !important;
+          border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        .badge-system-mssql {
+          background: rgba(139, 92, 246, 0.15) !important;
+          color: #8b5cf6 !important;
+          border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+        .badge-system-sql {
+          background: rgba(6, 182, 212, 0.15) !important;
+          color: #06b6d4 !important;
+          border: 1px solid rgba(6, 182, 212, 0.3);
         }
         .badge-system-generic {
           background: rgba(113, 128, 150, 0.15) !important;
