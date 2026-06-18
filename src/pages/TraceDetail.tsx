@@ -16,6 +16,7 @@ function getSvcColor(name: string): string {
   return SERVICE_COLORS[name];
 }
 
+// Convert numbers of ms into readable formats
 function formatDuration(ms: number): string {
   if (ms < 1) return `${(ms * 1000).toFixed(0)}µs`;
   if (ms < 1000) return `${ms.toFixed(1)}ms`;
@@ -72,12 +73,54 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [forceUpdate, setForceUpdate] = useState(0);
 
+  // Search query state
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Zoom & Pan states
+  const [viewStart, setViewStart] = useState(0); // 0 to 1
+  const [viewEnd, setViewEnd] = useState(1);     // 0 to 1
+  const [viewY, setViewY] = useState(0);         // vertical scroll in pixels
+  const [orientation, setOrientation] = useState<'down' | 'up'>('down'); // down = icicle, up = flame
+
+  // Refs for stale closures in canvas interaction listeners
+  const viewStartRef = useRef(0);
+  const viewEndRef = useRef(1);
+  const viewYRef = useRef(0);
+  const orientationRef = useRef<'down' | 'up'>('down');
+
+  useEffect(() => { viewStartRef.current = viewStart; }, [viewStart]);
+  useEffect(() => { viewEndRef.current = viewEnd; }, [viewEnd]);
+  useEffect(() => { viewYRef.current = viewY; }, [viewY]);
+  useEffect(() => { orientationRef.current = orientation; }, [orientation]);
+
   const { rootNodes, maxDepth } = useMemo(() => buildSpanTree(spans), [spans]);
 
   const barHeight = 24;
   const barGap = 4;
-  const paddingTop = 24;
-  const computedHeight = (maxDepth + 1) * (barHeight + barGap) + paddingTop + 10;
+
+  // Fixed main viewport height for canvas rendering
+  const canvasHeight = 460;
+
+  // Minimap and Ruler coordinates
+  const my = 10; // minimap Y start
+  const mh = 20; // minimap height
+  const mg = 15; // gap between minimap and rulers
+  const paddingTop = my + mh + mg + 22; // Rulers padding (~67px)
+  const paddingBottom = 15;
+
+  const contentHeight = (maxDepth + 1) * (barHeight + barGap);
+  const viewportHeight = canvasHeight - paddingTop - paddingBottom;
+  const maxY = Math.max(0, contentHeight - viewportHeight);
+
+  // Drag states
+  const dragModeRef = useRef<'none' | 'left' | 'right' | 'pan' | 'graph-pan' | 'scrollbar-pan'>('none');
+  const dragStartRef = useRef({
+    x: 0,
+    y: 0,
+    viewStart: 0,
+    viewEnd: 1,
+    viewY: 0
+  });
 
   const renderList = useMemo(() => {
     const list: { span: Span; depth: number; left: number; width: number }[] = [];
@@ -97,6 +140,7 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
     return list;
   }, [rootNodes, traceStartTime, traceDuration]);
 
+  // Main Canvas Render loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -106,66 +150,264 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     canvas.width = rect.width * dpr;
-    canvas.height = computedHeight * dpr;
+    canvas.height = canvasHeight * dpr;
     ctx.scale(dpr, dpr);
 
-    ctx.clearRect(0, 0, rect.width, computedHeight);
+    ctx.clearRect(0, 0, rect.width, canvasHeight);
 
-    // Grid lines
-    ctx.strokeStyle = document.body.classList.contains('dark-theme') ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
+    const isDark = document.body.classList.contains('dark-theme');
+
+    // 1. Draw Minimap Box
+    ctx.save();
+    ctx.fillStyle = isDark ? 'rgba(30, 41, 59, 0.4)' : 'rgba(241, 245, 249, 0.6)';
+    ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
     ctx.lineWidth = 1;
-    ctx.fillStyle = document.body.classList.contains('dark-theme') ? '#94a3b8' : '#64748b';
-    ctx.font = '10px Inter';
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(0, my, rect.width, mh, 4);
+    } else {
+      ctx.rect(0, my, rect.width, mh);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    // Render micro-spans inside minimap
+    renderList.forEach(item => {
+      const mx = item.left * rect.width;
+      const mw = Math.max(1, item.width * rect.width);
+      const mDepthOffset = my + 2 + (item.depth / (maxDepth + 1)) * (mh - 4);
+      ctx.fillStyle = getSvcColor(item.span.serviceName) + '35'; // semi-transparent
+      ctx.fillRect(mx, mDepthOffset, mw, 1.2);
+    });
+    ctx.restore();
+
+    // Draw Minimap Viewport Window Overlay
+    const vx = viewStart * rect.width;
+    const vw = (viewEnd - viewStart) * rect.width;
+    ctx.save();
+    ctx.fillStyle = isDark ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.08)';
+    ctx.strokeStyle = 'var(--accent-indigo)';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(vx, my, vw, mh);
+    ctx.strokeRect(vx, my, vw, mh);
+
+    // Viewport handles (lines/rects on edges)
+    ctx.fillStyle = 'var(--accent-indigo)';
+    ctx.fillRect(vx, my, 4, mh);
+    ctx.fillRect(vx + vw - 4, my, 4, mh);
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(vx + 2, my + 5);
+    ctx.lineTo(vx + 2, my + mh - 5);
+    ctx.moveTo(vx + vw - 2, my + 5);
+    ctx.lineTo(vx + vw - 2, my + mh - 5);
+    ctx.stroke();
+    ctx.restore();
+
+    // 2. Draw Time Grid / Rulers (Zoom-Aware)
+    ctx.save();
+    ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
+    ctx.lineWidth = 1;
+    ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
+    ctx.font = '9px Inter';
     ctx.textAlign = 'center';
+
+    const visibleDuration = (viewEnd - viewStart) * traceDuration;
 
     for (let i = 0; i <= 4; i++) {
       const pct = i * 0.25;
       const x = pct * rect.width;
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, computedHeight);
+      ctx.moveTo(x, paddingTop - 12);
+      ctx.lineTo(x, canvasHeight);
       ctx.stroke();
 
-      const timeVal = pct * traceDuration;
-      ctx.fillText(formatDuration(timeVal), x, paddingTop - 8);
+      const timeVal = viewStart * traceDuration + pct * visibleDuration;
+      ctx.fillText(formatDuration(timeVal), x, paddingTop - 15);
     }
+    ctx.restore();
+
+    // 3. Draw Stacked Spans (Zoom, Pan, and Orientation Aware with Clipping)
+    ctx.save();
+    // Clip drawing to the graph viewport area
+    ctx.beginPath();
+    ctx.rect(0, paddingTop, rect.width, viewportHeight);
+    ctx.clip();
+
+    const visibleWidth = viewEnd - viewStart;
 
     renderList.forEach(item => {
-      const rx = item.left * rect.width;
-      const rw = Math.max(2, item.width * rect.width);
-      const ry = paddingTop + item.depth * (barHeight + barGap);
+      // Cull spans that are completely offscreen horizontally
+      if (item.left + item.width < viewStart || item.left > viewEnd) {
+        return;
+      }
+
+      // Map to visible horizontal range
+      const rx = ((item.left - viewStart) / visibleWidth) * rect.width;
+      const rw = (item.width / visibleWidth) * rect.width;
+
+      // Calculate Y based on orientation & vertical scroll offset
+      let ry = 0;
+      if (orientation === 'down') {
+        ry = paddingTop + item.depth * (barHeight + barGap) - viewY;
+      } else {
+        ry = (canvasHeight - paddingBottom) - (item.depth + 1) * (barHeight + barGap) + viewY;
+      }
+
+      // Cull spans that are offscreen vertically
+      if (ry + barHeight < paddingTop || ry > canvasHeight - paddingBottom) {
+        return;
+      }
 
       const isHovered = hoveredSpan?.span.spanId === item.span.spanId;
-      const color = getSvcColor(item.span.serviceName);
+      const hasError = item.span.status === 'ERROR';
 
-      ctx.fillStyle = color;
-      ctx.fillRect(rx, ry, rw, barHeight);
+      // Search matching logic
+      let matches = true;
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const matchesName = item.span.name.toLowerCase().includes(query);
+        const matchesService = item.span.serviceName.toLowerCase().includes(query);
+        const matchesAttrs = item.span.attributes && Object.entries(item.span.attributes).some(([k, v]) => 
+          k.toLowerCase().includes(query) || String(v).toLowerCase().includes(query)
+        );
+        matches = matchesName || matchesService || !!matchesAttrs;
+      }
 
+      ctx.save();
+      // Apply opacity based on matches
+      ctx.globalAlpha = matches ? 1.0 : 0.25;
+
+      const baseColor = getSvcColor(item.span.serviceName);
+      ctx.fillStyle = baseColor;
+      
+      // Draw rounded rectangle for bar
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(rx, ry, rw, barHeight, 3);
+      } else {
+        ctx.rect(rx, ry, rw, barHeight);
+      }
+      ctx.fill();
+
+      // If span has error, draw error stripes
+      if (hasError) {
+        ctx.save();
+        ctx.fillStyle = isDark ? 'rgba(244, 63, 94, 0.2)' : 'rgba(244, 63, 94, 0.15)';
+        // Draw diagonal pattern stripes
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(rx, ry, rw, barHeight, 3);
+        } else {
+          ctx.rect(rx, ry, rw, barHeight);
+        }
+        ctx.clip();
+
+        // Draw diagonal stripes
+        ctx.strokeStyle = '#f43f5e';
+        ctx.lineWidth = 2.5;
+        const step = 8;
+        for (let xOffset = rx - barHeight; xOffset < rx + rw; xOffset += step) {
+          ctx.beginPath();
+          ctx.moveTo(xOffset, ry + barHeight);
+          ctx.lineTo(xOffset + barHeight, ry);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // Border highlight styling
       if (isHovered) {
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 2;
-        ctx.strokeRect(rx + 1, ry + 1, rw - 2, barHeight - 2);
-      } else if (item.span.status === 'ERROR') {
+        ctx.strokeRect(rx + 1, ry + 1, Math.max(1, rw - 2), barHeight - 2);
+      } else if (searchQuery.trim() && matches) {
+        ctx.strokeStyle = '#facc15'; // Glowing gold border for search matches
+        ctx.lineWidth = 2.5;
+        ctx.strokeRect(rx + 1, ry + 1, Math.max(1, rw - 2), barHeight - 2);
+      } else if (hasError) {
         ctx.strokeStyle = '#f43f5e';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(rx + 1, ry + 1, rw - 2, barHeight - 2);
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(rx + 0.5, ry + 0.5, Math.max(1, rw - 1), barHeight - 1);
       }
 
-      if (rw > 35) {
+      // Draw label text
+      if (rw > 24) {
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 10.5px Inter';
+        ctx.font = 'bold 10px Inter';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
 
-        const labelText = `${item.span.serviceName} - ${item.span.name}`;
+        // Choose database/gateway icon prefix
+        let icon = '';
+        if (item.span.attributes) {
+          const dbSys = item.span.attributes['db.system'];
+          const httpMethod = item.span.attributes['http.method'];
+          const msgSys = item.span.attributes['messaging.system'];
+          
+          if (dbSys) {
+            if (dbSys === 'redis') icon = '🔴 ';
+            else if (dbSys === 'postgresql') icon = '🐘 ';
+            else if (dbSys === 'mysql') icon = '🐬 ';
+            else icon = '🗄️ ';
+          } else if (httpMethod) {
+            icon = '🌐 ';
+          } else if (msgSys) {
+            if (msgSys === 'kafka') icon = '📨 ';
+            else icon = '🐇 ';
+          } else if (item.span.name.toLowerCase().includes('dns')) {
+            icon = '🔍 ';
+          }
+        }
+
+        const labelText = `${icon}${item.span.serviceName} - ${item.span.name}`;
         const fitsLabel = ctx.measureText(labelText).width < rw - 12;
-        const dispText = fitsLabel ? labelText : item.span.name;
+        const dispText = fitsLabel ? labelText : `${icon}${item.span.name}`;
         
         ctx.fillText(dispText, rx + 6, ry + barHeight / 2, rw - 12);
       }
+      ctx.restore();
     });
-  }, [renderList, hoveredSpan, computedHeight, traceDuration, forceUpdate]);
+    ctx.restore();
 
+    // 4. Draw Custom Vertical Scrollbar
+    if (maxY > 0) {
+      ctx.save();
+      const trackX = rect.width - 9;
+      const trackW = 5;
+      const trackY = paddingTop;
+      const trackH = viewportHeight;
+
+      // Draw track bg
+      ctx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)';
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(trackX, trackY, trackW, trackH, 2.5);
+      } else {
+        ctx.rect(trackX, trackY, trackW, trackH);
+      }
+      ctx.fill();
+
+      // Draw thumb
+      const thumbH = Math.max(20, (viewportHeight / contentHeight) * viewportHeight);
+      const thumbY = paddingTop + (viewY / maxY) * (viewportHeight - thumbH);
+      
+      ctx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.2)';
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(trackX, thumbY, trackW, thumbH, 2.5);
+      } else {
+        ctx.rect(trackX, thumbY, trackW, thumbH);
+      }
+      ctx.fill();
+      ctx.restore();
+    }
+
+  }, [renderList, hoveredSpan, canvasHeight, traceDuration, forceUpdate, viewStart, viewEnd, viewY, orientation, searchQuery]);
+
+  // Hook resize observer
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -176,39 +418,300 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
     return () => observer.disconnect();
   }, []);
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Hook passive wheel listener to block default page scroll
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const handleCanvasWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mxRatio = (e.clientX - rect.left) / rect.width; // 0 to 1
+
+      if (e.shiftKey) {
+        // Shift + Wheel scrolls vertically
+        const delta = e.deltaY;
+        const newY = Math.max(0, Math.min(maxY, viewYRef.current + delta));
+        setViewY(newY);
+        return;
+      }
+
+      // Default Wheel zooms horizontally
+      const prevStart = viewStartRef.current;
+      const prevEnd = viewEndRef.current;
+
+      const currentW = prevEnd - prevStart;
+      const targetVal = prevStart + mxRatio * currentW;
+
+      const zoomMultiplier = e.deltaY < 0 ? 0.85 : 1.15;
+      const newW = Math.max(0.001, Math.min(1.0, currentW * zoomMultiplier));
+
+      let newStart = targetVal - mxRatio * newW;
+      let newEnd = newStart + newW;
+
+      if (newStart < 0) {
+        newStart = 0;
+        newEnd = newW;
+      } else if (newEnd > 1) {
+        newEnd = 1;
+        newStart = 1 - newW;
+      }
+
+      setViewStart(newStart);
+      setViewEnd(newEnd);
+    };
+
+    canvas.addEventListener('wheel', handleCanvasWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', handleCanvasWheel);
+  }, [traceDuration, maxY]);
+
+  // Mouse Interaction handlers
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (y >= my && y <= my + mh) {
+      // Clicked on minimap timeline
+      const vx = viewStartRef.current * rect.width;
+      const vw = (viewEndRef.current - viewStartRef.current) * rect.width;
+      
+      if (Math.abs(x - vx) < 6) {
+        dragModeRef.current = 'left';
+        dragStartRef.current = { x: e.clientX, y: e.clientY, viewStart: viewStartRef.current, viewEnd: viewEndRef.current, viewY: viewYRef.current };
+      } else if (Math.abs(x - (vx + vw)) < 6) {
+        dragModeRef.current = 'right';
+        dragStartRef.current = { x: e.clientX, y: e.clientY, viewStart: viewStartRef.current, viewEnd: viewEndRef.current, viewY: viewYRef.current };
+      } else if (x >= vx && x <= vx + vw) {
+        dragModeRef.current = 'pan';
+        dragStartRef.current = { x: e.clientX, y: e.clientY, viewStart: viewStartRef.current, viewEnd: viewEndRef.current, viewY: viewYRef.current };
+      } else {
+        // Center viewport at click position
+        const currentWidth = viewEndRef.current - viewStartRef.current;
+        const pct = x / rect.width;
+        const newStart = Math.max(0, Math.min(1 - currentWidth, pct - currentWidth / 2));
+        setViewStart(newStart);
+        setViewEnd(newStart + currentWidth);
+        dragModeRef.current = 'pan';
+        dragStartRef.current = { x: e.clientX, y: e.clientY, viewStart: newStart, viewEnd: newStart + currentWidth, viewY: viewYRef.current };
+      }
+    } else if (maxY > 0 && x >= rect.width - 12) {
+      // Clicked on scrollbar track
+      dragModeRef.current = 'scrollbar-pan';
+      dragStartRef.current = { x: e.clientX, y: e.clientY, viewStart: viewStartRef.current, viewEnd: viewEndRef.current, viewY: viewYRef.current };
+    } else {
+      // Clicked on main graph area (panning)
+      dragModeRef.current = 'graph-pan';
+      dragStartRef.current = { x: e.clientX, y: e.clientY, viewStart: viewStartRef.current, viewEnd: viewEndRef.current, viewY: viewYRef.current };
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
     setMousePos({ x: e.clientX, y: e.clientY });
 
-    let found: typeof hoveredSpan = null;
-    for (const item of renderList) {
-      const rx = item.left * rect.width;
-      const rw = Math.max(2, item.width * rect.width);
-      const ry = paddingTop + item.depth * (barHeight + barGap);
+    const currentWidth = viewEndRef.current - viewStartRef.current;
 
-      if (x >= rx && x <= rx + rw && y >= ry && y <= ry + barHeight) {
-        found = { span: item.span, rect: { x: rx + rect.left, y: ry + rect.top, w: rw, h: barHeight } };
-        break;
+    if (dragModeRef.current === 'left') {
+      const dx = (e.clientX - dragStartRef.current.x) / rect.width;
+      const newStart = Math.max(0, Math.min(viewEndRef.current - 0.001, dragStartRef.current.viewStart + dx));
+      setViewStart(newStart);
+    } else if (dragModeRef.current === 'right') {
+      const dx = (e.clientX - dragStartRef.current.x) / rect.width;
+      const newEnd = Math.max(viewStartRef.current + 0.001, Math.min(1, dragStartRef.current.viewEnd + dx));
+      setViewEnd(newEnd);
+    } else if (dragModeRef.current === 'pan') {
+      const dx = (e.clientX - dragStartRef.current.x) / rect.width;
+      const newStart = Math.max(0, Math.min(1 - currentWidth, dragStartRef.current.viewStart + dx));
+      setViewStart(newStart);
+      setViewEnd(newStart + currentWidth);
+    } else if (dragModeRef.current === 'scrollbar-pan') {
+      const dy = e.clientY - dragStartRef.current.y;
+      const scrollRatio = dy / viewportHeight;
+      const newY = Math.max(0, Math.min(maxY, dragStartRef.current.viewY + scrollRatio * contentHeight));
+      setViewY(newY);
+    } else if (dragModeRef.current === 'graph-pan') {
+      const dx = (e.clientX - dragStartRef.current.x) / rect.width;
+      const dy = e.clientY - dragStartRef.current.y;
+      const shift = dx * currentWidth;
+      const newStart = Math.max(0, Math.min(1 - currentWidth, dragStartRef.current.viewStart - shift));
+      setViewStart(newStart);
+      setViewEnd(newStart + currentWidth);
+
+      const newY = Math.max(0, Math.min(maxY, dragStartRef.current.viewY - dy));
+      setViewY(newY);
+    } else {
+      // Hover hit testing (Zoom and Scroll aware)
+      let found: typeof hoveredSpan = null;
+      const visibleWidth = viewEndRef.current - viewStartRef.current;
+
+      if (y >= paddingTop && y <= canvasHeight - paddingBottom) {
+        for (const item of renderList) {
+          const rx = ((item.left - viewStartRef.current) / visibleWidth) * rect.width;
+          const rw = (item.width / visibleWidth) * rect.width;
+          
+          let ry = 0;
+          if (orientationRef.current === 'down') {
+            ry = paddingTop + item.depth * (barHeight + barGap) - viewYRef.current;
+          } else {
+            ry = (canvasHeight - paddingBottom) - (item.depth + 1) * (barHeight + barGap) + viewYRef.current;
+          }
+
+          if (x >= rx && x <= rx + rw && y >= ry && y <= ry + barHeight) {
+            found = { span: item.span, rect: { x: rx + rect.left, y: ry + rect.top, w: rw, h: barHeight } };
+            break;
+          }
+        }
       }
+      setHoveredSpan(found);
     }
-    setHoveredSpan(found);
   };
 
+  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const wasDragging = dragModeRef.current !== 'none' && (
+      Math.abs(e.clientX - dragStartRef.current.x) > 3 || 
+      Math.abs(e.clientY - dragStartRef.current.y) > 3
+    );
+
+    const prevMode = dragModeRef.current;
+    dragModeRef.current = 'none';
+
+    if (!wasDragging && hoveredSpan && prevMode !== 'scrollbar-pan') {
+      // Click focus zooms directly onto this span
+      setViewStart(hoveredSpan.span.startTime ? (new Date(hoveredSpan.span.startTime).getTime() - traceStartTime) / traceDuration : 0);
+      setViewEnd(hoveredSpan.span.endTime ? (new Date(hoveredSpan.span.endTime).getTime() - traceStartTime) / traceDuration : 1);
+      onSelectSpan(hoveredSpan.span);
+    }
+  };
+
+  // Zoom control helpers
+  const zoomIn = () => {
+    const w = viewEnd - viewStart;
+    const center = viewStart + w / 2;
+    const newW = Math.max(0.002, w * 0.7);
+    setNewBounds(center - newW / 2, center + newW / 2);
+  };
+
+  const zoomOut = () => {
+    const w = viewEnd - viewStart;
+    const center = viewStart + w / 2;
+    const newW = Math.min(1.0, w * 1.4);
+    setNewBounds(center - newW / 2, center + newW / 2);
+  };
+
+  const resetZoom = () => {
+    setViewStart(0);
+    setViewEnd(1);
+    setViewY(0);
+  };
+
+  const toggleOrientation = () => {
+    setOrientation(prev => prev === 'down' ? 'up' : 'down');
+    setViewY(0); // reset Y offset on toggle
+  };
+
+  const setNewBounds = (start: number, end: number) => {
+    let s = Math.max(0, start);
+    let e = Math.min(1, end);
+    const w = e - s;
+    if (s === 0) {
+      e = w;
+    } else if (e === 1) {
+      s = 1 - w;
+    }
+    setViewStart(s);
+    setViewEnd(e);
+  };
+
+  // Determine mouse cursor dynamically
+  let cursorStyle = 'default';
+  const canvas = canvasRef.current;
+  if (canvas) {
+    const rect = canvas.getBoundingClientRect();
+    const x = mousePos.x - rect.left;
+    const y = mousePos.y - rect.top;
+    
+    if (dragModeRef.current !== 'none') {
+      cursorStyle = dragModeRef.current === 'pan' || dragModeRef.current === 'graph-pan' ? 'grabbing' : 'ew-resize';
+    } else if (y >= my && y <= my + mh) {
+      const vx = viewStart * rect.width;
+      const vw = (viewEnd - viewStart) * rect.width;
+      if (Math.abs(x - vx) < 6 || Math.abs(x - (vx + vw)) < 6) {
+        cursorStyle = 'ew-resize';
+      } else if (x >= vx && x <= vx + vw) {
+        cursorStyle = 'grab';
+      } else {
+        cursorStyle = 'pointer';
+      }
+    } else if (maxY > 0 && x >= rect.width - 12) {
+      cursorStyle = 'ns-resize';
+    } else if (hoveredSpan) {
+      cursorStyle = 'pointer';
+    } else {
+      cursorStyle = 'grab';
+    }
+  }
+
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
+    <div ref={containerRef} style={{ position: 'relative', width: '100%', background: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--border-primary)', overflow: 'hidden' }}>
+      
+      {/* Search & Control Header bar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--border-primary)', gap: '12px', flexWrap: 'wrap' }}>
+        
+        {/* Search input field */}
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '320px' }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }}>
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search & highlight spans..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="filter-select"
+            style={{ width: '100%', fontSize: '11px', padding: '5px 8px 5px 28px', height: '28px' }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              style={{ position: 'absolute', right: '8px', border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px' }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        {/* Floating Interactive Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <button className="control-btn-header" onClick={zoomIn} title="Zoom In (Wheel scroll)">＋</button>
+          <button className="control-btn-header" onClick={zoomOut} title="Zoom Out (Wheel scroll)">－</button>
+          <button className="control-btn-header" onClick={resetZoom} title="Reset View (Fit)">⛶</button>
+          <button className="control-btn-header" onClick={toggleOrientation} title="Toggle Flame/Icicle (Upside Down)">⇅</button>
+          <div className="control-divider-header" />
+          <span className="control-status-header">Zoom: {(1 / (viewEnd - viewStart)).toFixed(1)}x</span>
+        </div>
+      </div>
+
       <canvas
         ref={canvasRef}
-        style={{ width: '100%', display: 'block', cursor: hoveredSpan ? 'pointer' : 'default' }}
+        style={{ width: '100%', display: 'block', cursor: cursorStyle }}
+        onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
-        onMouseLeave={() => setHoveredSpan(null)}
-        onClick={() => hoveredSpan && onSelectSpan(hoveredSpan.span)}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={() => {
+          dragModeRef.current = 'none';
+          setHoveredSpan(null);
+        }}
       />
+      
+      {/* Tooltip Overlay */}
       {hoveredSpan && (
         <div
           className="flamegraph-tooltip"
@@ -239,9 +742,382 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '4px', paddingTop: '4px', color: '#cbd5e1', fontFamily: 'var(--font-mono)' }}>
             Duration: {formatDuration(hoveredSpan.span.durationMs)} ({(hoveredSpan.span.durationMs / traceDuration * 100).toFixed(1)}%)
           </div>
+          {hoveredSpan.span.status === 'ERROR' && (
+            <div style={{ color: '#f43f5e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+              ⚠️ Execution Failed
+            </div>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+interface SpanDrawerContentProps {
+  span: Span;
+  traceDuration: number;
+  onClose: () => void;
+}
+
+function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentProps) {
+  const [activeTab, setActiveTab] = useState<'overview' | 'attributes' | 'json' | 'error'>(
+    span.status === 'ERROR' ? 'error' : 'overview'
+  );
+  const [filterQuery, setFilterQuery] = useState('');
+
+  const formattedStartTime = useMemo(() => {
+    try {
+      return new Date(span.startTime).toLocaleString();
+    } catch {
+      return span.startTime;
+    }
+  }, [span.startTime]);
+
+  const hasError = span.status === 'ERROR';
+  const hasEvents = span.events && span.events.length > 0;
+
+  // JSON syntax highlighting helper
+  const renderJson = useMemo(() => {
+    const jsonStr = JSON.stringify(span, null, 2);
+    const lines = jsonStr.split('\n');
+    return lines.map((line, idx) => {
+      const keyMatch = line.match(/^(\s*)"([^"]+)":/);
+      if (keyMatch) {
+        const indent = keyMatch[1];
+        const key = keyMatch[2];
+        const rest = line.substring(keyMatch[0].length);
+        
+        let restNode: React.ReactNode = rest;
+        const trimmed = rest.trim();
+        if (trimmed.startsWith('"')) {
+          restNode = <span style={{ color: '#a7f3d0' }}> {trimmed}</span>;
+        } else if (trimmed === 'true' || trimmed === 'false') {
+          restNode = <span style={{ color: '#f43f5e' }}> {trimmed}</span>;
+        } else if (trimmed === 'null') {
+          restNode = <span style={{ color: '#94a3b8' }}> {trimmed}</span>;
+        } else if (!isNaN(Number(trimmed.replace(/,$/, '')))) {
+          restNode = <span style={{ color: '#fbbf24' }}> {trimmed}</span>;
+        }
+
+        return (
+          <div key={idx} style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', lineHeight: '1.4' }}>
+            {indent}
+            <span style={{ color: '#818cf8', fontWeight: 600 }}>"{key}"</span>:
+            {restNode}
+          </div>
+        );
+      }
+      return <div key={idx} style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', lineHeight: '1.4', color: '#cbd5e1' }}>{line}</div>;
+    });
+  }, [span]);
+
+  // Extract stack trace and error message
+  const errorMsg = useMemo(() => {
+    if (span.error) return span.error;
+    const attrs = span.attributes || {};
+    return (
+      attrs['error.message'] ||
+      attrs['error.msg'] ||
+      attrs['exception.message'] ||
+      attrs['status.message'] ||
+      'Unknown operation failure.'
+    );
+  }, [span]);
+
+  const stackTrace = useMemo(() => {
+    const attrs = span.attributes || {};
+    return attrs['exception.stacktrace'] || attrs['error.stack'] || null;
+  }, [span]);
+
+  // Filtered attributes
+  const filteredAttributes = useMemo(() => {
+    if (!span.attributes) return [];
+    return Object.entries(span.attributes).filter(([k, v]) => {
+      const q = filterQuery.toLowerCase();
+      return k.toLowerCase().includes(q) || String(v).toLowerCase().includes(q);
+    });
+  }, [span.attributes, filterQuery]);
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+  };
+
+  return (
+    <>
+      {/* Header */}
+      <div className="drawer-header">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxWidth: '85%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span 
+              className="badge" 
+              style={{ 
+                background: getSvcColor(span.serviceName) + '20', 
+                color: getSvcColor(span.serviceName), 
+                fontWeight: 700, 
+                fontSize: '11px',
+                border: `1px solid ${getSvcColor(span.serviceName)}50`
+              }}
+            >
+              {span.serviceName}
+            </span>
+            <span className="panel-span-name" style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              Kind: {span.kind}
+            </span>
+          </div>
+          <h2 style={{ fontSize: '15px', fontWeight: 700, margin: '4px 0 0 0', wordBreak: 'break-all', color: 'var(--text-primary)' }}>
+            {span.name}
+          </h2>
+        </div>
+        <button 
+          onClick={onClose}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--text-secondary)',
+            fontSize: '18px',
+            cursor: 'pointer',
+            padding: '4px',
+            borderRadius: '4px'
+          }}
+          title="Close details"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Tabs */}
+      <div className="drawer-tabs">
+        <button 
+          className={`drawer-tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
+          onClick={() => setActiveTab('overview')}
+        >
+          Overview
+        </button>
+        <button 
+          className={`drawer-tab-btn ${activeTab === 'attributes' ? 'active' : ''}`}
+          onClick={() => setActiveTab('attributes')}
+        >
+          Attributes ({span.attributes ? Object.keys(span.attributes).length : 0})
+        </button>
+        {hasError && (
+          <button 
+            className={`drawer-tab-btn ${activeTab === 'error' ? 'active' : ''}`}
+            onClick={() => setActiveTab('error')}
+            style={{ color: 'var(--accent-rose, #f43f5e)', borderBottomColor: activeTab === 'error' ? 'var(--accent-rose)' : 'transparent' }}
+          >
+            ⚠️ Failure Details
+          </button>
+        )}
+        <button 
+          className={`drawer-tab-btn ${activeTab === 'json' ? 'active' : ''}`}
+          onClick={() => setActiveTab('json')}
+        >
+          JSON Payload
+        </button>
+      </div>
+
+      {/* Content Area */}
+      <div className="drawer-content-scroll" style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+        
+        {/* Tab: Overview */}
+        {activeTab === 'overview' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            
+            {/* Grid metrics */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ background: 'var(--bg-tertiary)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-primary)' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Duration</div>
+                <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--accent-cyan)' }}>{formatDuration(span.durationMs)}</div>
+                <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{(span.durationMs / traceDuration * 100).toFixed(1)}% of trace</div>
+              </div>
+              <div style={{ background: 'var(--bg-tertiary)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-primary)' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Status</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                  <span className={`badge ${span.status === 'ERROR' ? 'badge-error' : 'badge-ok'}`} style={{ fontSize: '11px', padding: '2px 8px' }}>
+                    {span.status}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Infrastructure Details */}
+            <div>
+              <h3 style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', borderBottom: '1px solid var(--border-primary)', paddingBottom: '4px' }}>
+                Infrastructure Info
+              </h3>
+              <table className="attr-table">
+                <tbody>
+                  <tr>
+                    <td className="attr-key">Namespace</td>
+                    <td className="attr-val">
+                      <span className="badge badge-ns">{span.namespace || 'unknown'}</span>
+                    </td>
+                  </tr>
+                  {span.podName && (
+                    <tr>
+                      <td className="attr-key">Pod Name</td>
+                      <td className="attr-val">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '11px', wordBreak: 'break-all' }}>{span.podName}</span>
+                          <button className="copy-btn-cell" onClick={() => copyToClipboard(span.podName!)}>📋</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {span.nodeName && (
+                    <tr>
+                      <td className="attr-key">Node Name</td>
+                      <td className="attr-val">{span.nodeName}</td>
+                    </tr>
+                  )}
+                  <tr>
+                    <td className="attr-key">Span ID</td>
+                    <td className="attr-val">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'var(--font-mono)' }}>
+                        <span style={{ fontSize: '11px' }}>{span.spanId}</span>
+                        <button className="copy-btn-cell" onClick={() => copyToClipboard(span.spanId)}>📋</button>
+                      </div>
+                    </td>
+                  </tr>
+                  {span.parentSpanId && (
+                    <tr>
+                      <td className="attr-key">Parent ID</td>
+                      <td className="attr-val">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'var(--font-mono)' }}>
+                          <span style={{ fontSize: '11px' }}>{span.parentSpanId}</span>
+                          <button className="copy-btn-cell" onClick={() => copyToClipboard(span.parentSpanId!)}>📋</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  <tr>
+                    <td className="attr-key">Start Time</td>
+                    <td className="attr-val">{formattedStartTime}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Span Events/Logs if any */}
+            {hasEvents && (
+              <div>
+                <h3 style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', borderBottom: '1px solid var(--border-primary)', paddingBottom: '4px' }}>
+                  Logs / Events ({span.events!.length})
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {span.events!.map((ev, i) => (
+                    <div key={i} style={{ background: 'var(--bg-tertiary)', padding: '8px 10px', borderRadius: '6px', borderLeft: '3px solid var(--accent-indigo)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span style={{ fontWeight: 600, fontSize: '11px', color: 'var(--text-primary)' }}>{ev.name}</span>
+                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                          {new Date(ev.timestamp).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      {ev.attributes && Object.keys(ev.attributes).length > 0 && (
+                        <div style={{ fontSize: '10px', display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '4px', borderLeft: '1px solid var(--border-primary)' }}>
+                          {Object.entries(ev.attributes).map(([ek, evVal]) => (
+                            <div key={ek}>
+                              <span style={{ color: 'var(--text-muted)' }}>{ek}: </span>
+                              <span className="mono" style={{ color: 'var(--text-secondary)' }}>{String(evVal)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab: Attributes */}
+        {activeTab === 'attributes' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <input
+              type="text"
+              placeholder="Filter attributes..."
+              value={filterQuery}
+              onChange={(e) => setFilterQuery(e.target.value)}
+              className="filter-select"
+              style={{ width: '100%', fontSize: '12px', padding: '6px 10px', marginBottom: '6px' }}
+            />
+            {filteredAttributes.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)', fontSize: '12px' }}>
+                No matching attributes.
+              </div>
+            ) : (
+              <table className="attr-table">
+                <tbody>
+                  {filteredAttributes.map(([k, v]) => (
+                    <tr key={k}>
+                      <td className="attr-key" style={{ width: '160px', wordBreak: 'break-all' }}>{k}</td>
+                      <td className="attr-val">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                          <span style={{ wordBreak: 'break-all' }}>{String(v)}</span>
+                          <button 
+                            className="copy-btn-cell" 
+                            style={{ flexShrink: 0 }}
+                            onClick={() => copyToClipboard(String(v))}
+                            title="Copy Value"
+                          >
+                            📋
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+        {/* Tab: Failure details */}
+        {activeTab === 'error' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ background: 'rgba(244, 63, 94, 0.08)', border: '1px solid rgba(244, 63, 94, 0.3)', padding: '12px 14px', borderRadius: '8px', borderLeft: '4px solid var(--accent-rose)' }}>
+              <div style={{ color: 'var(--accent-rose)', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                ⚠️ Error Summary
+              </div>
+              <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', wordBreak: 'break-all' }}>{errorMsg}</div>
+            </div>
+
+            {stackTrace && (
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                  Execution Stack Trace
+                </div>
+                <pre style={{ background: '#0f172a', padding: '12px', borderRadius: '8px', overflowX: 'auto', border: '1px solid rgba(255,255,255,0.05)', margin: 0 }}>
+                  <code style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: '#f1f5f9', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    {stackTrace}
+                  </code>
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab: Raw JSON */}
+        {activeTab === 'json' && (
+          <div style={{ background: '#0f172a', padding: '14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', overflowX: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+              <button 
+                className="btn btn-ghost btn-sm" 
+                style={{ fontSize: '10px', padding: '2px 8px', color: '#cbd5e1', borderColor: 'rgba(255,255,255,0.2)' }}
+                onClick={() => copyToClipboard(JSON.stringify(span, null, 2))}
+              >
+                Copy Full JSON
+              </button>
+            </div>
+            <pre style={{ margin: 0 }}>
+              {renderJson}
+            </pre>
+          </div>
+        )}
+
+      </div>
+    </>
   );
 }
 
@@ -347,8 +1223,6 @@ export default function TraceDetail() {
         </div>
       )}
 
-
-
       {/* Main Visualization Card */}
       <div className="card">
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
@@ -388,52 +1262,7 @@ export default function TraceDetail() {
                 traceDuration={trace.durationMs}
                 onSelectSpan={(span) => setSelectedSpan(span)}
               />
-              
-              {/* Flamegraph Selected Span Details */}
-              {selectedSpan ? (
-                <div className="selected-span-details-panel">
-                  <div className="panel-header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: getSvcColor(selectedSpan.serviceName) }} />
-                      <span className="panel-service">{selectedSpan.serviceName}</span>
-                      <span className="panel-span-name">/ {selectedSpan.name}</span>
-                    </div>
-                    <button className="btn btn-ghost btn-sm" style={{ padding: '2px 8px' }} onClick={() => setSelectedSpan(null)}>Dismiss</button>
-                  </div>
-                  <div className="panel-body">
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '12px' }}>
-                      <div>
-                        <span className="panel-label">Duration</span>
-                        <span className="panel-value color-cyan">{formatDuration(selectedSpan.durationMs)}</span>
-                      </div>
-                      <div>
-                        <span className="panel-label">Start Time</span>
-                        <span className="panel-value">{new Date(selectedSpan.startTime).toLocaleTimeString()}</span>
-                      </div>
-                      <div>
-                        <span className="panel-label">Status</span>
-                        <span className={`badge ${selectedSpan.status === 'ERROR' ? 'badge-error' : 'badge-ok'}`}>{selectedSpan.status}</span>
-                      </div>
-                    </div>
-                    
-                    {selectedSpan.attributes && Object.keys(selectedSpan.attributes).length > 0 && (
-                      <div>
-                        <span className="panel-label" style={{ marginBottom: '6px', display: 'block' }}>Key Attributes</span>
-                        <table className="attr-table">
-                          <tbody>
-                            {Object.entries(selectedSpan.attributes).map(([k, v]) => (
-                              <tr key={k}>
-                                <td className="attr-key" style={{ width: '150px' }}>{k}</td>
-                                <td className="attr-val">{v}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : (
+              {!selectedSpan && (
                 <div className="selected-span-placeholder">
                   Click a span bar in the flame graph above to view its execution details and full telemetry attributes.
                 </div>
@@ -441,6 +1270,20 @@ export default function TraceDetail() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Sliding Span Details Drawer Backdrop */}
+      <div className={`drawer-backdrop ${selectedSpan ? 'open' : ''}`} onClick={() => setSelectedSpan(null)} />
+      
+      {/* Sliding Span Details Drawer Panel */}
+      <div className={`span-drawer ${selectedSpan ? 'open' : ''}`}>
+        {selectedSpan && (
+          <SpanDrawerContent 
+            span={selectedSpan} 
+            traceDuration={trace.durationMs}
+            onClose={() => setSelectedSpan(null)} 
+          />
+        )}
       </div>
 
       <style>{`
@@ -500,7 +1343,6 @@ export default function TraceDetail() {
           text-overflow: ellipsis;
         }
 
-
         /* View Toggle Buttons */
         .view-toggle-buttons {
           display: flex;
@@ -533,15 +1375,6 @@ export default function TraceDetail() {
           color: #ffffff !important;
         }
 
-        /* Flamegraph details panel */
-        .selected-span-details-panel {
-          background: var(--bg-secondary);
-          border: 1px solid var(--border-primary);
-          border-radius: 8px;
-          overflow: hidden;
-          animation: slideDown 0.15s ease-out;
-        }
-        
         .selected-span-placeholder {
           text-align: center;
           padding: 24px;
@@ -551,51 +1384,8 @@ export default function TraceDetail() {
           border-radius: 8px;
           background: var(--bg-secondary);
         }
-        
-        .panel-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 8px 12px;
-          background: var(--bg-tertiary);
-          border-bottom: 1px solid var(--border-primary);
-        }
-        
-        .panel-service {
-          font-weight: 700;
-          color: var(--text-primary);
-          font-size: 12.5px;
-        }
-        
-        .panel-span-name {
-          color: var(--text-secondary);
-          font-size: 12.5px;
-          font-weight: 500;
-        }
-        
-        .panel-body {
-          padding: 14px;
-        }
-        
-        .panel-label {
-          font-size: 10px;
-          font-weight: bold;
-          text-transform: uppercase;
-          color: var(--text-muted);
-        }
-        
-        .panel-value {
-          font-size: 14px;
-          font-weight: 600;
-          display: block;
-          margin-top: 2px;
-        }
-        
-        .panel-value.color-cyan {
-          color: var(--accent-cyan);
-        }
 
-        /* Reusable table helpers matching SpanTimeline style */
+        /* Reusable table helpers */
         .attr-table {
           width: 100%;
           border-collapse: collapse;
@@ -617,13 +1407,143 @@ export default function TraceDetail() {
           white-space: nowrap;
           background: rgba(99, 102, 241, 0.03);
           border-right: 1px solid var(--border-primary);
+          font-size: 11px;
         }
         .attr-val {
           padding: 6px 12px;
           color: var(--text-primary);
-          word-break: break-all;
-          font-family: var(--font-mono);
           font-size: 11px;
+        }
+
+        /* Drawer backdrop overlay */
+        .drawer-backdrop {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(15, 23, 42, 0.4);
+          backdrop-filter: blur(4px);
+          z-index: 999;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .drawer-backdrop.open {
+          opacity: 1;
+          pointer-events: auto;
+        }
+
+        /* Span drawer container sliding from the right */
+        .span-drawer {
+          position: fixed;
+          top: 0;
+          right: 0;
+          bottom: 0;
+          width: 520px;
+          background: var(--bg-secondary);
+          border-left: 1px solid var(--border-primary);
+          box-shadow: -10px 0 30px rgba(0, 0, 0, 0.25);
+          z-index: 1000;
+          transform: translateX(100%);
+          transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .span-drawer.open {
+          transform: translateX(0);
+        }
+
+        /* Header elements inside the drawer */
+        .drawer-header {
+          padding: 16px 20px;
+          border-bottom: 1px solid var(--border-primary);
+          background: var(--bg-tertiary);
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+        }
+
+        .drawer-tabs {
+          display: flex;
+          border-bottom: 1px solid var(--border-primary);
+          background: var(--bg-secondary);
+        }
+
+        .drawer-tab-btn {
+          flex: 1;
+          padding: 12px;
+          background: transparent;
+          border: none;
+          color: var(--text-secondary);
+          font-size: 11.5px;
+          font-weight: 600;
+          cursor: pointer;
+          border-bottom: 2px solid transparent;
+          transition: color 0.15s, border-color 0.15s;
+          text-align: center;
+        }
+        .drawer-tab-btn:hover {
+          color: var(--text-primary);
+        }
+        .drawer-tab-btn.active {
+          color: var(--accent-indigo);
+          border-bottom-color: var(--accent-indigo);
+        }
+
+        /* Small copy button inside table cells */
+        .copy-btn-cell {
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          font-size: 11px;
+          padding: 2px 4px;
+          border-radius: 4px;
+          transition: transform 0.1s, background 0.1s;
+        }
+        .copy-btn-cell:hover {
+          background: var(--bg-tertiary);
+          transform: scale(1.15);
+        }
+        .copy-btn-cell:active {
+          transform: scale(0.95);
+        }
+
+        /* Header control overlay buttons */
+        .control-btn-header {
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-primary);
+          color: var(--text-primary);
+          width: 26px;
+          height: 26px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: bold;
+          transition: background 0.15s, border-color 0.15s;
+        }
+
+        .control-btn-header:hover {
+          background: var(--bg-secondary);
+          border-color: var(--accent-indigo);
+        }
+
+        .control-divider-header {
+          width: 1px;
+          height: 16px;
+          background: var(--border-primary);
+          margin: 0 4px;
+        }
+
+        .control-status-header {
+          font-size: 10px;
+          color: var(--text-muted);
+          font-family: var(--font-mono);
+          padding-right: 4px;
         }
       `}</style>
     </div>

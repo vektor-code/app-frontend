@@ -272,6 +272,14 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration }: S
 
     const isDimmed = !matchesSearch || !matchesType;
 
+    if (isDimmed) {
+      return (
+        <React.Fragment key={span.spanId}>
+          {children.map((child, idx) => renderSpan(child, depth, idx === children.length - 1))}
+        </React.Fragment>
+      );
+    }
+
     const filepath = attrs['code.filepath'] || attrs['code.file'];
     const lineno = attrs['code.lineno'] || attrs['code.line'];
     const funcName = attrs['code.function'] || attrs['code.func'];
