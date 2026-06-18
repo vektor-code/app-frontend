@@ -180,7 +180,42 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
                       </span>
                     </td>
                     <td style={{ fontWeight: 600, fontSize: '13px' }}>{t.serviceName}</td>
-                    <td className="mono" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{t.rootName || '—'}</td>
+                    <td className="mono" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      <div>{t.rootName || '—'}</div>
+                      {t.hasError && t.errorSummary && (
+                        <div style={{ 
+                          display: 'inline-flex', 
+                          alignItems: 'center', 
+                          gap: '4px', 
+                          marginTop: '4px', 
+                          padding: '2px 6px', 
+                          borderRadius: '4px', 
+                          background: 'rgba(244, 63, 94, 0.1)', 
+                          border: '1px solid rgba(244, 63, 94, 0.2)',
+                          fontSize: '10.5px',
+                          color: 'var(--accent-rose)',
+                          fontWeight: 500,
+                          maxWidth: '320px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }} title={t.errorSummary}>
+                          <span style={{ 
+                            textTransform: 'uppercase', 
+                            fontSize: '9px', 
+                            fontWeight: 700, 
+                            padding: '1px 4px', 
+                            borderRadius: '3px', 
+                            background: 'var(--accent-rose)', 
+                            color: '#ffffff',
+                            marginRight: '2px'
+                          }}>
+                            {t.errorType || 'err'}
+                          </span>
+                          {t.errorSummary}
+                        </div>
+                      )}
+                    </td>
                     <td>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
                         {(t.services || []).slice(0, 5).map(svc => (

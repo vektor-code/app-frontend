@@ -49,6 +49,8 @@ export interface TraceListItem {
   spanCount: number;
   hasError: boolean;
   services?: string[];
+  errorType?: string;
+  errorSummary?: string;
 }
 
 export interface ServiceStats {
