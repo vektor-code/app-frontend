@@ -520,6 +520,20 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   useEffect(() => {
     const handleCloseMenu = () => setContextMenu(null);
     window.addEventListener('click', handleCloseMenu);
+    
+    // Load custom node positions on initial mount
+    try {
+      const saved = localStorage.getItem('service_map_custom_positions');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(([key, val]) => nodePositionsRef.current.set(key, val));
+        }
+      }
+    } catch (e) {
+      console.error('Error loading custom positions on mount:', e);
+    }
+
     return () => window.removeEventListener('click', handleCloseMenu);
   }, []);
 
@@ -563,9 +577,20 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   const spanNamespaceCache = useRef<Map<string, string>>(new Map());
   const spanNameCache = useRef<Map<string, string>>(new Map());
 
-  // Clear positions to force re-layout when active namespace selection changes
+  // Reload custom positions when active namespace selection changes
   useEffect(() => {
     nodePositionsRef.current.clear();
+    try {
+      const saved = localStorage.getItem('service_map_custom_positions');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(([key, val]) => nodePositionsRef.current.set(key, val));
+        }
+      }
+    } catch (e) {
+      console.error('Error reloading custom positions:', e);
+    }
   }, [selectedNamespaces, namespace]);
 
   useEffect(() => {
@@ -986,6 +1011,14 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
     };
 
     const handleMouseUp = () => {
+      if (isDraggingNodeRef.current || isDraggingZoneRef.current || isResizingNodeRef.current) {
+        try {
+          const entries = Array.from(nodePositionsRef.current.entries());
+          localStorage.setItem('service_map_custom_positions', JSON.stringify(entries));
+        } catch (e) {
+          console.error('Error saving custom positions:', e);
+        }
+      }
       isPanningRef.current = false;
       isDraggingNodeRef.current = null;
       isDraggingZoneRef.current = null;
@@ -1819,6 +1852,8 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   const handleReset = () => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
+    nodePositionsRef.current.clear();
+    localStorage.removeItem('service_map_custom_positions');
   };
 
   const handleToggleNamespace = (ns: string) => {
