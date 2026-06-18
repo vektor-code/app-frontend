@@ -1421,7 +1421,8 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
       // --- Draw Nodes (Microservice Cards) ---
       activeNodes.forEach(node => {
-        const pos = positions.get(node.serviceName);
+        const key = getNodeKey(node);
+        const pos = positions.get(key);
         if (!pos) return;
 
         const isInternet = node.serviceName === 'Internet';
@@ -1440,7 +1441,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         const shouldDim = hs !== null && !isSelf && !isConnected;
         ctx.globalAlpha = shouldDim ? 0.15 : 1.0;
 
-        const { w, h } = getNodeSize(node.serviceName, data?.nodes, pos);
+        const { w, h } = getNodeSize(key, data?.nodes, pos);
         const rx = pos.x - w / 2;
         const ry = pos.y - h / 2;
 
@@ -1631,9 +1632,10 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         activeNodes.forEach(node => {
-          const pos = positions.get(node.serviceName);
+          const key = getNodeKey(node);
+          const pos = positions.get(key);
           if (pos) {
-            const { w, h } = getNodeSize(node.serviceName, data?.nodes, pos);
+            const { w, h } = getNodeSize(key, data?.nodes, pos);
             minX = Math.min(minX, pos.x - w / 2);
             minY = Math.min(minY, pos.y - h / 2);
             maxX = Math.max(maxX, pos.x + w / 2);
@@ -1657,8 +1659,10 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           minimapCtx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)';
           minimapCtx.lineWidth = 0.5;
           activeEdges.forEach(edge => {
-            const sPos = positions.get(edge.source);
-            const tPos = positions.get(edge.target);
+            const sKey = getNodeKey({ serviceName: edge.source, namespace: edge.sourceNamespace || namespace });
+            const tKey = getNodeKey({ serviceName: edge.target, namespace: edge.targetNamespace || namespace });
+            const sPos = positions.get(sKey);
+            const tPos = positions.get(tKey);
             if (sPos && tPos) {
               minimapCtx.beginPath();
               minimapCtx.moveTo(sPos.x * scale + offsetX, sPos.y * scale + offsetY);
@@ -1669,9 +1673,10 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
           // Minimap nodes
           activeNodes.forEach(node => {
-            const pos = positions.get(node.serviceName);
+            const key = getNodeKey(node);
+            const pos = positions.get(key);
             if (pos) {
-              const { w, h } = getNodeSize(node.serviceName, data?.nodes, pos);
+              const { w, h } = getNodeSize(key, data?.nodes, pos);
               const isInternet = node.serviceName === 'Internet';
               const isInfra = isInfraNode(node);
               
