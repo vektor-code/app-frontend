@@ -19,7 +19,6 @@ export default function SystemMetrics({ namespace }: SystemMetricsProps) {
       const res = await api.getPods(namespace || undefined);
       const podList = res.pods || [];
       setPods(podList);
-      setLoading(false);
 
       // Append new CPU points to history for sparklines
       setMetricsHistory(prev => {
@@ -32,6 +31,8 @@ export default function SystemMetrics({ namespace }: SystemMetricsProps) {
       });
     } catch (err) {
       console.error('Failed to load pods metrics:', err);
+    } finally {
+      setLoading(false);
     }
   }, [namespace]);
 
@@ -42,10 +43,15 @@ export default function SystemMetrics({ namespace }: SystemMetricsProps) {
   }, [loadPods]);
 
   const filteredPods = pods.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
-                          p.nodeName.toLowerCase().includes(search.toLowerCase()) ||
-                          Object.entries(p.labels).some(([k, v]) => k.includes(search) || v.includes(search));
-    const matchesPhase = filterPhase === 'all' || p.phase.toLowerCase() === filterPhase.toLowerCase();
+    const nameStr = p.name || '';
+    const nodeStr = p.nodeName || '';
+    const labelsObj = p.labels || {};
+    const phaseStr = p.phase || '';
+
+    const matchesSearch = nameStr.toLowerCase().includes(search.toLowerCase()) || 
+                          nodeStr.toLowerCase().includes(search.toLowerCase()) ||
+                          Object.entries(labelsObj).some(([k, v]) => k.includes(search) || String(v).includes(search));
+    const matchesPhase = filterPhase === 'all' || phaseStr.toLowerCase() === filterPhase.toLowerCase();
     return matchesSearch && matchesPhase;
   });
 
@@ -219,7 +225,7 @@ export default function SystemMetrics({ namespace }: SystemMetricsProps) {
 
                 {/* Pod Labels */}
                 <div className="pod-labels-tags">
-                  {Object.entries(pod.labels).slice(0, 4).map(([k, v]) => (
+                  {Object.entries(pod.labels || {}).slice(0, 4).map(([k, v]) => (
                     <span key={k} className="label-tag" title={`${k}=${v}`}>
                       {k.length > 8 ? k.slice(0, 8) + '…' : k}:{v.length > 10 ? v.slice(0, 10) + '…' : v}
                     </span>

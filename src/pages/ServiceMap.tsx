@@ -120,6 +120,7 @@ const drawInfraIcon = (
   iconImages?: Map<string, HTMLImageElement>
 ) => {
   const sys = system.toLowerCase();
+  const isWebEndpoint = sys.includes('.') || sys.startsWith('http') || sys.includes('api') || sys.includes('proxy') || sys.includes('external');
 
   let matchedKey = '';
   if (sys.includes('redis')) matchedKey = 'redis';
@@ -298,8 +299,29 @@ const drawInfraIcon = (
     }
     ctx.restore();
   } else if (sys.includes('dns')) {
-    // DNS: Network globe
+    // DNS: Network globe (Amber)
     ctx.strokeStyle = isDark ? '#fbbf24' : '#d97706';
+    ctx.lineWidth = 1.5;
+
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    const r = size * 0.4;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r * 0.5, r, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(cx - r, cy);
+    ctx.lineTo(cx + r, cy);
+    ctx.stroke();
+  } else if (isWebEndpoint) {
+    // Web / HTTP API Endpoint: Network globe (Blue)
+    ctx.strokeStyle = isDark ? '#38bdf8' : '#0284c7';
     ctx.lineWidth = 1.5;
 
     const cx = x + size / 2;
