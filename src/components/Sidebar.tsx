@@ -30,8 +30,8 @@ export default function Sidebar({ namespaces, selectedNamespace, onNamespaceChan
             src="/logo.png" 
             alt="Vektor Logo" 
             style={{ 
-              width: '26px', 
-              height: '26px', 
+              width: '38px', 
+              height: '38px', 
               flexShrink: 0,
               objectFit: 'contain'
             }} 
