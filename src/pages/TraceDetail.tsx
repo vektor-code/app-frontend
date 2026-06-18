@@ -1128,37 +1128,21 @@ export default function TraceDetail() {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'waterfall' | 'flame'>('waterfall');
   const [selectedSpan, setSelectedSpan] = useState<Span | null>(null);
-
-  // AI Diagnostics state
-  const [diagnostics, setDiagnostics] = useState<DiagnosticReport | null>(null);
-  const [loadingDiagnostics, setLoadingDiagnostics] = useState(false);
-  const [showDiagnostics, setShowDiagnostics] = useState(true);
-
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!traceId) return;
     setLoading(true);
-    setDiagnostics(null);
-    setLoadingDiagnostics(true);
     
-    Promise.all([
-      api.getTrace(traceId),
-      api.getTraceDiagnostics(traceId).catch(() => null)
-    ])
-      .then(([traceData, diagData]) => {
+    api.getTrace(traceId)
+      .then((traceData) => {
         setTrace(traceData);
-        setDiagnostics(diagData);
         setSelectedSpan(null);
       })
       .catch(() => {
         setTrace(null);
-        setDiagnostics(null);
       })
-      .finally(() => {
-        setLoading(false);
-        setLoadingDiagnostics(false);
-      });
+      .finally(() => setLoading(false));
   }, [traceId]);
 
   const uniqueTags = useMemo(() => {
@@ -1240,162 +1224,7 @@ export default function TraceDetail() {
         </div>
       )}
 
-      {/* AI Diagnostics Card */}
-      {diagnostics && (
-        <div className="card" style={{ marginBottom: '20px', border: '1px solid var(--border-primary)', overflow: 'hidden' }}>
-          <div 
-            onClick={() => setShowDiagnostics(!showDiagnostics)}
-            style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center', 
-              padding: '10px 16px', 
-              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%)', 
-              cursor: 'pointer',
-              userSelect: 'none',
-              borderBottom: showDiagnostics ? '1px solid var(--border-primary)' : 'none'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '13px' }}>✨</span>
-              <span style={{ fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--accent-indigo-light)' }}>
-                Vektor Davis AI Copilot Insights
-              </span>
-            </div>
-            <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
-              {showDiagnostics ? 'Collapse ▴' : 'Expand ▾'}
-            </span>
-          </div>
 
-          {showDiagnostics && (
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '14px 16px' }}>
-              <div style={{ fontSize: '12px', lineHeight: '1.5', color: 'var(--text-primary)' }}>
-                {diagnostics.summary}
-              </div>
-
-              {/* Grid for Root Cause & Bottleneck highlights */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px', marginTop: '4px' }}>
-                {diagnostics.rootCauseSpanId && (
-                  <div style={{ 
-                    background: 'rgba(244, 63, 94, 0.04)', 
-                    border: '1px solid rgba(244, 63, 94, 0.15)', 
-                    borderRadius: '8px', 
-                    padding: '10px 12px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    gap: '8px'
-                  }}>
-                    <div>
-                      <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--accent-rose)', textTransform: 'uppercase', marginBottom: '2px' }}>
-                        🚨 Isolated Root Cause
-                      </div>
-                      <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                        Service: {diagnostics.rootCauseService}
-                      </div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px', wordBreak: 'break-all', fontFamily: 'var(--font-mono)' }}>
-                        {diagnostics.rootCauseMessage}
-                      </div>
-                    </div>
-                    <button 
-                      className="btn btn-ghost btn-sm" 
-                      style={{ 
-                        alignSelf: 'flex-start', 
-                        fontSize: '9px', 
-                        padding: '2px 8px', 
-                        color: 'var(--accent-rose)', 
-                        borderColor: 'rgba(244, 63, 94, 0.25)',
-                        background: 'rgba(244, 63, 94, 0.05)'
-                      }}
-                      onClick={() => {
-                        const target = trace.spans.find(s => s.spanId === diagnostics.rootCauseSpanId);
-                        if (target) setSelectedSpan(target);
-                      }}
-                    >
-                      Focus Root Cause Span
-                    </button>
-                  </div>
-                )}
-
-                {diagnostics.bottleneckSpanId && (
-                  <div style={{ 
-                    background: 'rgba(245, 158, 11, 0.04)', 
-                    border: '1px solid rgba(245, 158, 11, 0.15)', 
-                    borderRadius: '8px', 
-                    padding: '10px 12px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    gap: '8px'
-                  }}>
-                    <div>
-                      <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--accent-amber)', textTransform: 'uppercase', marginBottom: '2px' }}>
-                        ⏳ Performance Bottleneck
-                      </div>
-                      <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                        Service: {diagnostics.bottleneckService}
-                      </div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                        Self-Execution: <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{diagnostics.bottleneckDurationMs.toFixed(1)}ms</span> ({diagnostics.bottleneckPercent.toFixed(1)}% of trace)
-                      </div>
-                    </div>
-                    <button 
-                      className="btn btn-ghost btn-sm" 
-                      style={{ 
-                        alignSelf: 'flex-start', 
-                        fontSize: '9px', 
-                        padding: '2px 8px', 
-                        color: 'var(--accent-amber)', 
-                        borderColor: 'rgba(245, 158, 11, 0.25)',
-                        background: 'rgba(245, 158, 11, 0.05)'
-                      }}
-                      onClick={() => {
-                        const target = trace.spans.find(s => s.spanId === diagnostics.bottleneckSpanId);
-                        if (target) setSelectedSpan(target);
-                      }}
-                    >
-                      Focus Bottleneck Span
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Dynamic Issues & Remediations Lists */}
-              {((diagnostics.issues && diagnostics.issues.length > 0) || (diagnostics.remediations && diagnostics.remediations.length > 0)) && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', marginTop: '4px' }}>
-                  {diagnostics.issues && diagnostics.issues.length > 0 && (
-                    <div>
-                      <h4 style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                        Detected Issues ({diagnostics.issues.length})
-                      </h4>
-                      <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {diagnostics.issues.map((issue, idx) => (
-                          <li key={idx} style={{ lineHeight: '1.4' }}>{issue}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {diagnostics.remediations && diagnostics.remediations.length > 0 && (
-                    <div>
-                      <h4 style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                        Recommended Fixes ({diagnostics.remediations.length})
-                      </h4>
-                      <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {diagnostics.remediations.map((rem, idx) => (
-                          <li key={idx} style={{ lineHeight: '1.4' }}>
-                            <span style={{ color: 'var(--accent-indigo-light)', marginRight: '2px' }}>✓</span> {rem}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Main Visualization Card */}
       <div className="card">
