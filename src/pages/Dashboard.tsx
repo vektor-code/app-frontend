@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, type NamespaceStats, type DatabaseQueryMetric } from '../api/client';
+import { createPortal } from 'react-dom';
 
 interface DashboardProps {
   namespaces: NamespaceStats[];
@@ -521,7 +522,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
       )}
 
       {/* Futuristic Split-Pane Dashboard Customizer Modal */}
-      {tempWidget && (
+      {tempWidget && createPortal(
         <div className="modal-backdrop" onClick={() => setTempWidget(null)}>
           <div className="modal-content split-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
@@ -671,7 +672,8 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Styled block with customized premium styles */}

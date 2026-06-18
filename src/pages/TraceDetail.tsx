@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, type Trace, type Span, type DiagnosticReport, isSpanError } from '../api/client';
+import { createPortal } from 'react-dom';
 import SpanTimeline from '../components/SpanTimeline';
 
 const SERVICE_COLORS: Record<string, string> = {};
@@ -1318,19 +1319,22 @@ export default function TraceDetail() {
         </div>
       </div>
 
-      {/* Sliding Span Details Drawer Backdrop */}
-      <div className={`drawer-backdrop ${selectedSpan ? 'open' : ''}`} onClick={() => setSelectedSpan(null)} />
-      
-      {/* Sliding Span Details Drawer Panel */}
-      <div className={`span-drawer ${selectedSpan ? 'open' : ''}`}>
-        {selectedSpan && (
-          <SpanDrawerContent 
-            span={selectedSpan} 
-            traceDuration={trace.durationMs}
-            onClose={() => setSelectedSpan(null)} 
-          />
-        )}
-      </div>
+      {/* Sliding Span Details Drawer via React Portal to cover whole screen */}
+      {createPortal(
+        <>
+          <div className={`drawer-backdrop ${selectedSpan ? 'open' : ''}`} onClick={() => setSelectedSpan(null)} />
+          <div className={`span-drawer ${selectedSpan ? 'open' : ''}`}>
+            {selectedSpan && (
+              <SpanDrawerContent 
+                span={selectedSpan} 
+                traceDuration={trace.durationMs}
+                onClose={() => setSelectedSpan(null)} 
+              />
+            )}
+          </div>
+        </>,
+        document.body
+      )}
 
       <style>{`
         .trace-detail {

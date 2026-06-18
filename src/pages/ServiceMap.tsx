@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, type ServiceMapData, type ServiceStats, type Span, connectLiveStream, isSpanError } from '../api/client';
+import { createPortal } from 'react-dom';
 
 interface ServiceMapProps {
   namespace: string;
@@ -2217,13 +2218,14 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         </div>
       )}
 
-      {/* Sliding Drawer for Clicked Service Details */}
-      <div 
-        className={`drawer-backdrop ${selectedService ? 'open' : ''}`} 
-        onClick={() => setSelectedService(null)} 
-      />
-      
-      <div className={`span-drawer ${selectedService ? 'open' : ''}`}>
+      {/* Sliding Drawer for Clicked Service Details via React Portal to cover whole screen */}
+      {createPortal(
+        <>
+          <div 
+            className={`drawer-backdrop ${selectedService ? 'open' : ''}`} 
+            onClick={() => setSelectedService(null)} 
+          />
+          <div className={`span-drawer ${selectedService ? 'open' : ''}`}>
         {selectedService && (
           <>
             <div className="drawer-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '14px 18px', borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-tertiary)' }}>
@@ -2482,7 +2484,10 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             </div>
           </>
         )}
-      </div>
+          </div>
+        </>,
+        document.body
+      )}
 
       {/* Context Menu Styles */}
       <style>{`
