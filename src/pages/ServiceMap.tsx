@@ -640,29 +640,57 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
   useEffect(() => {
     api.getServiceMap(namespace).then(res => {
       setData(res);
-      if (res && res.nodes) {
-        const nsList = Array.from(new Set(res.nodes.map(n => n.namespace).filter(ns => ns && ns !== 'Internet')));
-        setVisibleNamespaces(nsList);
+      const nsList = res && res.nodes
+        ? Array.from(new Set(res.nodes.map(n => n.namespace).filter(ns => ns && ns !== 'Internet')))
+        : [];
 
-        // Retrieve persisted namespaces or fallback to all
-        const saved = localStorage.getItem(`service_map_namespaces_${namespace || 'all'}`);
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed)) {
-              setSelectedNamespaces(parsed.filter(x => nsList.includes(x)));
-              return;
-            }
-          } catch {}
-        }
+      // Retrieve persisted namespaces or fallback to all
+      let loadedNamespaces: string[] = [];
+      let hasSaved = false;
+      const saved = localStorage.getItem(`service_map_namespaces_${namespace || 'all'}`);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            loadedNamespaces = parsed;
+            hasSaved = true;
+          }
+        } catch {}
+      }
 
+      if (!hasSaved) {
         if (namespace) {
-          setSelectedNamespaces([namespace]);
+          loadedNamespaces = [namespace];
         } else {
-          setSelectedNamespaces(nsList);
+          loadedNamespaces = nsList;
         }
       }
-    }).catch(() => {});
+
+      const allVisible = Array.from(new Set([...nsList, ...loadedNamespaces]));
+      setVisibleNamespaces(allVisible);
+      setSelectedNamespaces(loadedNamespaces);
+    }).catch(() => {
+      // Fallback in case of error: initialize namespaces from localStorage
+      let loadedNamespaces: string[] = [];
+      let hasSaved = false;
+      const saved = localStorage.getItem(`service_map_namespaces_${namespace || 'all'}`);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            loadedNamespaces = parsed;
+            hasSaved = true;
+          }
+        } catch {}
+      }
+
+      if (!hasSaved && namespace) {
+        loadedNamespaces = [namespace];
+      }
+
+      setVisibleNamespaces(loadedNamespaces);
+      setSelectedNamespaces(loadedNamespaces);
+    });
   }, [namespace]);
 
   // Convert screen coordinates to world coordinates
