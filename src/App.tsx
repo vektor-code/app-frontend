@@ -214,9 +214,11 @@ export default function App() {
                 </svg>
               )}
             </button>
-            <div className="header-badge">
-              <div className={`live-dot${connected ? '' : ' '}`} style={connected ? {} : { background: 'var(--accent-rose)' }} />
-              {connected ? 'Connected' : 'Disconnected'}
+            <div className="header-user" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '16px', fontSize: '12.5px', fontWeight: 500, color: 'var(--text-secondary)' }}>
+              <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                {(user?.username || user?.name || 'U').charAt(0)}
+              </div>
+              <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{user?.username || user?.name || 'User'}</span>
             </div>
             <button
               className="btn btn-ghost"
