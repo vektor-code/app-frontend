@@ -630,7 +630,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       liquibase: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/liquibase/liquibase-original.svg',
       nginx: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nginx/nginx-original.svg',
       kong: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/kong.svg',
-      mygov: 'https://upload.wikimedia.org/wikipedia/commons/5/5e/Mygov.svg',
+      mygov: '/mygov-id.svg',
     };
 
     Object.entries(urls).forEach(([key, url]) => {
