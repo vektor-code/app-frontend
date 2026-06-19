@@ -1538,7 +1538,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         const hs = highlightedServiceRef.current;
         const isSelf = edge.source === hs || edge.target === hs;
         const shouldDim = hs !== null && !isSelf;
-        ctx.globalAlpha = shouldDim ? 0.15 : 1.0;
+        ctx.globalAlpha = shouldDim ? 0.05 : 1.0;
 
         ctx.strokeStyle = isError
           ? 'rgba(244, 63, 94, 0.45)'
@@ -1613,7 +1613,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         const hs = highlightedServiceRef.current;
         const isSelf = particle.source === hs || particle.target === hs;
         const shouldDim = hs !== null && !isSelf;
-        ctx.globalAlpha = shouldDim ? 0.15 : 1.0;
+        ctx.globalAlpha = shouldDim ? 0.05 : 1.0;
 
         const { x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2 } = getEdgeCurve(sourceKey, from, targetKey, to);
         const pos = getBezierPoint(progress, x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2);
@@ -1697,7 +1697,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           (e.target === hs && e.source === node.serviceName)
         );
         const shouldDim = hs !== null && !isSelf && !isConnected;
-        ctx.globalAlpha = shouldDim ? 0.15 : 1.0;
+        ctx.globalAlpha = shouldDim ? 0.08 : 1.0;
 
         const { w, h } = getNodeSize(key, data?.nodes, pos);
         const rx = pos.x - w / 2;
@@ -1707,34 +1707,41 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         const pulse = 1 + 0.05 * Math.sin(Date.now() * 0.005);
         const glowRadius = Math.max(w, h) * 0.8 * pulse;
 
-        const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, glowRadius);
-        if (isInternet) {
-          gradient.addColorStop(0, 'rgba(56, 189, 248, 0.15)');
-        } else if (isInfra) {
-          gradient.addColorStop(0, 'rgba(245, 158, 11, 0.15)');
-        } else {
-          gradient.addColorStop(0, hasErrors ? 'rgba(244, 63, 94, 0.15)' : 'rgba(99, 102, 241, 0.12)');
+        // Skip glow/halo if the node is dimmed
+        if (!shouldDim) {
+          const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, glowRadius);
+          if (isInternet) {
+            gradient.addColorStop(0, 'rgba(56, 189, 248, 0.15)');
+          } else if (isInfra) {
+            gradient.addColorStop(0, 'rgba(245, 158, 11, 0.15)');
+          } else {
+            gradient.addColorStop(0, hasErrors ? 'rgba(244, 63, 94, 0.15)' : 'rgba(99, 102, 241, 0.12)');
+          }
+          gradient.addColorStop(1, 'transparent');
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, glowRadius, 0, Math.PI * 2);
+          ctx.fill();
         }
-        gradient.addColorStop(1, 'transparent');
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, glowRadius, 0, Math.PI * 2);
-        ctx.fill();
 
-        ctx.shadowBlur = hasErrors ? 12 : 6;
-        ctx.shadowColor = isInternet
+        // Disable shadows on dimmed nodes to prevent glowing artifacts
+        ctx.shadowBlur = shouldDim ? 0 : (hasErrors ? 12 : 6);
+        ctx.shadowColor = shouldDim ? 'transparent' : (isInternet
           ? 'rgba(56, 189, 248, 0.4)'
           : isInfra
             ? 'rgba(245, 158, 11, 0.4)'
-            : hasErrors ? 'rgba(244, 63, 94, 0.4)' : 'rgba(99, 102, 241, 0.3)';
+            : hasErrors ? 'rgba(244, 63, 94, 0.4)' : 'rgba(99, 102, 241, 0.3)');
 
         ctx.fillStyle = isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)';
-        ctx.strokeStyle = isInternet
-          ? '#38bdf8'
-          : isInfra
-            ? '#f59e0b'
-            : hasErrors ? '#f43f5e' : (isDark ? '#475569' : '#cbd5e1');
-        ctx.lineWidth = hasErrors ? 2.5 : 1.5;
+        // Draw a quiet neutral border if the node is dimmed, otherwise draw themed/error borders
+        ctx.strokeStyle = shouldDim
+          ? (isDark ? '#334155' : '#e2e8f0')
+          : (isInternet
+            ? '#38bdf8'
+            : isInfra
+              ? '#f59e0b'
+              : hasErrors ? '#f43f5e' : (isDark ? '#475569' : '#cbd5e1'));
+        ctx.lineWidth = shouldDim ? 1 : (hasErrors ? 2.5 : 1.5);
 
         ctx.setLineDash([]);
 
