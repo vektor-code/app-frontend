@@ -465,8 +465,8 @@ export default function Dependencies({ namespace }: DependenciesProps) {
             <table className="dependencies-table">
               <thead>
                 <tr>
-                  <th style={{ width: '80px' }}>Health</th>
-                  <th style={{ width: '220px' }}>Dependency Name</th>
+                  <th style={{ width: '260px' }}>Dependency Name</th>
+                  <th style={{ width: '90px' }}>Health</th>
                   <th style={{ width: '100px' }}>Namespace</th>
                   <th style={{ width: '90px' }}>Type</th>
                   <th style={{ width: '150px' }}>Latency (Avg)</th>
@@ -485,9 +485,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
 
                   return (
                     <tr key={item.id}>
-                      {/* Health Badge */}
-                      <td>{getHealthBadge(item.errorRate)}</td>
-
                       {/* Name & Details */}
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -495,8 +492,9 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                             height: '24px', 
                             display: 'flex', 
                             alignItems: 'center', 
-                            justifyContent: 'center',
-                            minWidth: '24px'
+                            justifyContent: 'flex-start',
+                            width: '44px',
+                            minWidth: '44px'
                           }}>
                             {(() => {
                               const logoUrl = getDependencyLogo(item.rawName);
@@ -511,7 +509,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                                     alt={item.system} 
                                     style={{ 
                                       height: '22px', 
-                                      maxWidth: '50px',
+                                      maxWidth: '44px',
                                       objectFit: 'contain',
                                       filter: shouldInvert ? 'invert(1) brightness(0.9)' : undefined
                                     }} 
@@ -544,6 +542,9 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                           </div>
                         </div>
                       </td>
+
+                      {/* Health Badge */}
+                      <td>{getHealthBadge(item.errorRate)}</td>
 
                       {/* Namespace Badge */}
                       <td>
