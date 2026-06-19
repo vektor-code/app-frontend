@@ -95,6 +95,50 @@ const getDependencyEmoji = (name: string): string => {
   return '⚙️';
 };
 
+const BRAND_LOGOS: Record<string, string> = {
+  redis: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/redis/redis-original.svg',
+  kafka: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/apachekafka/apachekafka-original.svg',
+  rabbitmq: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/rabbitmq/rabbitmq-original.svg',
+  vault: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/vault/vault-original.svg',
+  elasticsearch: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/elasticsearch/elasticsearch-original.svg',
+  minio: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/minio/minio-original.svg',
+  postgres: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/postgresql/postgresql-original.svg',
+  mysql: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mysql/mysql-original.svg',
+  mongodb: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mongodb/mongodb-original.svg',
+  liquibase: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/liquibase/liquibase-original.svg',
+  nginx: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nginx/nginx-original.svg',
+  kong: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/kong.svg',
+  mygov: '/mygov-id.svg',
+  stripe: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/stripe.svg',
+  openai: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/openai.svg',
+  slack: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/slack.svg',
+  discord: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/discord.svg',
+  github: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/github.svg',
+};
+
+const getDependencyLogo = (name: string): string | null => {
+  const n = name.toLowerCase();
+  if (n.includes('mygov')) return BRAND_LOGOS.mygov;
+  if (n.includes('postgres')) return BRAND_LOGOS.postgres;
+  if (n.includes('mysql')) return BRAND_LOGOS.mysql;
+  if (n.includes('redis')) return BRAND_LOGOS.redis;
+  if (n.includes('kafka')) return BRAND_LOGOS.kafka;
+  if (n.includes('rabbitmq') || n.includes('message_bus')) return BRAND_LOGOS.rabbitmq;
+  if (n.includes('vault')) return BRAND_LOGOS.vault;
+  if (n.includes('elastic')) return BRAND_LOGOS.elasticsearch;
+  if (n.includes('minio')) return BRAND_LOGOS.minio;
+  if (n.includes('mongo')) return BRAND_LOGOS.mongodb;
+  if (n.includes('liquibase')) return BRAND_LOGOS.liquibase;
+  if (n.includes('nginx')) return BRAND_LOGOS.nginx;
+  if (n.includes('kong')) return BRAND_LOGOS.kong;
+  if (n.includes('stripe')) return BRAND_LOGOS.stripe;
+  if (n.includes('openai')) return BRAND_LOGOS.openai;
+  if (n.includes('slack')) return BRAND_LOGOS.slack;
+  if (n.includes('discord')) return BRAND_LOGOS.discord;
+  if (n.includes('github')) return BRAND_LOGOS.github;
+  return null;
+};
+
 // Parse raw system names like "postgresql (users_db)"
 const parseRawName = (rawName: string) => {
   const match = rawName.match(/^([^(]+)\(([^)]+)\)$/);
@@ -447,8 +491,51 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                       {/* Name & Details */}
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <span style={{ fontSize: '16px', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-tertiary)', borderRadius: '6px', border: '1px solid var(--border-primary)' }} role="img" aria-label={item.system}>
-                            {getDependencyEmoji(item.rawName)}
+                          <span style={{ 
+                            width: '24px', 
+                            height: '24px', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            background: 'var(--bg-tertiary)', 
+                            borderRadius: '6px', 
+                            border: '1px solid var(--border-primary)',
+                            overflow: 'hidden',
+                            padding: '3px'
+                          }}>
+                            {(() => {
+                              const logoUrl = getDependencyLogo(item.rawName);
+                              const isDarkTheme = document.body.classList.contains('dark-theme');
+                              if (logoUrl) {
+                                const isSimpleIcon = logoUrl.includes('simple-icons');
+                                const isKong = logoUrl.includes('kong');
+                                const shouldInvert = isDarkTheme && (isSimpleIcon || isKong);
+                                return (
+                                  <img 
+                                    src={logoUrl} 
+                                    alt={item.system} 
+                                    style={{ 
+                                      width: '100%', 
+                                      height: '100%', 
+                                      objectFit: 'contain',
+                                      filter: shouldInvert ? 'invert(1) brightness(0.9)' : undefined
+                                    }} 
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).style.display = 'none';
+                                      const parent = (e.target as HTMLImageElement).parentElement;
+                                      if (parent) {
+                                        parent.innerText = getDependencyEmoji(item.rawName);
+                                      }
+                                    }}
+                                  />
+                                );
+                              }
+                              return (
+                                <span style={{ fontSize: '14px' }}>
+                                  {getDependencyEmoji(item.rawName)}
+                                </span>
+                              );
+                            })()}
                           </span>
                           <div style={{ display: 'flex', flexDirection: 'column' }}>
                             <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)' }}>
