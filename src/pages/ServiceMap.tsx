@@ -1184,8 +1184,9 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         if (hitNodeKey) {
           const firstSlash = hitNodeKey.indexOf('/');
           const serviceName = firstSlash !== -1 ? hitNodeKey.slice(firstSlash + 1) : hitNodeKey;
-          setSelectedService(serviceName);
-          setDrawerTab('traces');
+          setHighlightedService(prev => prev === serviceName ? null : serviceName);
+        } else {
+          setHighlightedService(null);
         }
       }
 
@@ -1202,6 +1203,18 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       isDraggingZoneRef.current = null;
       isResizingNodeRef.current = null;
       canvas.style.cursor = 'default';
+    };
+
+    const handleDblClick = (e: MouseEvent) => {
+      const pos = getCanvasPos(e);
+      const world = screenToWorld(pos.x, pos.y);
+      const hitNodeKey = hitTestNode(world.x, world.y);
+      if (hitNodeKey) {
+        const firstSlash = hitNodeKey.indexOf('/');
+        const serviceName = firstSlash !== -1 ? hitNodeKey.slice(firstSlash + 1) : hitNodeKey;
+        setSelectedService(serviceName);
+        setDrawerTab('traces');
+      }
     };
 
     const handleContextMenu = (e: MouseEvent) => {
@@ -1226,6 +1239,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
     canvas.addEventListener('wheel', handleWheel, { passive: false });
     canvas.addEventListener('mousedown', handleMouseDown);
     canvas.addEventListener('contextmenu', handleContextMenu);
+    canvas.addEventListener('dblclick', handleDblClick);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
 
@@ -1233,6 +1247,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       canvas.removeEventListener('wheel', handleWheel);
       canvas.removeEventListener('mousedown', handleMouseDown);
       canvas.removeEventListener('contextmenu', handleContextMenu);
+      canvas.removeEventListener('dblclick', handleDblClick);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };

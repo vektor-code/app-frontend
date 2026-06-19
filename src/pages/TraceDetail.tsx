@@ -257,7 +257,7 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
 
       // Map to visible horizontal range
       const rx = ((item.left - viewStart) / visibleWidth) * rect.width;
-      const rw = (item.width / visibleWidth) * rect.width;
+      const rw = Math.max(3.5, (item.width / visibleWidth) * rect.width);
 
       // Calculate Y based on orientation & vertical scroll offset
       let ry = 0;
@@ -557,7 +557,7 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
       if (y >= paddingTop && y <= canvasHeight - paddingBottom) {
         for (const item of renderList) {
           const rx = ((item.left - viewStartRef.current) / visibleWidth) * rect.width;
-          const rw = (item.width / visibleWidth) * rect.width;
+          const rw = Math.max(3.5, (item.width / visibleWidth) * rect.width);
           
           let ry = 0;
           if (orientationRef.current === 'down') {
@@ -1405,6 +1405,36 @@ export default function TraceDetail() {
       </div>
 
       <style>{`
+        .view-toggle-buttons {
+          display: inline-flex;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-primary);
+          padding: 3px;
+          border-radius: 8px;
+        }
+
+        .view-toggle-btn {
+          padding: 6px 12px;
+          font-size: 11.5px;
+          font-weight: 600;
+          color: var(--text-secondary);
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          border-radius: 6px;
+          transition: all 0.15s ease;
+        }
+
+        .view-toggle-btn:hover {
+          color: var(--text-primary);
+        }
+
+        .view-toggle-btn.active {
+          background: var(--bg-secondary);
+          color: var(--accent-indigo);
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+        }
+
         .trace-detail {
           width: 100%;
           max-width: 100% !important;

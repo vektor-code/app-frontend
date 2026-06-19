@@ -71,6 +71,30 @@ const getDependencyType = (name: string): 'database' | 'messaging' | '3rdparty' 
   return 'other';
 };
 
+const getDependencyEmoji = (name: string): string => {
+  const n = name.toLowerCase();
+  if (n.includes('postgres')) return '🐘';
+  if (n.includes('mysql')) return '🐬';
+  if (n.includes('redis')) return '⚡';
+  if (n.includes('kafka')) return '🦫';
+  if (n.includes('rabbitmq')) return '🐇';
+  if (n.includes('mygov')) return '🏛️';
+  if (n.includes('egov')) return '🏢';
+  if (n.includes('stripe')) return '💳';
+  if (n.includes('openai')) return '🤖';
+  if (n.includes('slack')) return '💬';
+  if (n.includes('discord')) return '🎮';
+  if (n.includes('github')) return '🐙';
+  if (n.includes('minio')) return '📦';
+  if (n.includes('clickhouse')) return '📈';
+  if (n.includes('cassandra')) return '👁️';
+  if (n.includes('mongo')) return '🍃';
+  if (n.includes('db-') || n.endsWith('-db') || n.includes('database') || n.includes('db') || n.includes('sqlite')) return '🗄️';
+  if (n.includes('mail') || n.includes('smtp')) return '📧';
+  if (n.includes('dns')) return '🌐';
+  return '⚙️';
+};
+
 // Parse raw system names like "postgresql (users_db)"
 const parseRawName = (rawName: string) => {
   const match = rawName.match(/^([^(]+)\(([^)]+)\)$/);
@@ -422,15 +446,20 @@ export default function Dependencies({ namespace }: DependenciesProps) {
 
                       {/* Name & Details */}
                       <td>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)' }}>
-                            {item.system.toUpperCase()}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '16px', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-tertiary)', borderRadius: '6px', border: '1px solid var(--border-primary)' }} role="img" aria-label={item.system}>
+                            {getDependencyEmoji(item.rawName)}
                           </span>
-                          {item.details && (
-                            <span className="mono" style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px', wordBreak: 'break-all' }}>
-                              {item.details}
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)' }}>
+                              {item.system.toUpperCase()}
                             </span>
-                          )}
+                            {item.details && (
+                              <span className="mono" style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px', wordBreak: 'break-all' }}>
+                                {item.details}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </td>
 
@@ -506,6 +535,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                                 border: '1px solid var(--border-primary)',
                                 color: 'var(--text-secondary)',
                                 fontWeight: 500,
+                                whiteSpace: 'nowrap',
                               }}
                               title={`${c.count} calls (avg ${c.duration.toFixed(1)}ms)`}
                             >
@@ -569,6 +599,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
 
         .dependencies-table {
           width: 100%;
+          min-width: 1050px;
           border-collapse: collapse;
         }
         .dependencies-table th, .dependencies-table td {

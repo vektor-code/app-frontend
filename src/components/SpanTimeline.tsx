@@ -479,7 +479,8 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
               style={{
                 position: 'absolute',
                 left: `${Math.max(0, offsetPercent)}%`,
-                width: `${Math.max(0.4, widthPercent)}%`,
+                width: `${Math.max(0.8, widthPercent)}%`,
+                minWidth: '4px',
                 background: isError ? 'var(--accent-rose)' : isCritical ? 'var(--accent-amber)' : color,
                 boxShadow: isCritical ? '0 0 6px rgba(245, 158, 11, 0.2)' : undefined,
                 height: '4px',
@@ -490,7 +491,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
             {/* Aligned duration label next to the bar (or left-aligned if bar goes offscreen right) */}
             <span style={{
               position: 'absolute',
-              left: isBarFarRight ? undefined : `${Math.max(0, offsetPercent) + Math.max(0.4, widthPercent) + 1.2}%`,
+              left: isBarFarRight ? undefined : `${Math.max(0, offsetPercent) + Math.max(0.8, widthPercent) + 1.2}%`,
               right: isBarFarRight ? `${100 - Math.max(0, offsetPercent) + 1.2}%` : undefined,
               fontSize: '9px',
               color: 'var(--text-secondary)',
