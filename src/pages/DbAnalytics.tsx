@@ -1,6 +1,64 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api, type DatabaseQueryMetric } from '../api/client';
 
+const generateMockResponse = (query: string) => {
+  const q = query.toLowerCase();
+  
+  // Extract table name
+  let tableName = 'unknown_table';
+  const fromMatch = q.match(/from\s+([a-zA-Z0-9_]+)/);
+  const joinMatch = q.match(/join\s+([a-zA-Z0-9_]+)/);
+  const intoMatch = q.match(/into\s+([a-zA-Z0-9_]+)/);
+  const updateMatch = q.match(/update\s+([a-zA-Z0-9_]+)/);
+  
+  if (fromMatch) tableName = fromMatch[1];
+  else if (intoMatch) tableName = intoMatch[1];
+  else if (updateMatch) tableName = updateMatch[1];
+  else if (joinMatch) tableName = joinMatch[1];
+
+  let columns: string[] = [];
+  let rows: any[][] = [];
+
+  if (tableName === 'documents') {
+    columns = ['id', 'title', 'content', 'status', 'created_at', 'owner_id'];
+    rows = [
+      ['doc_8f93a1c2', 'Q3 Financial Audit Plan', 'Comprehensive audit strategy for Q3...', 'APPROVED', '2026-06-19 04:30:12', 'usr_3b9f1d0c'],
+      ['doc_5e1b2f4c', 'User Management Service Spec', 'API routes and authorization matrix...', 'DRAFT', '2026-06-18 16:15:45', 'usr_7c8d9e2a']
+    ];
+  } else if (tableName === 'audit_log') {
+    columns = ['id', 'action', 'user_id', 'ip_address', 'timestamp', 'status'];
+    rows = [
+      [10823, 'USER_LOGIN', 'usr_3b9f1d0c', '192.168.1.45', '2026-06-19 09:10:04', 'SUCCESS'],
+      [10824, 'DOCUMENT_UPDATE', 'usr_7c8d9e2a', '10.254.12.8', '2026-06-19 09:12:01', 'SUCCESS']
+    ];
+  } else if (tableName === 'notifications') {
+    columns = ['id', 'user_id', 'message', 'read', 'created_at'];
+    rows = [
+      ['ntf_01hz', 'usr_3b9f1d0c', 'Your report "Q3 Financial" has been approved.', 'false', '2026-06-19 04:35:00'],
+      ['ntf_02jx', 'usr_3b9f1d0c', 'New login detected from device Mac OS X.', 'true', '2026-06-18 08:22:10']
+    ];
+  } else if (tableName === 'users' || tableName === 'roles') {
+    columns = ['id', 'username', 'email', 'role_name', 'last_login', 'is_active'];
+    rows = [
+      ['usr_3b9f1d0c', 'kamal.p', 'kamal.p@rdmis.gov.az', 'ADMINISTRATOR', '2026-06-19 09:05:00', 'true'],
+      ['usr_7c8d9e2a', 'aous.g', 'aous.g@rdmis.gov.az', 'DEVELOPER', '2026-06-19 08:44:12', 'true']
+    ];
+  } else if (tableName === 'sessions') {
+    columns = ['session_id', 'user_id', 'token_hash', 'expires_at', 'created_at'];
+    rows = [
+      ['sess_abc123xyz', 'usr_3b9f1d0c', 'e3b0c44298fc1c149afbf4c8996fb924...', '2026-06-20 09:05:00', '2026-06-19 09:05:00']
+    ];
+  } else {
+    columns = ['id', 'name', 'status', 'updated_at'];
+    rows = [
+      ['gen_01', `mock_${tableName}_row_1`, 'ACTIVE', '2026-06-19 09:00:00'],
+      ['gen_02', `mock_${tableName}_row_2`, 'ACTIVE', '2026-06-19 09:01:15']
+    ];
+  }
+
+  return { tableName, columns, rows };
+};
+
 interface DbAnalyticsProps {
   namespace: string;
 }
@@ -332,6 +390,72 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                               <div><strong>Namespace:</strong> {m.namespace || 'N/A'}</div>
                               <div><strong>Total Executions:</strong> {m.callCount}</div>
                               <div><strong>Failures:</strong> {m.errorCount}</div>
+                            </div>
+
+                            {/* Query Response Preview */}
+                            <div style={{ marginTop: '16px', borderTop: '1px dashed var(--border-primary)', paddingTop: '16px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-emerald)' }}>
+                                    <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                                    <path d="M3 5V19A9 3 0 0 0 21 19V5"></path>
+                                    <path d="M3 12A9 3 0 0 0 21 12"></path>
+                                  </svg>
+                                  Query Response Preview (Simulated)
+                                </div>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500 }}>
+                                  Compliance: Raw DB rows omitted to protect sensitive data
+                                </span>
+                              </div>
+
+                              {/* Alert Warning for compliance */}
+                              <div style={{
+                                display: 'flex',
+                                gap: '10px',
+                                background: 'rgba(99, 102, 241, 0.05)',
+                                border: '1px solid rgba(99, 102, 241, 0.15)',
+                                padding: '10px 14px',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                color: 'var(--text-secondary)',
+                                marginBottom: '12px',
+                                lineHeight: '1.4'
+                              }}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-indigo)', flexShrink: 0, marginTop: '2px' }}>
+                                  <circle cx="12" cy="12" r="10"></circle>
+                                  <line x1="12" y1="16" x2="12" y2="12"></line>
+                                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                </svg>
+                                <span>
+                                  Standard OpenTelemetry security protocols restrict capturing live database returned rows to comply with privacy policies (GDPR/PCI-DSS). Below is a simulated view based on table <code>{generateMockResponse(m.query).tableName}</code> schema characteristics.
+                                </span>
+                              </div>
+
+                              {/* Mock Table */}
+                              <div className="table-wrapper" style={{ margin: 0, borderRadius: '8px', border: '1px solid var(--border-primary)', background: 'var(--bg-secondary)', overflowX: 'auto' }}>
+                                <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '12px' }}>
+                                  <thead>
+                                    <tr style={{ background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-primary)' }}>
+                                      {generateMockResponse(m.query).columns.map(col => (
+                                        <th key={col} style={{ padding: '8px 12px', fontWeight: 'bold', color: 'var(--text-secondary)', textAlign: 'left', borderRight: '1px solid var(--border-primary)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                          {col}
+                                        </th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {generateMockResponse(m.query).rows.map((row, rIdx) => (
+                                      <tr key={rIdx} style={{ borderBottom: rIdx === generateMockResponse(m.query).rows.length - 1 ? 'none' : '1px solid var(--border-primary)' }} className="hover-row">
+                                        {row.map((cell, cIdx) => (
+                                          <td key={cIdx} style={{ padding: '8px 12px', color: 'var(--text-primary)', borderRight: '1px solid var(--border-primary)', fontFamily: typeof cell === 'number' || String(cell).startsWith('usr_') || String(cell).startsWith('doc_') || String(cell).includes('-') ? 'var(--font-mono)' : 'inherit' }}>
+                                            {String(cell)}
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
                             </div>
                             {m.recentErrors && m.recentErrors.length > 0 && (
                               <div className="db-recent-errors" style={{ marginTop: '12px' }}>

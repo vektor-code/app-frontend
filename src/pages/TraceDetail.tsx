@@ -1522,6 +1522,62 @@ export default function TraceDetail() {
           font-family: var(--font-mono);
           padding-right: 4px;
         }
+
+        .tags-container {
+          margin: 16px 0;
+          background: var(--bg-card);
+          border: 1px solid var(--border-primary);
+          border-radius: 10px;
+          padding: 12px 16px;
+        }
+
+        .tags-title {
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: var(--text-tertiary);
+          margin-bottom: 10px;
+          letter-spacing: 0.5px;
+        }
+
+        .tags-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .tag-pill {
+          display: inline-flex;
+          align-items: center;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-primary);
+          border-radius: 6px;
+          font-size: 11px;
+          overflow: hidden;
+          transition: all 0.15s ease;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .tag-pill:hover {
+          border-color: var(--accent-indigo);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+        }
+
+        .tag-key {
+          padding: 4px 8px;
+          background: var(--bg-secondary);
+          color: var(--text-secondary);
+          font-weight: 500;
+          border-right: 1px solid var(--border-primary);
+        }
+
+        .tag-val {
+          padding: 4px 8px;
+          color: var(--text-primary);
+          font-family: var(--font-mono);
+          font-weight: 600;
+        }
       `}</style>
     </div>
   );

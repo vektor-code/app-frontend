@@ -556,6 +556,8 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
   const isResizingNodeRef = useRef<string | null>(null);
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const nodePositionsRef = useRef<Map<string, { x: number; y: number; w?: number; h?: number }>>(new Map());
+  const customPositionsRef = useRef<Set<string>>(new Set());
+  const lastLayoutDimensionsRef = useRef({ width: 0, height: 0 });
   const zoneHeadersRef = useRef<Map<string, { zx: number; zy: number; zw: number; zh: number; colName: string }>>(new Map());
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
   const highlightedServiceRef = useRef<string | null>(null);
@@ -572,7 +574,10 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          parsed.forEach(([key, val]) => nodePositionsRef.current.set(key, val));
+          parsed.forEach(([key, val]) => {
+            nodePositionsRef.current.set(key, val);
+            customPositionsRef.current.add(key);
+          });
         }
       }
     } catch (e) {
@@ -625,12 +630,16 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
   // Reload custom positions when active namespace selection changes
   useEffect(() => {
     nodePositionsRef.current.clear();
+    customPositionsRef.current.clear();
     try {
       const saved = localStorage.getItem('service_map_custom_positions');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          parsed.forEach(([key, val]) => nodePositionsRef.current.set(key, val));
+          parsed.forEach(([key, val]) => {
+            nodePositionsRef.current.set(key, val);
+            customPositionsRef.current.add(key);
+          });
         }
       }
     } catch (e) {
@@ -1063,6 +1072,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             w: Math.max(100, w + (dx / zoomRef.current) * 2),
             h: Math.max(40, h + (dy / zoomRef.current) * 2)
           });
+          customPositionsRef.current.add(nodeName);
         }
       } else if (isDraggingNodeRef.current) {
         const nodeName = isDraggingNodeRef.current;
@@ -1073,6 +1083,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             x: currentPos.x + dx / zoomRef.current,
             y: currentPos.y + dy / zoomRef.current,
           });
+          customPositionsRef.current.add(nodeName);
         }
       } else if (isDraggingZoneRef.current) {
         const colName = isDraggingZoneRef.current;
@@ -1090,6 +1101,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
               x: currentPos.x + dx / zoomRef.current,
               y: currentPos.y + dy / zoomRef.current
             });
+            customPositionsRef.current.add(key);
           }
         });
       } else if (isPanningRef.current) {
@@ -1272,9 +1284,17 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         }
       });
 
-      // Compute initial DAG layout coordinates on columns if they are not already cached
-      const needsLayout = activeNodes.some(n => !nodePositionsRef.current.has(getNodeKey(n)));
-      if (needsLayout) {
+      // Compute initial DAG layout coordinates on columns if they are not already cached or if dimensions changed
+      const dimsChanged = lastLayoutDimensionsRef.current.width !== dimensions.width || lastLayoutDimensionsRef.current.height !== dimensions.height;
+      const needsLayout = dimsChanged || activeNodes.some(n => !nodePositionsRef.current.has(getNodeKey(n)));
+      if (needsLayout && dimensions.width > 0) {
+        // Clear all positions that are NOT user-customized, so they get recalculated for new container size
+        for (const key of Array.from(nodePositionsRef.current.keys())) {
+          if (!customPositionsRef.current.has(key)) {
+            nodePositionsRef.current.delete(key);
+          }
+        }
+
         const colWidth = 200;
         const colSpacing = 120;
 
@@ -1307,6 +1327,8 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             currentY += h + 40;
           });
         });
+
+        lastLayoutDimensionsRef.current = { width: dimensions.width, height: dimensions.height };
       }
 
       const positions = nodePositionsRef.current;
@@ -1986,6 +2008,8 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
     setZoom(1);
     setPan({ x: 0, y: 0 });
     nodePositionsRef.current.clear();
+    customPositionsRef.current.clear();
+    lastLayoutDimensionsRef.current = { width: 0, height: 0 };
     localStorage.removeItem('service_map_custom_positions');
   };
 
@@ -2047,9 +2071,9 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
                     style={{
                       padding: '6px 12px',
                       borderRadius: '20px',
-                      border: `1.5px solid ${isSelected ? theme.border : 'var(--border-color, rgba(255, 255, 255, 0.1))'}`,
+                      border: `1.5px solid ${isSelected ? theme.border : 'var(--border-primary)'}`,
                       background: isSelected ? theme.headerBg : 'transparent',
-                      color: isSelected ? theme.text : 'var(--text-muted, #94a3b8)',
+                      color: isSelected ? theme.text : 'var(--text-secondary)',
                       fontSize: '11px',
                       fontWeight: 600,
                       cursor: 'pointer',
@@ -2064,7 +2088,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
                       height: '6px',
                       borderRadius: '50%',
                       background: isSelected ? theme.text : 'transparent',
-                      border: `1px solid ${isSelected ? 'transparent' : 'var(--text-muted, #94a3b8)'}`,
+                      border: `1px solid ${isSelected ? 'transparent' : 'var(--text-muted)'}`,
                     }} />
                     {ns}
                   </button>
@@ -2084,15 +2108,24 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
               value={activityFilter}
               onChange={(e) => setActivityFilter(e.target.value)}
               style={{
-                background: 'var(--card-bg, #1e293b)',
-                color: 'var(--text-color, #f8fafc)',
-                border: '1px solid var(--border-color, rgba(255, 255, 255, 0.1))',
+                background: 'var(--bg-card)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-primary)',
                 borderRadius: '6px',
                 padding: '6px 12px',
                 fontSize: '11px',
                 fontWeight: 600,
                 cursor: 'pointer',
                 outline: 'none',
+                transition: 'border-color var(--transition-fast), background var(--transition-fast)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'var(--accent-indigo)';
+                e.currentTarget.style.background = 'var(--bg-hover)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'var(--border-primary)';
+                e.currentTarget.style.background = 'var(--bg-card)';
               }}
             >
               <option value="all">All (No Pruning)</option>
