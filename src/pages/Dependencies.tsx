@@ -487,7 +487,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                             height: '24px', 
                             display: 'flex', 
                             alignItems: 'center', 
-                            justifyContent: 'flex-start',
+                            justifyContent: 'center',
                             width: '44px',
                             minWidth: '44px'
                           }}>
