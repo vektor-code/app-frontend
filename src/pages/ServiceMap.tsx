@@ -1740,19 +1740,26 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           const iconX = rx + 12;
           const iconY = ry + 12;
 
-          // For mygov: draw the wide landscape logo spanning the full header width
+          // For mygov: draw logo clipped to the standard 20×20 icon slot, then show "MYGOV" label
           const mygovImg = iconImagesRef.current?.get('mygov');
           const isMyGovNode = node.serviceName.toLowerCase().includes('mygov');
           if (isMyGovNode && mygovImg && mygovImg.complete && mygovImg.naturalWidth !== 0) {
-            const logoMaxW = w - 24; // leave 12px padding each side
-            const aspect = mygovImg.naturalWidth / mygovImg.naturalHeight;
-            const logoH = Math.min(22, logoMaxW / aspect);
-            const logoW = logoH * aspect;
-            const logoX = rx + (w - logoW) / 2;
-            const logoY = ry + 10;
+            // Clip to the icon slot so the wide landscape logo fills from the left
             ctx.save();
-            ctx.drawImage(mygovImg, logoX, logoY, logoW, logoH);
+            ctx.beginPath();
+            ctx.rect(iconX, iconY, iconSize, iconSize);
+            ctx.clip();
+            // Draw at full aspect ratio — only the leftmost iconSize px are visible after clipping
+            const aspect = mygovImg.naturalWidth / mygovImg.naturalHeight;
+            ctx.drawImage(mygovImg, iconX, iconY, iconSize * aspect, iconSize);
             ctx.restore();
+
+            // Draw "MYGOV" in amber — same position as POSTGRESQL / REDIS etc.
+            ctx.font = '800 11px Inter';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = isDark ? '#fbbf24' : '#d97706';
+            ctx.fillText('MYGOV', rx + 38, iconY + iconSize / 2);
           } else {
             // Draw the custom icon at (iconX, iconY) with size (iconSize, iconSize)
             drawInfraIcon(ctx, node.serviceName, iconX, iconY, iconSize, isDark, iconImagesRef.current);
