@@ -1221,288 +1221,215 @@ export default function TraceDetail() {
         <h1 className="page-title" style={{ marginBottom: 0 }}>Trace Detail</h1>
       </div>
 
-      {/* Metadata Overview Panel */}
-      <div className="trace-meta">
-        <div className="trace-meta-item">
-          <span className="trace-meta-label">Trace ID</span>
-          <span className="trace-meta-value mono" style={{ color: 'var(--accent-indigo-light)' }}>{trace.traceId}</span>
-        </div>
-        <div className="trace-meta-item">
-          <span className="trace-meta-label">Root Service</span>
-          <span className="trace-meta-value" style={{ fontWeight: 600 }}>{trace.serviceName}</span>
-        </div>
-        <div className="trace-meta-item">
-          <span className="trace-meta-label">Namespace</span>
-          <span className="trace-meta-value"><span className="badge badge-ns">{trace.namespace}</span></span>
-        </div>
-        <div className="trace-meta-item">
-          <span className="trace-meta-label">Duration</span>
-          <span className="trace-meta-value" style={{ color: 'var(--accent-cyan)' }}>{trace.durationMs.toFixed(2)}ms</span>
-        </div>
-        <div className="trace-meta-item">
-          <span className="trace-meta-label">Spans</span>
-          <span className="trace-meta-value">{trace.spanCount}</span>
-        </div>
-        <div className="trace-meta-item">
-          <span className="trace-meta-label">Status</span>
-          <span className={`badge ${trace.hasError ? 'badge-error' : 'badge-ok'}`} style={{ marginTop: '2px' }}>
-            {trace.hasError ? 'ERROR' : 'OK'}
-          </span>
-        </div>
-      </div>
+      <div className="trace-detail-layout">
+        {/* Main Content Pane */}
+        <div className="trace-detail-main-content">
+          {/* Metadata Overview Panel */}
+          <div className="trace-meta">
+            <div className="trace-meta-item">
+              <span className="trace-meta-label">Trace ID</span>
+              <span className="trace-meta-value mono" style={{ color: 'var(--accent-indigo-light)' }}>{trace.traceId}</span>
+            </div>
+            <div className="trace-meta-item">
+              <span className="trace-meta-label">Root Service</span>
+              <span className="trace-meta-value" style={{ fontWeight: 600 }}>{trace.serviceName}</span>
+            </div>
+            <div className="trace-meta-item">
+              <span className="trace-meta-label">Namespace</span>
+              <span className="trace-meta-value"><span className="badge badge-ns">{trace.namespace}</span></span>
+            </div>
+            <div className="trace-meta-item">
+              <span className="trace-meta-label">Duration</span>
+              <span className="trace-meta-value" style={{ color: 'var(--accent-cyan)' }}>{trace.durationMs.toFixed(2)}ms</span>
+            </div>
+            <div className="trace-meta-item">
+              <span className="trace-meta-label">Spans</span>
+              <span className="trace-meta-value">{trace.spanCount}</span>
+            </div>
+            <div className="trace-meta-item">
+              <span className="trace-meta-label">Status</span>
+              <span className={`badge ${trace.hasError ? 'badge-error' : 'badge-ok'}`} style={{ marginTop: '2px' }}>
+                {trace.hasError ? 'ERROR' : 'OK'}
+              </span>
+            </div>
+          </div>
 
-      {/* Metadata Tags Row */}
-      {uniqueTags.length > 0 && (
-        <div className="tags-container">
-          <div className="tags-title">Trace Metadata Tags ({uniqueTags.length})</div>
-          <div className="tags-list">
-            {uniqueTags.map(([k, v]) => (
-              <div key={k} className="tag-pill" title={`${k}: ${v}`}>
-                <span className="tag-key">{k}</span>
-                <span className="tag-val">{v}</span>
+          {/* Metadata Tags Row */}
+          {uniqueTags.length > 0 && (
+            <div className="tags-container">
+              <div className="tags-title">Trace Metadata Tags ({uniqueTags.length})</div>
+              <div className="tags-list">
+                {uniqueTags.map(([k, v]) => (
+                  <div key={k} className="tag-pill" title={`${k}: ${v}`}>
+                    <span className="tag-key">{k}</span>
+                    <span className="tag-val">{v}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            </div>
+          )}
 
+          {/* Main Visualization Card */}
+          <div className="card">
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <div className="card-title">Trace Visualization</div>
+                <span className="text-sm text-muted">{trace.spanCount} spans total</span>
+              </div>
 
-
-      {/* Main Visualization Card */}
-      <div className="card">
-        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-          <div>
-            <div className="card-title">Trace Visualization</div>
-            <span className="text-sm text-muted">{trace.spanCount} spans total</span>
-          </div>
-
-          <div className="view-toggle-buttons">
-            <button
-              className={`view-toggle-btn ${viewMode === 'waterfall' ? 'active' : ''}`}
-              onClick={() => setViewMode('waterfall')}
-            >
-              Waterfall View
-            </button>
-            <button
-              className={`view-toggle-btn ${viewMode === 'flame' ? 'active' : ''}`}
-              onClick={() => setViewMode('flame')}
-            >
-              Flame Graph
-            </button>
-          </div>
-        </div>
-        
-        <div className="card-body">
-          {viewMode === 'waterfall' ? (
-            <SpanTimeline
-              spans={trace.spans || []}
-              traceStartTime={startMs}
-              traceDuration={trace.durationMs}
-              onSelectSpan={(span) => setSelectedSpan(span)}
-              selectedSpanId={selectedSpan?.spanId}
-            />
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <FlameGraph
-                spans={trace.spans || []}
-                traceStartTime={startMs}
-                traceDuration={trace.durationMs}
-                onSelectSpan={(span) => setSelectedSpan(span)}
-              />
-              {!selectedSpan && (
-                <div className="selected-span-placeholder">
-                  Click a span bar in the flame graph above to view its execution details and full telemetry attributes.
+              <div className="view-toggle-buttons">
+                <button
+                  className={`view-toggle-btn ${viewMode === 'waterfall' ? 'active' : ''}`}
+                  onClick={() => setViewMode('waterfall')}
+                >
+                  Waterfall View
+                </button>
+                <button
+                  className={`view-toggle-btn ${viewMode === 'flame' ? 'active' : ''}`}
+                  onClick={() => setViewMode('flame')}
+                >
+                  Flame Graph
+                </button>
+              </div>
+            </div>
+            
+            <div className="card-body">
+              {viewMode === 'waterfall' ? (
+                <SpanTimeline
+                  spans={trace.spans || []}
+                  traceStartTime={startMs}
+                  traceDuration={trace.durationMs}
+                  onSelectSpan={(span) => setSelectedSpan(span)}
+                  selectedSpanId={selectedSpan?.spanId}
+                />
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <FlameGraph
+                    spans={trace.spans || []}
+                    traceStartTime={startMs}
+                    traceDuration={trace.durationMs}
+                    onSelectSpan={(span) => setSelectedSpan(span)}
+                  />
+                  {!selectedSpan && (
+                    <div className="selected-span-placeholder">
+                      Click a span bar in the flame graph above to view its execution details and full telemetry attributes.
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
+          </div>
         </div>
-      </div>
 
-      {/* Sliding Span Details Drawer via React Portal to cover whole screen */}
-      {createPortal(
-        <>
-          <div className={`drawer-backdrop ${selectedSpan ? 'open' : ''}`} onClick={() => setSelectedSpan(null)} />
-          <div className={`span-drawer ${selectedSpan ? 'open' : ''}`}>
-            {selectedSpan && (
+        {/* Dynamic Details Sidebar Pane */}
+        {selectedSpan && (
+          <>
+            <div className="trace-sidebar-backdrop" onClick={() => setSelectedSpan(null)} />
+            <div className="trace-detail-sidebar">
               <SpanDrawerContent 
                 span={selectedSpan} 
                 traceDuration={trace.durationMs}
                 onClose={() => setSelectedSpan(null)} 
               />
-            )}
-          </div>
-        </>,
-        document.body
-      )}
+            </div>
+          </>
+        )}
+      </div>
 
       <style>{`
         .trace-detail {
-          max-width: 1400px;
-          margin: 0 auto;
+          width: 100%;
+          max-width: 100% !important;
+          margin: 0;
+          box-sizing: border-box;
+          padding: 0 4px;
         }
 
-        .tags-container {
+        .trace-detail-layout {
+          display: flex;
+          gap: 16px;
+          width: 100%;
+          align-items: flex-start;
+          transition: all 0.25s ease;
+        }
+
+        .trace-detail-main-content {
+          flex: 1;
+          min-width: 0;
+          transition: all 0.25s ease;
+        }
+
+        .trace-detail-sidebar {
+          width: 480px;
+          min-width: 480px;
           background: var(--bg-secondary);
           border: 1px solid var(--border-primary);
           border-radius: 12px;
-          padding: 12px 16px;
-          margin-bottom: 20px;
-        }
-        
-        .tags-title {
-          font-size: 11px;
-          font-weight: bold;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-          color: var(--text-tertiary);
-          margin-bottom: 8px;
-        }
-        
-        .tags-list {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 6px;
-        }
-        
-        .tag-pill {
-          display: inline-flex;
-          align-items: center;
-          font-size: 10.5px;
-          background: var(--bg-tertiary);
-          border: 1px solid var(--border-primary);
-          border-radius: 6px;
-          overflow: hidden;
-          font-family: var(--font-mono);
-        }
-        
-        .tag-key {
-          padding: 2px 6px;
-          background: rgba(99, 102, 241, 0.05);
-          color: var(--accent-indigo-light);
-          border-right: 1px solid var(--border-primary);
-          font-weight: 500;
-        }
-        
-        .tag-val {
-          padding: 2px 6px;
-          color: var(--text-primary);
-          max-width: 600px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        /* View Toggle Buttons */
-        .view-toggle-buttons {
-          display: flex;
-          background: var(--bg-secondary);
-          border: 1px solid var(--border-primary);
-          padding: 4px;
-          border-radius: 8px;
-          gap: 4px;
-        }
-        
-        .view-toggle-btn {
-          background: transparent;
-          border: none;
-          color: var(--text-secondary);
-          padding: 6px 12px;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          border-radius: 6px;
-          transition: background 0.15s, color 0.15s;
-        }
-        
-        .view-toggle-btn:hover {
-          color: var(--text-primary);
-          background: var(--bg-tertiary);
-        }
-        
-        .view-toggle-btn.active {
-          background: var(--accent-indigo);
-          color: #ffffff !important;
-        }
-
-        .selected-span-placeholder {
-          text-align: center;
-          padding: 24px;
-          color: var(--text-muted);
-          font-size: 12px;
-          border: 1px dashed var(--border-primary);
-          border-radius: 8px;
-          background: var(--bg-secondary);
-        }
-
-        /* Reusable table helpers */
-        .attr-table {
-          width: 100%;
-          border-collapse: collapse;
-          background: var(--bg-secondary);
-          border-radius: 6px;
-          overflow: hidden;
-          border: 1px solid var(--border-primary);
-        }
-        .attr-table tr {
-          border-bottom: 1px solid var(--border-primary);
-        }
-        .attr-table tr:last-child {
-          border-bottom: none;
-        }
-        .attr-key {
-          padding: 6px 12px;
-          font-weight: 600;
-          color: var(--accent-indigo-light);
-          white-space: nowrap;
-          background: rgba(99, 102, 241, 0.03);
-          border-right: 1px solid var(--border-primary);
-          font-size: 11px;
-        }
-        .attr-val {
-          padding: 6px 12px;
-          color: var(--text-primary);
-          font-size: 11px;
-        }
-
-        /* Drawer backdrop overlay */
-        .drawer-backdrop {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(15, 23, 42, 0.4);
-          backdrop-filter: blur(4px);
-          z-index: 999;
-          opacity: 0;
-          pointer-events: none;
-          transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .drawer-backdrop.open {
-          opacity: 1;
-          pointer-events: auto;
-        }
-
-        /* Span drawer container sliding from the right */
-        .span-drawer {
-          position: fixed;
-          top: 0;
-          right: 0;
-          bottom: 0;
-          width: 520px;
-          background: var(--bg-secondary);
-          border-left: 1px solid var(--border-primary);
-          box-shadow: -10px 0 30px rgba(0, 0, 0, 0.25);
-          z-index: 1000;
-          transform: translateX(100%);
-          transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          height: calc(100vh - 120px);
+          position: sticky;
+          top: 80px;
           display: flex;
           flex-direction: column;
           overflow: hidden;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+          z-index: 100;
+          animation: slideInRight 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .span-drawer.open {
-          transform: translateX(0);
+
+        .trace-sidebar-backdrop {
+          display: none;
+        }
+
+        @keyframes slideInRight {
+          from {
+            transform: translateX(20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+
+        @media (max-width: 1024px) {
+          .trace-detail-layout {
+            flex-direction: column;
+          }
+          .trace-detail-sidebar {
+            width: 100%;
+            max-width: 500px;
+            min-width: unset;
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            height: 100vh;
+            border-radius: 0;
+            border-left: 1px solid var(--border-primary);
+            box-shadow: -10px 0 30px rgba(0, 0, 0, 0.25);
+            z-index: 1000;
+            animation: slideOverlay 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+          .trace-sidebar-backdrop {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.4);
+            backdrop-filter: blur(4px);
+            z-index: 999;
+          }
+        }
+
+        @keyframes slideOverlay {
+          from {
+            transform: translateX(100%);
+          }
+          to {
+            transform: translateX(0);
+          }
         }
 
         /* Header elements inside the drawer */

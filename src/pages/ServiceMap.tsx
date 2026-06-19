@@ -495,6 +495,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
   const [data, setData] = useState<ServiceMapData | null>(null);
   const [visibleNamespaces, setVisibleNamespaces] = useState<string[]>([]);
   const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
+  const [activityFilter, setActivityFilter] = useState<string>('all');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 900, height: 600 });
@@ -927,6 +928,21 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
 
   const isNodeActive = useCallback((n: ServiceStats) => {
     if (n.serviceName === 'Internet') return true;
+
+    // Check activity filter if set
+    if (activityFilter !== 'all' && n.lastSeen) {
+      const lastSeenTime = new Date(n.lastSeen).getTime();
+      const now = Date.now();
+      let threshold = 0;
+      if (activityFilter === '5m') threshold = 5 * 60 * 1000;
+      else if (activityFilter === '15m') threshold = 15 * 60 * 1000;
+      else if (activityFilter === '1h') threshold = 60 * 60 * 1000;
+
+      if (now - lastSeenTime > threshold) {
+        return false;
+      }
+    }
+
     if (isInfraNode(n)) {
       if (n.namespace && activeNamespacesSet.has(n.namespace)) return true;
       // Also show infra node if there are any active dependencies using it
@@ -938,7 +954,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       });
     }
     return activeNamespacesSet.has(n.namespace || 'default');
-  }, [data, namespace, selectedNamespaces, activeNamespacesSet]);
+  }, [data, namespace, selectedNamespaces, activeNamespacesSet, activityFilter]);
 
   const activeNodes = (data?.nodes || []).filter(isNodeActive);
   const activeNodeKeys = new Set(activeNodes.map(n => getNodeKey(n)));
@@ -2004,56 +2020,90 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         {namespace ? `Service dependencies in ${namespace}` : 'Service dependencies across all namespaces'}
       </p>
 
-      {/* Namespace Filter Pills */}
-      {!namespace && visibleNamespaces.length > 0 && (
-        <div className="card" style={{ marginBottom: '16px' }}>
-          <div className="card-body" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginRight: '8px' }}>
-              Filter Namespaces:
+      {/* Filter Bar */}
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <div className="card-body" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+          
+          {/* Namespace Filter Pills */}
+          {!namespace && visibleNamespaces.length > 0 ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginRight: '8px' }}>
+                Filter Namespaces:
+              </span>
+              <button
+                onClick={handleToggleAll}
+                className="btn btn-ghost btn-sm"
+                style={{ padding: '4px 8px', fontSize: '11px', borderRadius: '4px' }}
+              >
+                {selectedNamespaces.length === visibleNamespaces.length ? 'Clear All' : 'Select All'}
+              </button>
+              {visibleNamespaces.map((ns, idx) => {
+                const theme = getColumnTheme(ns, idx, isDarkTheme);
+                const isSelected = selectedNamespaces.includes(ns);
+                return (
+                  <button
+                    key={ns}
+                    onClick={() => handleToggleNamespace(ns)}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '20px',
+                      border: `1.5px solid ${isSelected ? theme.border : 'var(--border-color, rgba(255, 255, 255, 0.1))'}`,
+                      background: isSelected ? theme.headerBg : 'transparent',
+                      color: isSelected ? theme.text : 'var(--text-muted, #94a3b8)',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <span style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: isSelected ? theme.text : 'transparent',
+                      border: `1px solid ${isSelected ? 'transparent' : 'var(--text-muted, #94a3b8)'}`,
+                    }} />
+                    {ns}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div />
+          )}
+
+          {/* Activity / Inactivity Filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+            <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+              Node Activity:
             </span>
-            <button
-              onClick={handleToggleAll}
-              className="btn btn-ghost btn-sm"
-              style={{ padding: '4px 8px', fontSize: '11px', borderRadius: '4px' }}
+            <select
+              value={activityFilter}
+              onChange={(e) => setActivityFilter(e.target.value)}
+              style={{
+                background: 'var(--card-bg, #1e293b)',
+                color: 'var(--text-color, #f8fafc)',
+                border: '1px solid var(--border-color, rgba(255, 255, 255, 0.1))',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                outline: 'none',
+              }}
             >
-              {selectedNamespaces.length === visibleNamespaces.length ? 'Clear All' : 'Select All'}
-            </button>
-            {visibleNamespaces.map((ns, idx) => {
-              const theme = getColumnTheme(ns, idx, isDarkTheme);
-              const isSelected = selectedNamespaces.includes(ns);
-              return (
-                <button
-                  key={ns}
-                  onClick={() => handleToggleNamespace(ns)}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '20px',
-                    border: `1.5px solid ${isSelected ? theme.border : 'var(--border-color, rgba(255, 255, 255, 0.1))'}`,
-                    background: isSelected ? theme.headerBg : 'transparent',
-                    color: isSelected ? theme.text : 'var(--text-muted, #94a3b8)',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  <span style={{
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    background: isSelected ? theme.text : 'transparent',
-                    border: `1px solid ${isSelected ? 'transparent' : 'var(--text-muted, #94a3b8)'}`,
-                  }} />
-                  {ns}
-                </button>
-              );
-            })}
+              <option value="all">All (No Pruning)</option>
+              <option value="5m">Active in last 5m</option>
+              <option value="15m">Active in last 15m</option>
+              <option value="1h">Active in last 1h</option>
+            </select>
           </div>
+
         </div>
-      )}
+      </div>
 
       <div className="card">
         <div className="card-header">
