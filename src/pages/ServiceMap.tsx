@@ -1740,29 +1740,24 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           const iconX = rx + 12;
           const iconY = ry + 12;
 
-          // For mygov: draw logo at compact size inside the 20×20 icon slot, then show "MYGOV" label
+          // For mygov: draw the full logo (no clip) at compact height, then "MYGOV" label after it
           const mygovImg = iconImagesRef.current?.get('mygov');
           const isMyGovNode = node.serviceName.toLowerCase().includes('mygov');
           if (isMyGovNode && mygovImg && mygovImg.complete && mygovImg.naturalWidth !== 0) {
             const aspect = mygovImg.naturalWidth / mygovImg.naturalHeight;
-            // Draw at 12px tall (leaving 4px padding top/bottom) so it matches the visual weight
-            // of other infra icons (elephant, redis cube, etc.)
-            const logoH = 12;
-            const logoW = logoH * aspect;
-            const logoDrawY = iconY + (iconSize - logoH) / 2; // center vertically in the slot
+            const logoH = 14; // compact height matching other icon visual weight
+            const logoW = logoH * aspect; // natural width, no clipping
+            const logoDrawY = iconY + (iconSize - logoH) / 2; // vertically centred in icon row
             ctx.save();
-            ctx.beginPath();
-            ctx.rect(iconX, iconY, iconSize, iconSize); // clip to 20×20 icon slot
-            ctx.clip();
             ctx.drawImage(mygovImg, iconX, logoDrawY, logoW, logoH);
             ctx.restore();
 
-            // Draw "MYGOV" in amber — same position as POSTGRESQL / REDIS etc.
+            // "MYGOV" label starts just after the logo ends
             ctx.font = '800 11px Inter';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = isDark ? '#fbbf24' : '#d97706';
-            ctx.fillText('MYGOV', rx + 38, iconY + iconSize / 2);
+            ctx.fillText('MYGOV', iconX + logoW + 5, iconY + iconSize / 2);
           } else {
             // Draw the custom icon at (iconX, iconY) with size (iconSize, iconSize)
             drawInfraIcon(ctx, node.serviceName, iconX, iconY, iconSize, isDark, iconImagesRef.current);
