@@ -1740,18 +1740,21 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           const iconX = rx + 12;
           const iconY = ry + 12;
 
-          // For mygov: draw logo clipped to the standard 20×20 icon slot, then show "MYGOV" label
+          // For mygov: draw logo at compact size inside the 20×20 icon slot, then show "MYGOV" label
           const mygovImg = iconImagesRef.current?.get('mygov');
           const isMyGovNode = node.serviceName.toLowerCase().includes('mygov');
           if (isMyGovNode && mygovImg && mygovImg.complete && mygovImg.naturalWidth !== 0) {
-            // Clip to the icon slot so the wide landscape logo fills from the left
+            const aspect = mygovImg.naturalWidth / mygovImg.naturalHeight;
+            // Draw at 12px tall (leaving 4px padding top/bottom) so it matches the visual weight
+            // of other infra icons (elephant, redis cube, etc.)
+            const logoH = 12;
+            const logoW = logoH * aspect;
+            const logoDrawY = iconY + (iconSize - logoH) / 2; // center vertically in the slot
             ctx.save();
             ctx.beginPath();
-            ctx.rect(iconX, iconY, iconSize, iconSize);
+            ctx.rect(iconX, iconY, iconSize, iconSize); // clip to 20×20 icon slot
             ctx.clip();
-            // Draw at full aspect ratio — only the leftmost iconSize px are visible after clipping
-            const aspect = mygovImg.naturalWidth / mygovImg.naturalHeight;
-            ctx.drawImage(mygovImg, iconX, iconY, iconSize * aspect, iconSize);
+            ctx.drawImage(mygovImg, iconX, logoDrawY, logoW, logoH);
             ctx.restore();
 
             // Draw "MYGOV" in amber — same position as POSTGRESQL / REDIS etc.
