@@ -125,9 +125,10 @@ const drawInfraIcon = (
   const isWebEndpoint = sys.includes('.') || sys.startsWith('http') || sys.includes('api') || sys.includes('proxy') || sys.includes('external');
 
   let matchedKey = '';
-  if (sys.includes('redis')) matchedKey = 'redis';
+  if (sys.includes('mygov')) matchedKey = 'mygov';
+  else if (sys.includes('redis')) matchedKey = 'redis';
   else if (sys.includes('kafka')) matchedKey = 'kafka';
-  else if (sys.includes('rabbitmq')) matchedKey = 'rabbitmq';
+  else if (sys.includes('rabbitmq') || sys.includes('message_bus')) matchedKey = 'rabbitmq';
   else if (sys.includes('vault')) matchedKey = 'vault';
   else if (sys.includes('elastic')) matchedKey = 'elasticsearch';
   else if (sys.includes('minio')) matchedKey = 'minio';
@@ -193,7 +194,7 @@ const drawInfraIcon = (
     ctx.arc(x + size - 4, y + size - 4, 3, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-  } else if (sys.includes('rabbitmq')) {
+  } else if (sys.includes('rabbitmq') || sys.includes('message_bus')) {
     // RabbitMQ: Orange bunny outline
     ctx.strokeStyle = '#ea580c';
     ctx.fillStyle = isDark ? 'rgba(234, 88, 12, 0.15)' : 'rgba(234, 88, 12, 0.08)';
@@ -320,6 +321,26 @@ const drawInfraIcon = (
     ctx.beginPath();
     ctx.moveTo(cx - r, cy);
     ctx.lineTo(cx + r, cy);
+    ctx.stroke();
+  } else if (sys.includes('mygov')) {
+    // MyGov: Blue circular emblem with stylized green crest inside
+    ctx.strokeStyle = '#0284c7';
+    ctx.fillStyle = isDark ? 'rgba(56, 189, 248, 0.15)' : 'rgba(2, 132, 199, 0.08)';
+    ctx.lineWidth = 1.5;
+    
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    const r = size * 0.45;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = '#10b981';
+    ctx.beginPath();
+    ctx.moveTo(cx - 3, cy - 3);
+    ctx.lineTo(cx, cy + 3);
+    ctx.lineTo(cx + 3, cy - 3);
     ctx.stroke();
   } else if (isWebEndpoint) {
     // Web / HTTP API Endpoint: Network globe (Blue)
@@ -609,6 +630,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       liquibase: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/liquibase/liquibase-original.svg',
       nginx: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nginx/nginx-original.svg',
       kong: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/kong.svg',
+      mygov: 'https://upload.wikimedia.org/wikipedia/commons/5/5e/Mygov.svg',
     };
 
     Object.entries(urls).forEach(([key, url]) => {
@@ -1706,7 +1728,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           const iconY = ry + 12;
 
           // Draw the custom icon at (iconX, iconY) with size (iconSize, iconSize)
-          drawInfraIcon(ctx, parsed.system, iconX, iconY, iconSize, isDark, iconImagesRef.current);
+          drawInfraIcon(ctx, node.serviceName, iconX, iconY, iconSize, isDark, iconImagesRef.current);
 
           // Draw System Name in bold uppercase
           ctx.font = '800 11px Inter';
