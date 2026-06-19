@@ -344,14 +344,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
     };
   };
 
-  if (loading && !data) {
-    return (
-      <div className="empty-state">
-        <div className="empty-state-title">Loading APM dependencies...</div>
-      </div>
-    );
-  }
-
   return (
     <div className="animate-fade-in dependencies-page" style={{ paddingBottom: '40px' }}>
       <h1 className="page-title">Dependencies</h1>
@@ -458,8 +450,12 @@ export default function Dependencies({ namespace }: DependenciesProps) {
         <div className="table-wrapper" style={{ overflowX: 'auto' }}>
           {filteredItems.length === 0 ? (
             <div className="empty-state" style={{ padding: '60px 0' }}>
-              <div className="empty-state-title">No dependencies found</div>
-              <div className="empty-state-text">Try adjusting your filters or search terms.</div>
+              <div className="empty-state-title">
+                {loading ? "Loading APM dependencies..." : "No dependencies found"}
+              </div>
+              <div className="empty-state-text">
+                {loading ? "Fetching latest connection maps..." : "Try adjusting your filters or search terms."}
+              </div>
             </div>
           ) : (
             <table className="dependencies-table">
@@ -468,7 +464,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                   <th style={{ width: '260px' }}>Dependency Name</th>
                   <th style={{ width: '90px' }}>Health</th>
                   <th style={{ width: '100px' }}>Namespace</th>
-                  <th style={{ width: '90px' }}>Type</th>
                   <th style={{ width: '150px' }}>Latency (Avg)</th>
                   <th style={{ width: '130px' }}>Throughput</th>
                   <th style={{ width: '120px' }}>Error Rate</th>
@@ -550,21 +545,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                       <td>
                         <span className="badge badge-ns" style={{ ...nsStyle, fontSize: '10px', padding: '2px 8px', borderRadius: '12px' }}>
                           {item.namespace}
-                        </span>
-                      </td>
-
-                      {/* Type Badge */}
-                      <td>
-                        <span className="type-badge" style={{
-                          fontSize: '9px',
-                          fontWeight: 700,
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          textTransform: 'uppercase',
-                          background: item.type === 'database' ? 'rgba(14, 165, 233, 0.1)' : item.type === 'messaging' ? 'rgba(234, 88, 12, 0.1)' : item.type === '3rdparty' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(100, 116, 139, 0.1)',
-                          color: item.type === 'database' ? 'var(--accent-cyan)' : item.type === 'messaging' ? '#ea580c' : item.type === '3rdparty' ? 'var(--accent-amber)' : 'var(--text-muted)'
-                        }}>
-                          {item.type === '3rdparty' ? '3rd-Party' : item.type}
                         </span>
                       </td>
 
@@ -682,7 +662,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
 
         .dependencies-table {
           width: 100%;
-          min-width: 1050px;
+          min-width: 960px;
           border-collapse: collapse;
         }
         .dependencies-table th, .dependencies-table td {
