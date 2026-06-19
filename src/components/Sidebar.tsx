@@ -37,9 +37,33 @@ export default function Sidebar({ namespaces, selectedNamespace, onNamespaceChan
             }} 
           />
           {!collapsed && (
-            <span className="sidebar-logo-text" style={{ color: 'var(--text-primary)', fontSize: '18px', fontWeight: '800', letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              Vektor
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span className="sidebar-logo-text" style={{ 
+                color: 'var(--text-primary)', 
+                fontSize: '19px', 
+                fontWeight: '800', 
+                letterSpacing: '-0.03em', 
+                background: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', 
+                WebkitBackgroundClip: 'text', 
+                WebkitTextFillColor: 'transparent',
+                fontFamily: "'Outfit', 'Inter', sans-serif" 
+              }}>
+                Vektor
+              </span>
+              <span style={{ 
+                fontSize: '9px', 
+                fontWeight: '700', 
+                letterSpacing: '0.05em', 
+                color: 'var(--accent-indigo, #818cf8)', 
+                textTransform: 'uppercase',
+                background: 'rgba(99, 102, 241, 0.1)',
+                padding: '1px 5px',
+                borderRadius: '4px',
+                border: '1px solid rgba(99, 102, 241, 0.2)'
+              }}>
+                APM
+              </span>
+            </div>
           )}
         </div>
         
