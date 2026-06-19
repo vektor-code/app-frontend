@@ -49,6 +49,7 @@ export interface TraceListItem {
   spanCount: number;
   hasError: boolean;
   services?: string[];
+  thirdPartyTools?: string[];
   errorType?: string;
   errorSummary?: string;
 }

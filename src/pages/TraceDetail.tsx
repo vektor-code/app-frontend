@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, type Trace, type Span, type DiagnosticReport, isSpanError } from '../api/client';
 import { createPortal } from 'react-dom';
-import SpanTimeline from '../components/SpanTimeline';
+import SpanTimeline, { getSpanDestination } from '../components/SpanTimeline';
 
 const SERVICE_COLORS: Record<string, string> = {};
 const PALETTE = [
@@ -766,6 +766,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
     isSpanError(span) ? 'error' : 'overview'
   );
   const [filterQuery, setFilterQuery] = useState('');
+  const dest = getSpanDestination(span);
 
   const formattedStartTime = useMemo(() => {
     try {
@@ -979,6 +980,27 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
               </h3>
               <table className="attr-table">
                 <tbody>
+                  {dest.type && (
+                    <tr>
+                      <td className="attr-key">Destination</td>
+                      <td className="attr-val">
+                        <span className="destination-badge" style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          background: dest.type === '3rdparty' ? 'rgba(245, 158, 11, 0.1)' : dest.type === 'infra' ? 'rgba(14, 165, 233, 0.1)' : 'rgba(99, 102, 241, 0.08)',
+                          color: dest.type === '3rdparty' ? 'var(--accent-amber, #f59e0b)' : dest.type === 'infra' ? 'var(--accent-cyan, #0ea5e9)' : 'var(--accent-indigo-light, #818cf8)',
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          fontWeight: 600,
+                          fontSize: '10px',
+                          border: dest.type === '3rdparty' ? '1px dashed rgba(245, 158, 11, 0.3)' : '1px solid rgba(14, 165, 233, 0.15)',
+                          textTransform: dest.type === 'infra' ? 'lowercase' : 'none'
+                        }}>
+                          {dest.name} ({dest.type === '3rdparty' ? '3rd party' : dest.type})
+                        </span>
+                      </td>
+                    </tr>
+                  )}
                   <tr>
                     <td className="attr-key">Namespace</td>
                     <td className="attr-val">
@@ -1209,6 +1231,24 @@ export default function TraceDetail() {
     return Array.from(map.entries());
   }, [trace]);
 
+  const uniqueDestinations = useMemo(() => {
+    if (!trace || !trace.spans) return [];
+    const destMap = new Map<string, { name: string; type: string; count: number }>();
+    trace.spans.forEach(s => {
+      const dest = getSpanDestination(s);
+      if (dest.type) {
+        const key = `${dest.type}:${dest.name}`;
+        const existing = destMap.get(key);
+        if (existing) {
+          existing.count++;
+        } else {
+          destMap.set(key, { name: dest.name, type: dest.type, count: 1 });
+        }
+      }
+    });
+    return Array.from(destMap.values());
+  }, [trace]);
+
   if (loading) return <div className="empty-state"><div className="empty-state-title">Loading trace...</div></div>;
   if (!trace) return <div className="empty-state"><div className="empty-state-icon">❌</div><div className="empty-state-title">Trace not found</div></div>;
 
@@ -1253,6 +1293,34 @@ export default function TraceDetail() {
               </span>
             </div>
           </div>
+
+          {/* Trace Connections / Destinations Row */}
+          {uniqueDestinations.length > 0 && (
+            <div className="tags-container" style={{ marginTop: '12px', borderLeft: '3px solid var(--accent-indigo)' }}>
+              <div className="tags-title" style={{ color: 'var(--accent-indigo-light)' }}>Trace Connections & Destinations ({uniqueDestinations.length})</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {uniqueDestinations.map(d => (
+                  <div key={d.name} className="tag-pill" style={{ borderColor: 'rgba(99, 102, 241, 0.2)' }} title={`${d.count} call(s) to ${d.name}`}>
+                    <span className="tag-key" style={{ 
+                      background: d.type === '3rdparty' ? 'rgba(245, 158, 11, 0.1)' : d.type === 'infra' ? 'rgba(14, 165, 233, 0.1)' : 'rgba(99, 102, 241, 0.08)',
+                      color: d.type === '3rdparty' ? 'var(--accent-amber)' : d.type === 'infra' ? 'var(--accent-cyan)' : 'var(--accent-indigo-light)',
+                      borderRight: '1px solid var(--border-primary)',
+                      fontSize: '10px',
+                      textTransform: d.type === 'infra' ? 'lowercase' : 'capitalize'
+                    }}>
+                      {d.type === '3rdparty' ? '3rd party' : d.type}
+                    </span>
+                    <span className="tag-val" style={{ fontSize: '11px', color: 'var(--text-primary)' }}>
+                      {d.name}
+                      <span style={{ marginLeft: '4px', fontSize: '9px', opacity: 0.6, fontWeight: 'normal' }}>
+                        x{d.count}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Metadata Tags Row */}
           {uniqueTags.length > 0 && (

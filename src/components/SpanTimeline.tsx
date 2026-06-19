@@ -1,6 +1,82 @@
 import React, { useState, useMemo } from 'react';
 import { type Span, isSpanError } from '../api/client';
 
+export interface DestinationInfo {
+  type: 'infra' | '3rdparty' | 'service' | null;
+  name: string;
+}
+
+export function getSpanDestination(span: Span): DestinationInfo {
+  const attrs = span.attributes || {};
+  
+  // 1. Database infrastructure
+  if (attrs['db.system']) {
+    const dbSys = attrs['db.system'];
+    const dbName = attrs['db.name'];
+    const name = dbName ? `${dbSys} (${dbName})` : dbSys;
+    return { type: 'infra', name };
+  }
+  
+  // 2. Messaging infrastructure
+  if (attrs['messaging.system']) {
+    const msgSys = attrs['messaging.system'];
+    const dest = attrs['messaging.destination'] || attrs['messaging.destination.name'] || attrs['messaging.destination_name'] || attrs['messaging.dest'];
+    const name = dest ? `${msgSys} (${dest})` : msgSys;
+    return { type: 'infra', name };
+  }
+
+  // 3. DNS Lookup
+  if (span.name?.toLowerCase().includes('dns') || attrs['dns.question.name'] || attrs['dns.question']) {
+    const query = attrs['dns.question.name'] || attrs['dns.question'] || attrs['net.peer.name'] || attrs['server.address'];
+    const name = query ? `dns (${query})` : 'dns';
+    return { type: 'infra', name };
+  }
+  
+  // 4. External 3rd party tool calls
+  if (attrs['external.service']) {
+    return { type: '3rdparty', name: attrs['external.service'] };
+  }
+  
+  // 5. Internal microservice call (fallback check)
+  if (attrs['peer.service']) {
+    return { type: 'service', name: attrs['peer.service'] };
+  }
+  
+  // 6. Backup client-side check for 3rd-party keywords
+  if (span.kind === 'CLIENT') {
+    const nameLower = span.name?.toLowerCase() || '';
+    const url = (attrs['http.url'] || '').toLowerCase();
+    const host = (attrs['server.address'] || attrs['net.peer.name'] || attrs['http.host'] || '').toLowerCase();
+    
+    if (nameLower.includes('mygov') || url.includes('mygov') || host.includes('mygov')) {
+      return { type: '3rdparty', name: 'MyGov' };
+    }
+    if (nameLower.includes('stripe') || url.includes('stripe') || host.includes('stripe')) {
+      return { type: '3rdparty', name: 'Stripe' };
+    }
+    if (nameLower.includes('paypal') || url.includes('paypal') || host.includes('paypal')) {
+      return { type: '3rdparty', name: 'PayPal' };
+    }
+    if (nameLower.includes('openai') || url.includes('openai') || host.includes('openai')) {
+      return { type: '3rdparty', name: 'OpenAI' };
+    }
+    if (nameLower.includes('twilio') || url.includes('twilio') || host.includes('twilio')) {
+      return { type: '3rdparty', name: 'Twilio' };
+    }
+    if (nameLower.includes('github') || url.includes('github') || host.includes('github')) {
+      return { type: '3rdparty', name: 'GitHub' };
+    }
+    if (nameLower.includes('slack') || url.includes('slack') || host.includes('slack')) {
+      return { type: '3rdparty', name: 'Slack' };
+    }
+    if (nameLower.includes('discord') || url.includes('discord') || host.includes('discord')) {
+      return { type: '3rdparty', name: 'Discord' };
+    }
+  }
+  
+  return { type: null, name: '' };
+}
+
 interface SpanTimelineProps {
   spans: Span[];
   traceStartTime: number;
@@ -157,6 +233,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
     const kindInfo = KIND_LABELS[span.kind] || KIND_LABELS.INTERNAL;
     const color = svcColor(span.serviceName);
     const attrs = span.attributes || {};
+    const dest = getSpanDestination(span);
 
     const isDbOrInternal = span.kind === 'INTERNAL' || kindInfo.label === 'INT' || kindInfo.label === 'CLI' || !!attrs['db.system'] || !!attrs['db.statement'];
     if (hideInternalDb && isDbOrInternal) {
@@ -358,9 +435,32 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
                 fontSize: '9px', 
                 color: color, 
                 fontWeight: 500,
-                marginTop: '0.5px'
+                marginTop: '0.5px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                flexWrap: 'wrap'
               }}>
                 {span.serviceName}
+                {dest.type && (
+                  <>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '8px' }}>➔</span>
+                    <span className="destination-badge" style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      background: dest.type === '3rdparty' ? 'rgba(245, 158, 11, 0.1)' : dest.type === 'infra' ? 'rgba(14, 165, 233, 0.1)' : 'rgba(99, 102, 241, 0.08)',
+                      color: dest.type === '3rdparty' ? 'var(--accent-amber, #f59e0b)' : dest.type === 'infra' ? 'var(--accent-cyan, #0ea5e9)' : 'var(--accent-indigo-light, #818cf8)',
+                      padding: '0.5px 5px',
+                      borderRadius: '3px',
+                      fontWeight: 600,
+                      fontSize: '8px',
+                      border: dest.type === '3rdparty' ? '1px dashed rgba(245, 158, 11, 0.3)' : '1px solid rgba(14, 165, 233, 0.15)',
+                      textTransform: dest.type === 'infra' ? 'lowercase' : 'none'
+                    }}>
+                      {dest.name}
+                    </span>
+                  </>
+                )}
               </span>
             </div>
           </div>

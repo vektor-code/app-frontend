@@ -224,13 +224,14 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
                       )}
                     </td>
                     <td style={{ width: '180px', overflow: 'hidden' }}>
-                      <div style={{ display: 'flex', gap: '3px', overflow: 'hidden', whiteSpace: 'nowrap', alignItems: 'center' }}>
-                        {(t.services || []).slice(0, 4).map(svc => (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
+                        {/* Internal Services */}
+                        {(t.services || []).slice(0, 3).map(svc => (
                           <span
                             key={svc}
                             style={{
-                              fontSize: '10px',
-                              padding: '1px 6px',
+                              fontSize: '9.5px',
+                              padding: '1px 5px',
                               borderRadius: '3px',
                               background: getServiceColor(svc) + '20',
                               color: getServiceColor(svc),
@@ -241,8 +242,35 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
                             {svc.replace('-backend', '')}
                           </span>
                         ))}
-                        {(t.services || []).length > 4 && (
-                          <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>+{t.services!.length - 4}</span>
+                        {(t.services || []).length > 3 && (
+                          <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 600 }}>+{t.services!.length - 3}</span>
+                        )}
+
+                        {/* Connections & 3rd Party Destinations */}
+                        {(t.thirdPartyTools || []).slice(0, 2).map(tool => {
+                          const isKnown3rd = ['stripe', 'paypal', 'openai', 'twilio', 'github', 'slack', 'discord', 'mygov', 'egov'].some(k => tool.toLowerCase().includes(k));
+                          return (
+                            <span
+                              key={tool}
+                              style={{
+                                fontSize: '9.5px',
+                                padding: '1px 5px',
+                                borderRadius: '3px',
+                                background: isKnown3rd ? 'rgba(245, 158, 11, 0.1)' : 'rgba(14, 165, 233, 0.1)',
+                                color: isKnown3rd ? 'var(--accent-amber, #f59e0b)' : 'var(--accent-cyan, #0ea5e9)',
+                                fontWeight: 600,
+                                whiteSpace: 'nowrap',
+                                border: isKnown3rd ? '1px dashed rgba(245, 158, 11, 0.3)' : '1px solid rgba(14, 165, 233, 0.15)',
+                                textTransform: isKnown3rd ? 'none' : 'lowercase'
+                              }}
+                              title={tool}
+                            >
+                              {tool.length > 12 ? tool.slice(0, 10) + '..' : tool}
+                            </span>
+                          );
+                        })}
+                        {(t.thirdPartyTools || []).length > 2 && (
+                          <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 600 }}>+{t.thirdPartyTools!.length - 2}</span>
                         )}
                       </div>
                     </td>
