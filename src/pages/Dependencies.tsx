@@ -492,16 +492,11 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <span style={{ 
-                            width: '24px', 
                             height: '24px', 
                             display: 'flex', 
                             alignItems: 'center', 
-                            justifyContent: 'center', 
-                            background: 'var(--bg-tertiary)', 
-                            borderRadius: '6px', 
-                            border: '1px solid var(--border-primary)',
-                            overflow: 'hidden',
-                            padding: '3px'
+                            justifyContent: 'center',
+                            minWidth: '24px'
                           }}>
                             {(() => {
                               const logoUrl = getDependencyLogo(item.rawName);
@@ -515,8 +510,8 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                                     src={logoUrl} 
                                     alt={item.system} 
                                     style={{ 
-                                      width: '100%', 
-                                      height: '100%', 
+                                      height: '22px', 
+                                      maxWidth: '50px',
                                       objectFit: 'contain',
                                       filter: shouldInvert ? 'invert(1) brightness(0.9)' : undefined
                                     }} 
