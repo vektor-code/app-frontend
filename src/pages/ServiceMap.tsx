@@ -72,9 +72,9 @@ const getNodeSize = (
   nodesList?: ServiceStats[],
   posSize?: { w?: number; h?: number }
 ) => {
-  const parts = nodeKey.split('/');
-  const nodeName = parts.length > 1 ? parts[1] : nodeKey;
-  const nodeNs = parts.length > 1 ? parts[0] : '';
+  const firstSlash = nodeKey.indexOf('/');
+  const nodeName = firstSlash !== -1 ? nodeKey.slice(firstSlash + 1) : nodeKey;
+  const nodeNs = firstSlash !== -1 ? nodeKey.slice(0, firstSlash) : '';
 
   const node = nodesList?.find(n => 
     n.serviceName === nodeName && 
@@ -82,7 +82,7 @@ const getNodeSize = (
   );
   const isInfra = node ? isInfraNode(node) : false;
   const defaultW = isInfra ? 190 : NODE_W;
-  const defaultH = isInfra ? 80 : NODE_H;
+  const defaultH = isInfra ? 90 : NODE_H;
   return {
     w: posSize?.w || defaultW,
     h: posSize?.h || defaultH,
@@ -1119,8 +1119,8 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         const world = screenToWorld(pos.x, pos.y);
         const hitNodeKey = hitTestNode(world.x, world.y);
         if (hitNodeKey) {
-          const parts = hitNodeKey.split('/');
-          const serviceName = parts.length > 1 ? parts[1] : hitNodeKey;
+          const firstSlash = hitNodeKey.indexOf('/');
+          const serviceName = firstSlash !== -1 ? hitNodeKey.slice(firstSlash + 1) : hitNodeKey;
           setSelectedService(serviceName);
           setDrawerTab('traces');
         }
@@ -1148,8 +1148,8 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       const hitNodeKey = hitTestNode(world.x, world.y);
       
       if (hitNodeKey) {
-        const parts = hitNodeKey.split('/');
-        const serviceName = parts.length > 1 ? parts[1] : hitNodeKey;
+        const firstSlash = hitNodeKey.indexOf('/');
+        const serviceName = firstSlash !== -1 ? hitNodeKey.slice(firstSlash + 1) : hitNodeKey;
         setContextMenu({
           x: e.clientX,
           y: e.clientY,
@@ -1648,12 +1648,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             : hasErrors ? '#f43f5e' : (isDark ? '#475569' : '#cbd5e1');
         ctx.lineWidth = hasErrors ? 2.5 : 1.5;
 
-        // Custom borders for Infrastructure nodes (dashed)
-        if (isInfra) {
-          ctx.setLineDash([4, 3]);
-        } else {
-          ctx.setLineDash([]);
-        }
+        ctx.setLineDash([]);
 
         ctx.beginPath();
         if (ctx.roundRect) {
