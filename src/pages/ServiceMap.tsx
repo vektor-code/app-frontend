@@ -1727,16 +1727,31 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           const iconX = rx + 12;
           const iconY = ry + 12;
 
-          // Draw the custom icon at (iconX, iconY) with size (iconSize, iconSize)
-          drawInfraIcon(ctx, node.serviceName, iconX, iconY, iconSize, isDark, iconImagesRef.current);
+          // For mygov: draw the wide landscape logo spanning the full header width
+          const mygovImg = iconImagesRef.current?.get('mygov');
+          const isMyGovNode = node.serviceName.toLowerCase().includes('mygov');
+          if (isMyGovNode && mygovImg && mygovImg.complete && mygovImg.naturalWidth !== 0) {
+            const logoMaxW = w - 24; // leave 12px padding each side
+            const aspect = mygovImg.naturalWidth / mygovImg.naturalHeight;
+            const logoH = Math.min(22, logoMaxW / aspect);
+            const logoW = logoH * aspect;
+            const logoX = rx + (w - logoW) / 2;
+            const logoY = ry + 10;
+            ctx.save();
+            ctx.drawImage(mygovImg, logoX, logoY, logoW, logoH);
+            ctx.restore();
+          } else {
+            // Draw the custom icon at (iconX, iconY) with size (iconSize, iconSize)
+            drawInfraIcon(ctx, node.serviceName, iconX, iconY, iconSize, isDark, iconImagesRef.current);
 
-          // Draw System Name in bold uppercase
-          ctx.font = '800 11px Inter';
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'middle';
-          ctx.fillStyle = isDark ? '#fbbf24' : '#d97706'; // Amber accent for infra system name
-          const systemName = parsed.system.toUpperCase();
-          ctx.fillText(systemName, rx + 38, iconY + iconSize / 2);
+            // Draw System Name in bold uppercase
+            ctx.font = '800 11px Inter';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = isDark ? '#fbbf24' : '#d97706'; // Amber accent for infra system name
+            const systemName = parsed.system.toUpperCase();
+            ctx.fillText(systemName, rx + 38, iconY + iconSize / 2);
+          }
 
           // Prepare lines for body
           const bodyLines: string[] = [];
