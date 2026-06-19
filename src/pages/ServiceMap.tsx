@@ -743,13 +743,26 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
     };
 
     loadMap();
-    const interval = setInterval(loadMap, 10000); // reload map data every 10 seconds
+    // Poll every 30 s — backend caches the map, so sub-second freshness is unnecessary.
+    // Skip the poll if the tab is hidden to avoid wasting CPU / network in the background.
+    let inFlight = false;
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      if (inFlight) return;
+      inFlight = true;
+      api.getServiceMap(namespace).then(res => {
+        inFlight = false;
+        if (!active) return;
+        setData(res);
+      }).catch(() => { inFlight = false; });
+    }, 30000); // reload map data every 30 seconds
 
     return () => {
       active = false;
       clearInterval(interval);
     };
   }, [namespace]);
+
 
   // Convert screen coordinates to world coordinates
   const screenToWorld = useCallback((sx: number, sy: number) => {
