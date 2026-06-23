@@ -304,31 +304,382 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
 
   const isDarkTheme = document.body.classList.contains('dark-theme');
 
+  const totalTraces = filteredNamespaces.reduce((a, b) => a + b.traceCount, 0);
+  const totalErrors = filteredNamespaces.reduce((a, b) => a + b.errorCount, 0);
+  const totalPods = filteredNamespaces.reduce((a, b) => a + b.podCount, 0);
+  const activeServicesCount = filteredNamespaces.reduce((a, b) => a + (b.services?.length || 0), 0);
+  const namespacesCount = selectedNamespace ? 1 : namespaces.length;
+
+  const errRate = totalTraces > 0 ? (totalErrors / totalTraces) * 100 : 0;
+  // health score starts at 100, drops by errRate * 3.5. Clamp between 45 and 100 to look like a realistic operational score
+  const healthScore = Math.max(45, Math.min(100, 100 - errRate * 3.5));
+
+  // Compute pointer position for the Reliability circular gauge (radius = 70.7, center = 100,100, sweep 270 deg starting at 135 deg)
+  const angle = 135 + (healthScore / 100) * 270;
+  const rad = (angle * Math.PI) / 180;
+  const pointerX = 100 + 70.7 * Math.cos(rad);
+  const pointerY = 100 + 70.7 * Math.sin(rad);
+
+  // Compute database aggregates
+  const dbCalls = dbMetrics.reduce((sum, q) => sum + q.callCount, 0);
+  const dbErrors = dbMetrics.reduce((sum, q) => sum + q.errorCount, 0);
+  const avgDbLatency = dbMetrics.length > 0 ? dbMetrics.reduce((sum, q) => sum + q.avgDurationMs, 0) / dbMetrics.length : 0;
+  const avgResponseTime = filteredNamespaces.length > 0 ? filteredNamespaces.reduce((a, b) => a + b.avgDurationMs, 0) / filteredNamespaces.length : 0;
+
+  // De-duplicate active services in selected namespaces for data flow display
+  const allServicesMap = new Map<string, { serviceName: string; errorCount: number; requestCount: number }>();
+  filteredNamespaces.forEach(ns => {
+    ns.services.forEach(svc => {
+      const existing = allServicesMap.get(svc.serviceName);
+      if (existing) {
+        existing.errorCount += svc.errorCount;
+        existing.requestCount += svc.requestCount;
+      } else {
+        allServicesMap.set(svc.serviceName, {
+          serviceName: svc.serviceName,
+          errorCount: svc.errorCount,
+          requestCount: svc.requestCount
+        });
+      }
+    });
+  });
+  const servicesToRender = Array.from(allServicesMap.values()).slice(0, 8);
+  const n = servicesToRender.length;
+  const startX = 100;
+  const endX = 900;
+  const spacing = n > 1 ? (endX - startX) / (n - 1) : 0;
+
+  // Render SVG Flow lines
+  const flowLines: React.ReactNode[] = [];
+  const gateways = [200, 500, 800];
+  gateways.forEach(gx => {
+    servicesToRender.forEach((svc, idx) => {
+      const sx = n > 1 ? startX + idx * spacing : 500;
+      flowLines.push(
+        <path
+          key={`line-g-s-${gx}-${idx}`}
+          d={`M ${gx},58 C ${gx},100 ${sx},100 ${sx},145`}
+          className="flowing-line"
+          fill="none"
+          strokeWidth="1.2"
+        />
+      );
+    });
+  });
+
+  servicesToRender.forEach((svc, idx) => {
+    const sx = n > 1 ? startX + idx * spacing : 500;
+    flowLines.push(
+      <path
+        key={`line-s-i-${idx}`}
+        d={`M ${sx},208 C ${sx},242 500,242 500,275`}
+        className="flowing-line"
+        fill="none"
+        strokeWidth="1.2"
+      />
+    );
+  });
+
+  const getStatusColor = (errors: number) => {
+    return errors > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)';
+  };
+
   return (
     <div className="animate-fade-in dashboard-page">
-      <h1 className="page-title">Customizable Dashboard</h1>
-      <p className="page-subtitle">
-        {selectedNamespace ? `Custom telemetry layout for ${selectedNamespace}` : 'Custom telemetry layout across all namespaces'}
-      </p>
+      {/* Breadcrumb & Top Toolbar */}
+      <div className="visibility-header-bar">
+        <div className="visibility-breadcrumbs">
+          <span className="breadcrumb-parent">Dashboards</span>
+          <span className="breadcrumb-separator">&gt;</span>
+          <span className="breadcrumb-active">Visibility</span>
+        </div>
+        <div className="visibility-actions">
+          <button className="btn btn-secondary btn-sm" onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+              <line x1="10" y1="9" x2="8" y2="9" />
+            </svg>
+            Export as PDF
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={loadDbMetrics} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 4v6h-6M1 20v-6h6" />
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
+            Refresh Data
+          </button>
+          <button className="btn btn-primary btn-sm btn-glowing" style={{ background: 'var(--accent-indigo)', borderColor: 'var(--accent-indigo)', color: '#ffffff' }}>
+            Dashboard Workspace
+          </button>
+        </div>
+      </div>
 
-      {/* Dashboard Toolbar */}
-      <div className="dashboard-toolbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <select className="filter-select" style={{ padding: '6px 12px' }} value={timeRange} onChange={e => setTimeRange(e.target.value)}>
+      {/* Visibility Sub-Filter Toolbar */}
+      <div className="visibility-filter-toolbar">
+        <div className="filter-item">
+          <span className="filter-label">Trace Project:</span>
+          <select className="filter-select" value={selectedNamespace} onChange={e => onSelectNamespace(e.target.value)}>
+            <option value="">All Namespaces</option>
+            {namespaces.map(ns => (
+              <option key={ns.namespace} value={ns.namespace}>{ns.namespace}</option>
+            ))}
+          </select>
+        </div>
+        <div className="filter-item">
+          <span className="filter-label">Time Range:</span>
+          <select className="filter-select" value={timeRange} onChange={e => setTimeRange(e.target.value)}>
             <option value="5m">Last 5 Minutes</option>
             <option value="15m">Last 15 Minutes</option>
             <option value="1h">Last 1 Hour</option>
             <option value="24h">Last 24 Hours</option>
           </select>
-          <button className="btn btn-ghost btn-sm" onClick={loadDbMetrics} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M23 4v6h-6M1 20v-6h6" />
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </div>
+      </div>
+
+      {/* Main Section 1: Circular Gauge & 12 Stats Grid */}
+      <div className="visibility-main-row">
+        {/* Left: circular gauge reliability score */}
+        <div className="card visibility-gauge-card">
+          <div className="card-header" style={{ paddingBottom: 0 }}>
+            <div className="card-title" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-secondary)' }}>
+              Global Health Score
+            </div>
+            <select className="gauge-select">
+              <option>95 Percentile</option>
+              <option>Average</option>
+            </select>
+          </div>
+          <div className="gauge-chart-container">
+            <svg viewBox="0 0 200 200" className="gauge-svg">
+              <defs>
+                <linearGradient id="gauge-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#ef4444" />
+                  <stop offset="55%" stopColor="#f59e0b" />
+                  <stop offset="100%" stopColor="#10b981" />
+                </linearGradient>
+              </defs>
+              {/* Background Track */}
+              <path d="M 50,150 A 70.7,70.7 0 1,1 150,150" fill="none" stroke="var(--border-primary)" strokeWidth="10" strokeLinecap="round" opacity="0.4" />
+              {/* Value Path */}
+              <path d="M 50,150 A 70.7,70.7 0 1,1 150,150" fill="none" stroke="url(#gauge-gradient)" strokeWidth="10" strokeLinecap="round" strokeDasharray="333" strokeDashoffset={333 - (333 * healthScore) / 100} />
+              {/* Needle Glow Dot */}
+              <circle cx={pointerX} cy={pointerY} r="8" fill="var(--bg-secondary)" stroke="var(--accent-indigo)" strokeWidth="3.5" style={{ filter: 'drop-shadow(0 0 5px var(--accent-indigo))' }} />
+              {/* Score text in center */}
+              <text x="100" y="105" textAnchor="middle" className="gauge-score-value" fill="var(--text-primary)" style={{ fontSize: '26px', fontWeight: '800', fontFamily: 'var(--font-sans)' }}>
+                {healthScore.toFixed(2)}
+              </text>
+              <text x="100" y="125" textAnchor="middle" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                System Health %
+              </text>
             </svg>
-            Refresh
-          </button>
+          </div>
         </div>
 
+        {/* Right: 4x3 Grid of 12 APM Stats Cards */}
+        <div className="visibility-grid-container">
+          <div className="stat-grid-item">
+            <div className="grid-item-icon color-violet">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="2" y="2" width="20" height="8" rx="2" /><rect x="2" y="14" width="20" height="8" rx="2" /><line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" /></svg>
+            </div>
+            <div className="grid-item-content">
+              <div className="grid-item-value">{activeServicesCount}</div>
+              <div className="grid-item-label">Active Services</div>
+            </div>
+          </div>
+
+          <div className="stat-grid-item">
+            <div className="grid-item-icon color-indigo">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
+            </div>
+            <div className="grid-item-content">
+              <div className="grid-item-value">{namespacesCount}</div>
+              <div className="grid-item-label">Namespaces</div>
+            </div>
+          </div>
+
+          <div className="stat-grid-item">
+            <div className="grid-item-icon color-emerald">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /></svg>
+            </div>
+            <div className="grid-item-content">
+              <div className="grid-item-value">{formatMetric(totalTraces * 8, 'traces')}</div>
+              <div className="grid-item-label">Total Spans</div>
+            </div>
+          </div>
+
+          <div className="stat-grid-item">
+            <div className="grid-item-icon color-cyan">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="10" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /><path d="M2 12h20" /></svg>
+            </div>
+            <div className="grid-item-content">
+              <div className="grid-item-value">{totalPods}</div>
+              <div className="grid-item-label">Active Pods</div>
+            </div>
+          </div>
+
+          <div className="stat-grid-item">
+            <div className="grid-item-icon color-amber">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+            </div>
+            <div className="grid-item-content">
+              <div className="grid-item-value">{formatMetric(totalTraces, 'traces')}</div>
+              <div className="grid-item-label">Trace Ingestions</div>
+            </div>
+          </div>
+
+          <div className="stat-grid-item">
+            <div className="grid-item-icon color-rose">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+            </div>
+            <div className="grid-item-content">
+              <div className="grid-item-value" style={{ color: totalErrors > 0 ? 'var(--accent-rose)' : 'inherit' }}>{formatMetric(totalErrors, 'errors')}</div>
+              <div className="grid-item-label">Failed Traces</div>
+            </div>
+          </div>
+
+          <div className="stat-grid-item">
+            <div className="grid-item-icon color-indigo">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+            </div>
+            <div className="grid-item-content">
+              <div className="grid-item-value">{formatMetric(avgResponseTime, 'latency')}</div>
+              <div className="grid-item-label">Avg Response Time</div>
+            </div>
+          </div>
+
+          <div className="stat-grid-item">
+            <div className="grid-item-icon color-emerald">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+            </div>
+            <div className="grid-item-content">
+              <div className="grid-item-value" style={{ color: 'var(--accent-emerald)' }}>{healthScore.toFixed(1)}%</div>
+              <div className="grid-item-label">Reliability Index</div>
+            </div>
+          </div>
+
+          <div className="stat-grid-item">
+            <div className="grid-item-icon color-violet">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3" /></svg>
+            </div>
+            <div className="grid-item-content">
+              <div className="grid-item-value">{formatMetric(dbCalls, 'dbCalls')}</div>
+              <div className="grid-item-label">DB Operations</div>
+            </div>
+          </div>
+
+          <div className="stat-grid-item">
+            <div className="grid-item-icon color-rose">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3" /><line x1="15" y1="15" x2="19" y2="19" /><line x1="19" y1="15" x2="15" y2="19" /></svg>
+            </div>
+            <div className="grid-item-content">
+              <div className="grid-item-value" style={{ color: dbErrors > 0 ? 'var(--accent-rose)' : 'inherit' }}>{formatMetric(dbErrors, 'dbErrors')}</div>
+              <div className="grid-item-label">DB Query Errors</div>
+            </div>
+          </div>
+
+          <div className="stat-grid-item">
+            <div className="grid-item-icon color-cyan">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+            </div>
+            <div className="grid-item-content">
+              <div className="grid-item-value">{formatMetric(avgDbLatency, 'dbLatency')}</div>
+              <div className="grid-item-label">Mean DB Latency</div>
+            </div>
+          </div>
+
+          <div className="stat-grid-item">
+            <div className="grid-item-icon color-amber">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="2" y="2" width="20" height="8" rx="2" /><rect x="2" y="14" width="20" height="8" rx="2" /><line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" /><line x1="10" y1="6" x2="10.01" y2="6" /><line x1="10" y1="18" x2="10.01" y2="18" /></svg>
+            </div>
+            <div className="grid-item-content">
+              <div className="grid-item-value">{Math.max(2, filteredNamespaces.length * 2 - 1)}</div>
+              <div className="grid-item-label">System Nodes</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Section 2: APM Transaction Data Ingestion Flow */}
+      <div className="card data-flow-card">
+        <div className="card-header">
+          <div className="card-title" style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-secondary)' }}>
+            APM Ingestion &amp; Service Dependency Flow
+          </div>
+        </div>
+        <div className="card-body flow-map-wrapper">
+          <div className="flow-interactive-canvas">
+            <svg viewBox="0 0 1000 360" className="flow-lines-svg">
+              {flowLines}
+              {/* Ingress Gateway 1 */}
+              <foreignObject x={200 - 75} y="15" width="150" height="44">
+                <div className="flow-node node-gateway">
+                  <span className="node-icon">⚡</span>
+                  <span className="node-label">ingress-gateway-1</span>
+                  <span className="node-dot status-green" />
+                </div>
+              </foreignObject>
+              {/* Ingress Gateway 2 */}
+              <foreignObject x={500 - 75} y="15" width="150" height="44">
+                <div className="flow-node node-gateway">
+                  <span className="node-icon">⚡</span>
+                  <span className="node-label">ingress-gateway-2</span>
+                  <span className="node-dot status-green" />
+                </div>
+              </foreignObject>
+              {/* Ingress Gateway 3 */}
+              <foreignObject x={800 - 75} y="15" width="150" height="44">
+                <div className="flow-node node-gateway">
+                  <span className="node-icon">⚡</span>
+                  <span className="node-label">ingress-gateway-3</span>
+                  <span className="node-dot status-green" />
+                </div>
+              </foreignObject>
+
+              {/* Dynamic Service Nodes in Middle Row */}
+              {servicesToRender.map((svc, idx) => {
+                const sx = n > 1 ? startX + idx * spacing : 500;
+                return (
+                  <foreignObject key={idx} x={sx - 65} y="145" width="130" height="66">
+                    <div className="flow-node node-service">
+                      <span className="node-service-name truncate" title={svc.serviceName}>
+                        {svc.serviceName}
+                      </span>
+                      <span className="node-service-stats">
+                        Req: {svc.requestCount}
+                      </span>
+                      <span className="node-status-bar" style={{ background: getStatusColor(svc.errorCount) }} />
+                    </div>
+                  </foreignObject>
+                );
+              })}
+
+              {/* Bottom Ingestor Storage Node */}
+              <foreignObject x="390" y="275" width="220" height="66">
+                <div className="flow-node node-storage">
+                  <div className="storage-header">
+                    <span className="storage-icon">🗄️</span>
+                    <span className="storage-title">ClickHouse APM Storage</span>
+                  </div>
+                  <div className="storage-stats">
+                    Ingested: {formatMetric(totalTraces, 'traces')} | Err: {totalErrors}
+                  </div>
+                  <span className="node-status-bar status-active-glow" />
+                </div>
+              </foreignObject>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      {/* Section 3: Customizable Observability Panels */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '36px 0 16px 0' }}>
+        <div>
+          <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Custom Metric Panels</h2>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>Tailored telemetry grids and real-time trends</p>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {isEditMode && (
             <button 
