@@ -156,7 +156,7 @@ body {
   border-right: none;
 }
 
-.app-sidebar:hover {
+.app-sidebar.has-secondary:hover {
   width: 306px;
   box-shadow: 4px 0 24px rgba(0, 0, 0, 0.12);
 }
@@ -391,7 +391,7 @@ body {
   pointer-events: none;
 }
 
-.app-sidebar:hover .secondary-sidebar {
+.app-sidebar.has-secondary:hover .secondary-sidebar {
   width: 230px;
   min-width: 230px;
   transform: translateX(0);
