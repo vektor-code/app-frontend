@@ -56,25 +56,11 @@ export default function Sidebar({
       <div className="primary-sidebar">
         {/* Logo */}
         <div className="primary-sidebar-logo">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="logo-svg">
-            <polygon points="12,2 22,7 22,17 12,22 2,17 2,7" />
-            <line x1="12" y1="2" x2="12" y2="12" />
-            <line x1="12" y1="12" x2="2" y2="17" />
-            <line x1="12" y1="12" x2="22" y2="17" />
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" className="logo-svg">
+            <path d="M5 5l7 14 7-14" />
+            <path d="M16 5h3v3" />
           </svg>
         </div>
-
-        {/* Toggle Button */}
-        <button
-          className="sidebar-toggle-btn"
-          onClick={onToggleCollapse}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <line x1="9" y1="3" x2="9" y2="21" />
-          </svg>
-        </button>
 
         {/* Global Navigation Links (Aligned to actual pages) */}
         <div className="primary-sidebar-nav">
