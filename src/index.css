@@ -45,7 +45,7 @@
   --radius-lg: 16px;
   --radius-xl: 24px;
   
-  --font-sans: 'Averta', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: 'Geist', 'Inter', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -277,8 +277,7 @@ body {
   align-items: center;
   justify-content: center;
   width: 72px;
-  height: 56px;
-  border-radius: 12px;
+  height: 68px;
   color: var(--text-secondary);
   text-decoration: none;
   transition: all var(--transition-fast);
@@ -286,23 +285,17 @@ body {
   border: none;
   background: none;
   position: relative;
+  gap: 4px;
 }
 
 .primary-nav-item:hover {
-  background: var(--bg-hover);
+  background: none;
   color: var(--text-primary);
 }
 
 .primary-nav-item.active {
   color: var(--accent-indigo);
-  font-weight: 600;
   background: none;
-}
-
-.primary-nav-item.active .primary-nav-icon {
-  color: var(--accent-indigo);
-  background: none;
-  box-shadow: none;
 }
 
 .primary-nav-item.placeholder {
@@ -313,21 +306,47 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1.5px solid transparent;
+  background: transparent;
   transition: all var(--transition-fast);
+  color: var(--text-secondary);
+  box-sizing: border-box;
+}
+
+.primary-nav-item:hover .primary-nav-icon {
+  background: rgba(99, 102, 241, 0.06);
+  border-color: rgba(99, 102, 241, 0.25);
+  color: var(--accent-indigo);
+}
+
+.primary-nav-item.active .primary-nav-icon {
+  background: var(--accent-indigo);
+  border-color: var(--accent-indigo);
+  color: #ffffff;
 }
 
 .primary-nav-label {
-  font-size: 9px;
-  font-weight: 500;
-  margin-top: 3px;
+  font-size: 9.5px;
+  font-weight: 550;
   text-align: center;
   white-space: normal;
   line-height: 1.15;
   width: 100%;
   padding: 0 4px;
+  color: var(--text-secondary);
+  transition: color var(--transition-fast);
+}
+
+.primary-nav-item:hover .primary-nav-label {
+  color: var(--text-primary);
+}
+
+.primary-nav-item.active .primary-nav-label {
+  color: var(--text-primary);
+  font-weight: 700;
 }
 
 .primary-sidebar-bottom {

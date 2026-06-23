@@ -27,6 +27,11 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
     loadDbMetrics();
   }, [loadDbMetrics]);
 
+  // Reset trend when namespace changes for proper namespace-by-namespace sorting
+  useEffect(() => {
+    setTelemetryTrend([]);
+  }, [selectedNamespace]);
+
   // Filter namespaces based on selection
   const filteredNamespaces = selectedNamespace
     ? namespaces.filter(ns => ns.namespace === selectedNamespace)
@@ -42,6 +47,12 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
   const errRate = totalTraces > 0 ? (totalErrors / totalTraces) * 100 : 0;
   // health score starts at 100, drops by errRate * 3.5. Clamp between 45 and 100
   const healthScore = Math.max(45, Math.min(100, 100 - errRate * 3.5));
+
+  // Compute pointer position for the Reliability circular gauge (radius = 70.7, center = 100,100, sweep 270 deg starting at 135 deg)
+  const angle = 135 + (healthScore / 100) * 270;
+  const rad = (angle * Math.PI) / 180;
+  const pointerX = 100 + 70.7 * Math.cos(rad);
+  const pointerY = 100 + 70.7 * Math.sin(rad);
 
   // Apdex Score calculation
   const apdexScore = totalTraces > 0 ? Math.max(0.75, 1 - (totalErrors / totalTraces) * 1.5) : 1.0;
@@ -69,7 +80,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
       }
       return prev;
     });
-  }, [totalTraces]);
+  }, [totalTraces, selectedNamespace]); // Include selectedNamespace to ensure trend recalculates
 
   // Auto-refresh trigger
   useEffect(() => {
@@ -82,10 +93,13 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
   return (
     <div className="animate-fade-in dashboard-page">
       {/* Top Header Bar */}
-      <div className="visibility-header-bar">
+      <div className="visibility-header-bar" style={{ paddingBottom: '12px', borderBottom: '1px solid var(--border-primary)' }}>
         <div className="visibility-title-container">
-          <h1 className="visibility-dashboard-title">System Visibility Dashboard</h1>
-          <p className="visibility-dashboard-subtitle">Real-time system health, telemetry overview, and service performance trends</p>
+          <div className="visibility-breadcrumbs" style={{ fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+            <span className="breadcrumb-parent" style={{ color: 'var(--text-tertiary)' }}>Dashboards</span>
+            <span className="breadcrumb-separator" style={{ margin: '0 8px', color: 'var(--text-muted)' }}>&gt;</span>
+            <span className="breadcrumb-active" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>Visibility</span>
+          </div>
         </div>
         <div className="visibility-actions">
           <button className="btn btn-secondary btn-sm" onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -361,25 +375,25 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
       {/* Premium Visual Telemetry Analytics Charts */}
       <div className="dashboard-charts-row" style={{ display: 'flex', gap: '20px', marginTop: '24px', flexWrap: 'wrap' }}>
         {/* Service Ingestion Inbound */}
-        <div className="card chart-card" style={{ flex: '1 1 540px', minHeight: '360px', display: 'flex', flexDirection: 'column' }}>
+        <div className="card chart-card" style={{ flex: '1 1 540px', minHeight: '380px', display: 'flex', flexDirection: 'column' }}>
           <div className="card-header" style={{ borderBottom: '1px solid var(--border-primary)', padding: '16px 20px' }}>
             <div className="card-title" style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>
               Service Ingestion Inbound (Throughput)
             </div>
           </div>
-          <div className="card-body" style={{ padding: '20px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div className="card-body" style={{ padding: '10px 20px 20px 20px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
             <SVGBarChart namespaces={filteredNamespaces} />
           </div>
         </div>
 
         {/* Real-time Ingestion Trend */}
-        <div className="card chart-card" style={{ flex: '1 1 540px', minHeight: '360px', display: 'flex', flexDirection: 'column' }}>
+        <div className="card chart-card" style={{ flex: '1 1 540px', minHeight: '380px', display: 'flex', flexDirection: 'column' }}>
           <div className="card-header" style={{ borderBottom: '1px solid var(--border-primary)', padding: '16px 20px' }}>
             <div className="card-title" style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>
               Real-Time Ingestion Trend (Spans)
             </div>
           </div>
-          <div className="card-body" style={{ padding: '20px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div className="card-body" style={{ padding: '10px 20px 20px 20px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
             <SVGLineChart data={telemetryTrend} color="indigo" metric="traces" />
           </div>
         </div>
@@ -449,9 +463,9 @@ function SVGLineChart({ data, color, metric }: SVGLineChartProps) {
   const range = max - min;
 
   const width = 500;
-  const height = 150;
+  const height = 240;
   const paddingX = 20;
-  const paddingY = 15;
+  const paddingY = 20;
 
   const points = data.map((val, i) => {
     const x = paddingX + (i / (data.length - 1)) * (width - 2 * paddingX);
@@ -487,7 +501,7 @@ function SVGLineChart({ data, color, metric }: SVGLineChartProps) {
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '200px', overflow: 'visible' }}>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '240px', overflow: 'visible' }}>
         <defs>
           <linearGradient id={`grad-${color}-${metric}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={colorHex} stopOpacity="0.2" />
@@ -576,7 +590,7 @@ function SVGBarChart({ namespaces }: { namespaces: NamespaceStats[] }) {
 
   const maxVal = Math.max(...data.map(d => d.requestCount)) * 1.1 || 1;
   const width = 500;
-  const height = 200;
+  const height = 240;
   const paddingLeft = 40;
   const paddingRight = 20;
   const paddingTop = 25;
@@ -589,7 +603,7 @@ function SVGBarChart({ namespaces }: { namespaces: NamespaceStats[] }) {
 
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '200px', overflow: 'visible' }}>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '240px', overflow: 'visible' }}>
         <defs>
           <linearGradient id="bar-grad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--accent-indigo)" />
