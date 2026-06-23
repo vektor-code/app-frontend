@@ -74,7 +74,7 @@ export default function Sidebar({
             <span className="primary-nav-label">Dashboard</span>
           </NavLink>
 
-          <NavLink to="/traces" className={({ isActive }) => `primary-nav-item item-violations ${isActive ? 'active' : ''}`} title="Trace Explorer">
+          <NavLink to="/traces" className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`} title="Trace Explorer">
             <span className="primary-nav-icon">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8" />
@@ -86,7 +86,7 @@ export default function Sidebar({
             <span className="primary-nav-label">Explorer</span>
           </NavLink>
 
-          <NavLink to="/servicemap" className={({ isActive }) => `primary-nav-item item-graph ${isActive ? 'active' : ''}`} title="Service Map">
+          <NavLink to="/servicemap" className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`} title="Service Map">
             <span className="primary-nav-icon">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="18" cy="5" r="3" />

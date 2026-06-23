@@ -299,17 +299,18 @@ body {
   font-weight: 600;
 }
 
-/* Active Violations page outline square */
-.primary-nav-item.item-violations.active {
-  border: 1.5px solid var(--accent-indigo);
-  background: transparent;
+/* Unified active navigation item styling */
+.primary-nav-item.active {
+  color: var(--accent-indigo);
+  background: rgba(99, 102, 241, 0.06);
+  font-weight: 600;
 }
 
-/* Active Graph page filled square with white icon */
-.primary-nav-item.item-graph.active .primary-nav-icon {
+.primary-nav-item.active .primary-nav-icon {
   background: var(--accent-indigo);
   color: #ffffff;
   border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
 }
 
 .primary-nav-item.placeholder {
