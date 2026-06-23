@@ -78,15 +78,7 @@ export default function App() {
       const statsNs = statsData.namespaces || [];
       const statsMap = new Map(statsNs.map(ns => [ns.namespace, ns]));
 
-      const isSystemNamespace = (name: string): boolean => {
-        const systemPrefixes = ['kube-', 'local-path-', 'ingress-', 'cert-', 'kubernetes-', 'tigera-', 'calico-', 'gatekeeper-', 'istio-', 'linkerd-'];
-        return systemPrefixes.some(prefix => name.startsWith(prefix)) || ['default', 'kube-system', 'kube-public', 'kube-node-lease', 'local-path-storage'].includes(name);
-      };
-
       for (const ns of (nsData.namespaces || [])) {
-        if (isSystemNamespace(ns)) {
-          continue;
-        }
         if (!statsMap.has(ns)) {
           statsNs.push({
             namespace: ns,
