@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, type TraceListItem } from '../api/client';
 
 interface TraceExplorerProps {
@@ -26,14 +26,27 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
   const [loading, setLoading] = useState(true);
   const [services, setServices] = useState<string[]>([]);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // Filters
-  const [serviceFilter, setServiceFilter] = useState('');
-  const [errorFilter, setErrorFilter] = useState('');
-  const [operationFilter, setOperationFilter] = useState('');
-  const [traceIdFilter, setTraceIdFilter] = useState('');
-  const [minSpans, setMinSpans] = useState('2');
-  const [minDuration, setMinDuration] = useState('');
+  // Filters read directly from URL search params
+  const serviceFilter = searchParams.get('service') || '';
+  const errorFilter = searchParams.get('hasError') || '';
+  const operationFilter = searchParams.get('operation') || '';
+  const traceIdFilter = searchParams.get('traceId') || '';
+  const minSpans = searchParams.get('minSpans') || '2';
+  const minDuration = searchParams.get('minDuration') || '';
+
+  const setFilterVal = (key: string, val: string) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (val) {
+        next.set(key, val);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    }, { replace: true });
+  };
 
   const loadTraces = useCallback(async () => {
     try {
@@ -86,14 +99,14 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px', alignItems: 'end' }}>
             <div>
               <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Service</label>
-              <select className="filter-select" value={serviceFilter} onChange={e => setServiceFilter(e.target.value)} style={{ width: '100%' }}>
+              <select className="filter-select" value={serviceFilter} onChange={e => setFilterVal('service', e.target.value)} style={{ width: '100%' }}>
                 <option value="">All Services</option>
                 {services.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>
               <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Status</label>
-              <select className="filter-select" value={errorFilter} onChange={e => setErrorFilter(e.target.value)} style={{ width: '100%' }}>
+              <select className="filter-select" value={errorFilter} onChange={e => setFilterVal('hasError', e.target.value)} style={{ width: '100%' }}>
                 <option value="">All Status</option>
                 <option value="true">Errors Only</option>
                 <option value="false">Success Only</option>
@@ -106,7 +119,7 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
                 className="filter-select"
                 placeholder="e.g. GET catalog"
                 value={operationFilter}
-                onChange={e => setOperationFilter(e.target.value)}
+                onChange={e => setFilterVal('operation', e.target.value)}
                 style={{ width: '100%' }}
               />
             </div>
@@ -117,13 +130,13 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
                 className="filter-select"
                 placeholder="Search by ID..."
                 value={traceIdFilter}
-                onChange={e => setTraceIdFilter(e.target.value)}
+                onChange={e => setFilterVal('traceId', e.target.value)}
                 style={{ width: '100%' }}
               />
             </div>
             <div>
               <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Min Spans</label>
-              <select className="filter-select" value={minSpans} onChange={e => setMinSpans(e.target.value)} style={{ width: '100%' }}>
+              <select className="filter-select" value={minSpans} onChange={e => setFilterVal('minSpans', e.target.value)} style={{ width: '100%' }}>
                 <option value="0">All (incl. DB noise)</option>
                 <option value="2">≥ 2 spans (requests)</option>
                 <option value="3">≥ 3 spans</option>
@@ -138,7 +151,7 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
                 className="filter-select"
                 placeholder="ms"
                 value={minDuration}
-                onChange={e => setMinDuration(e.target.value)}
+                onChange={e => setFilterVal('minDuration', e.target.value)}
                 style={{ width: '100%' }}
               />
             </div>

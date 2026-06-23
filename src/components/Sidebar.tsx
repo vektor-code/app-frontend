@@ -20,6 +20,7 @@ export default function Sidebar({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [generalViewsExpanded, setGeneralViewsExpanded] = useState(true);
   const [servicesExpanded, setServicesExpanded] = useState(true);
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
   const selectedNsStats = namespaces.find(ns => ns.namespace === selectedNamespace);
   const activeNamespaceLabel = selectedNamespace || 'All Namespaces';
@@ -52,9 +53,13 @@ export default function Sidebar({
 
   const location = useLocation();
   const isExplorer = location.pathname.startsWith('/traces');
+  const showSecondary = isExplorer || hoveredItem === 'explorer';
 
   return (
-    <aside className={`app-sidebar ${isExplorer ? 'has-secondary' : ''}`}>
+    <aside 
+      className={`app-sidebar ${showSecondary ? 'has-secondary' : ''}`}
+      onMouseLeave={() => setHoveredItem(null)}
+    >
       {/* 1st Column: Thin Sidebar */}
       <div className="primary-sidebar">
         {/* Logo */}
@@ -67,7 +72,7 @@ export default function Sidebar({
 
         {/* Global Navigation Links (Aligned to actual pages) */}
         <div className="primary-sidebar-nav">
-          <NavLink to="/" end className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`} title="Dashboard">
+          <NavLink to="/" end className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`} title="Dashboard" onMouseEnter={() => setHoveredItem(null)}>
             <span className="primary-nav-icon">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="7" height="9" rx="1" />
@@ -79,7 +84,7 @@ export default function Sidebar({
             <span className="primary-nav-label">Dashboard</span>
           </NavLink>
 
-          <NavLink to="/traces" className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`} title="Trace Explorer">
+          <NavLink to="/traces" className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`} title="Trace Explorer" onMouseEnter={() => setHoveredItem('explorer')}>
             <span className="primary-nav-icon">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8" />
@@ -89,7 +94,7 @@ export default function Sidebar({
             <span className="primary-nav-label">Explorer</span>
           </NavLink>
 
-          <NavLink to="/servicemap" className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`} title="Service Map">
+          <NavLink to="/servicemap" className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`} title="Service Map" onMouseEnter={() => setHoveredItem(null)}>
             <span className="primary-nav-icon">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="18" cy="5" r="3" />
@@ -102,7 +107,7 @@ export default function Sidebar({
             <span className="primary-nav-label">Service Map</span>
           </NavLink>
 
-          <NavLink to="/dependencies" className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`} title="Dependencies">
+          <NavLink to="/dependencies" className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`} title="Dependencies" onMouseEnter={() => setHoveredItem(null)}>
             <span className="primary-nav-icon">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="16" y="16" width="6" height="6" rx="1" />
@@ -115,7 +120,7 @@ export default function Sidebar({
             <span className="primary-nav-label">Dependencies</span>
           </NavLink>
 
-          <NavLink to="/database" className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`} title="Database Analytics">
+          <NavLink to="/database" className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`} title="Database Analytics" onMouseEnter={() => setHoveredItem(null)}>
             <span className="primary-nav-icon">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <ellipse cx="12" cy="5" rx="9" ry="3" />
@@ -126,7 +131,7 @@ export default function Sidebar({
             <span className="primary-nav-label">Database</span>
           </NavLink>
 
-          <NavLink to="/live" className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`} title="Live Stream">
+          <NavLink to="/live" className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`} title="Live Stream" onMouseEnter={() => setHoveredItem(null)}>
             <span className="primary-nav-icon">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
@@ -138,7 +143,7 @@ export default function Sidebar({
       </div>
 
       {/* 2nd Column: Sub Sidebar (Wide Pane) */}
-      {isExplorer && (
+      {showSecondary && (
         <div className={`secondary-sidebar ${collapsed ? 'collapsed' : ''}`}>
           {/* Workspace Dropdown Selector */}
           <div className="workspace-selector-container">
@@ -216,54 +221,35 @@ export default function Sidebar({
 
               {generalViewsExpanded && (
                 <div className="secondary-section-links">
-                  <NavLink to="/traces" className={({ isActive }) => `secondary-nav-link ${isActive ? 'active' : ''}`}>
+                  <NavLink to="/traces" end className={`secondary-nav-link ${location.pathname === '/traces' && !location.search ? 'active' : ''}`}>
                     <span className="secondary-link-icon-wrapper">
                       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="11" cy="11" r="8" />
                         <line x1="21" y1="21" x2="16.65" y2="16.65" />
                       </svg>
                     </span>
-                    <span className="secondary-link-text">Trace Explorer</span>
-                    {selectedNsStats && selectedNsStats.errorCount > 0 ? (
-                      <span className="badge-errors">{selectedNsStats.errorCount}</span>
-                    ) : (
-                      selectedNamespace === '' && namespaces.reduce((acc, ns) => acc + ns.errorCount, 0) > 0 && (
-                        <span className="badge-errors">{namespaces.reduce((acc, ns) => acc + ns.errorCount, 0)}</span>
-                      )
-                    )}
+                    <span className="secondary-link-text">All Traces</span>
                   </NavLink>
 
-                  <NavLink to="/servicemap" className={({ isActive }) => `secondary-nav-link ${isActive ? 'active' : ''}`}>
-                    <span className="secondary-link-icon-wrapper">
+                  <NavLink to="/traces?hasError=true" className={`secondary-nav-link ${location.search.includes('hasError=true') ? 'active' : ''}`}>
+                    <span className="secondary-link-icon-wrapper" style={{ color: 'var(--accent-rose)' }}>
                       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="18" cy="5" r="3" />
-                        <circle cx="6" cy="12" r="3" />
-                        <circle cx="18" cy="19" r="3" />
-                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
                       </svg>
                     </span>
-                    <span className="secondary-link-text">Service Map</span>
+                    <span className="secondary-link-text">Failed Traces</span>
                   </NavLink>
 
-                  <NavLink to="/database" className={({ isActive }) => `secondary-nav-link ${isActive ? 'active' : ''}`}>
-                    <span className="secondary-link-icon-wrapper">
+                  <NavLink to="/traces?minDuration=500" className={`secondary-nav-link ${location.search.includes('minDuration=500') ? 'active' : ''}`}>
+                    <span className="secondary-link-icon-wrapper" style={{ color: 'var(--accent-amber)' }}>
                       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <ellipse cx="12" cy="5" rx="9" ry="3" />
-                        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-                        <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3" />
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
                       </svg>
                     </span>
-                    <span className="secondary-link-text">Database Analytics</span>
-                  </NavLink>
-
-                  <NavLink to="/live" className={({ isActive }) => `secondary-nav-link ${isActive ? 'active' : ''}`}>
-                    <span className="secondary-link-icon-wrapper">
-                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                      </svg>
-                    </span>
-                    <span className="secondary-link-text">Live Stream</span>
+                    <span className="secondary-link-text">Slow Traces (&gt;500ms)</span>
                   </NavLink>
                 </div>
               )}
@@ -271,7 +257,7 @@ export default function Sidebar({
 
             <hr className="secondary-sidebar-divider" />
 
-            {/* ACTIVE SERVICES Accordion (Real microservices in namespace) */}
+            {/* ACTIVE SERVICES Accordion */}
             <div className="secondary-section">
               <div
                 className="secondary-section-header"
@@ -288,26 +274,33 @@ export default function Sidebar({
               {servicesExpanded && (
                 <div className="secondary-section-links">
                   {servicesList.length > 0 ? (
-                    servicesList.map((svc, idx) => (
-                      <div key={idx} className="secondary-nav-link placeholder-link">
-                        <span className="secondary-link-icon-wrapper" style={{ color: getStatusColor(svc.errorCount) }}>
-                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="2" y="2" width="20" height="8" rx="2" />
-                            <rect x="2" y="14" width="20" height="8" rx="2" />
-                            <circle cx="6" cy="6" r="1" fill="currentColor" />
-                            <circle cx="6" cy="18" r="1" fill="currentColor" />
-                          </svg>
-                        </span>
-                        <span className="secondary-link-text truncate" title={svc.serviceName}>
-                          {svc.serviceName}
-                        </span>
-                        {svc.errorCount > 0 && (
-                          <span className="badge-errors" style={{ padding: '1px 5px', fontSize: '9px' }}>
-                            {svc.errorCount}
+                    servicesList.map((svc, idx) => {
+                      const isSvcActive = location.search.includes(`service=${svc.serviceName}`);
+                      return (
+                        <NavLink 
+                          key={idx} 
+                          to={`/traces?service=${svc.serviceName}`} 
+                          className={`secondary-nav-link ${isSvcActive ? 'active' : ''}`}
+                        >
+                          <span className="secondary-link-icon-wrapper" style={{ color: getStatusColor(svc.errorCount) }}>
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                              <rect x="2" y="2" width="20" height="8" rx="2" />
+                              <rect x="2" y="14" width="20" height="8" rx="2" />
+                              <circle cx="6" cy="6" r="1" fill="currentColor" />
+                              <circle cx="6" cy="18" r="1" fill="currentColor" />
+                            </svg>
                           </span>
-                        )}
-                      </div>
-                    ))
+                          <span className="secondary-link-text truncate" title={svc.serviceName}>
+                            {svc.serviceName}
+                          </span>
+                          {svc.errorCount > 0 && (
+                            <span className="badge-errors" style={{ padding: '1px 5px', fontSize: '9px' }}>
+                              {svc.errorCount}
+                            </span>
+                          )}
+                        </NavLink>
+                      );
+                    })
                   ) : (
                     <div style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--text-muted)' }}>
                       No services detected
@@ -329,5 +322,4 @@ export default function Sidebar({
       )}
     </aside>
   );
-
 }
