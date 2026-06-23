@@ -295,22 +295,14 @@ body {
 
 .primary-nav-item.active {
   color: var(--accent-indigo);
-  background: rgba(99, 102, 241, 0.06);
   font-weight: 600;
-}
-
-/* Unified active navigation item styling */
-.primary-nav-item.active {
-  color: var(--accent-indigo);
-  background: rgba(99, 102, 241, 0.06);
-  font-weight: 600;
+  background: none;
 }
 
 .primary-nav-item.active .primary-nav-icon {
-  background: var(--accent-indigo);
-  color: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
+  color: var(--accent-indigo);
+  background: none;
+  box-shadow: none;
 }
 
 .primary-nav-item.placeholder {
@@ -759,14 +751,13 @@ body {
   gap: 4px;
 }
 
-/* Table - Futuristic Glassmorphic Theme */
+/* Table - Futuristic White Theme */
 .table-wrapper {
   overflow-x: auto;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-primary);
-  background: rgba(17, 24, 39, 0.08); /* subtle dark glass fill */
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
-  backdrop-filter: blur(8px);
+  background: var(--bg-secondary); /* white in light mode, dark-card in dark mode */
+  box-shadow: var(--shadow-sm);
 }
 
 table {
@@ -782,7 +773,7 @@ thead th {
   color: var(--text-secondary);
   padding: 14px 18px;
   text-align: left;
-  background: rgba(99, 102, 241, 0.03); /* tinted header row */
+  background: var(--bg-secondary); /* white overall */
   border-bottom: 2px solid var(--border-primary);
   white-space: nowrap;
 }
@@ -797,12 +788,8 @@ tbody tr:last-child {
   border-bottom: none;
 }
 
-tbody tr:nth-child(even) {
-  background: rgba(99, 102, 241, 0.005);
-}
-
 tbody tr:hover {
-  background: rgba(99, 102, 241, 0.04) !important;
+  background: var(--bg-hover) !important; /* clean light-grey hover */
   box-shadow: inset 3px 0 0 var(--accent-indigo); /* modern left glow indicator */
 }
 
