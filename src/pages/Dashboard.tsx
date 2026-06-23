@@ -308,7 +308,10 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
   const totalErrors = filteredNamespaces.reduce((a, b) => a + b.errorCount, 0);
   const totalPods = filteredNamespaces.reduce((a, b) => a + b.podCount, 0);
   const activeServicesCount = filteredNamespaces.reduce((a, b) => a + (b.services?.length || 0), 0);
-  const namespacesCount = selectedNamespace ? 1 : namespaces.length;
+
+  // Active monitored namespaces count: namespaces with at least one active trace or active service
+  const activeNamespaces = namespaces.filter(ns => ns.traceCount > 0 || ns.services?.length > 0);
+  const namespacesCount = selectedNamespace ? 1 : activeNamespaces.length;
 
   const errRate = totalTraces > 0 ? (totalErrors / totalTraces) * 100 : 0;
   // health score starts at 100, drops by errRate * 3.5. Clamp between 45 and 100 to look like a realistic operational score
@@ -343,21 +346,44 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
       }
     });
   });
-  const servicesToRender = Array.from(allServicesMap.values()).slice(0, 8);
-  const n = servicesToRender.length;
-  const startX = 100;
-  const endX = 900;
-  const spacing = n > 1 ? (endX - startX) / (n - 1) : 0;
+  const allServices = Array.from(allServicesMap.values());
+
+  // Detect which services are gateways dynamically
+  const detectedGateways = allServices.filter(s => 
+    s.serviceName.toLowerCase().includes('gateway') || 
+    s.serviceName.toLowerCase().includes('gw') || 
+    s.serviceName.toLowerCase().includes('ingress')
+  );
+
+  // Fallback to a single default gateway if none are active in the selected namespace
+  const flowGateways = detectedGateways.length > 0
+    ? detectedGateways
+    : [{ serviceName: 'ingress-gateway', errorCount: 0, requestCount: totalTraces }];
+
+  // Core services are the remaining microservices (max 8)
+  const coreServices = allServices.filter(s => 
+    !s.serviceName.toLowerCase().includes('gateway') && 
+    !s.serviceName.toLowerCase().includes('gw') && 
+    !s.serviceName.toLowerCase().includes('ingress')
+  ).slice(0, 8);
+
+  const gwCount = flowGateways.length;
+  const gwSpacing = gwCount > 1 ? 600 / (gwCount - 1) : 0;
+  const gwStartX = gwCount > 1 ? 200 : 500;
+
+  const svcCount = coreServices.length;
+  const svcSpacing = svcCount > 1 ? 800 / (svcCount - 1) : 0;
+  const svcStartX = svcCount > 1 ? 100 : 500;
 
   // Render SVG Flow lines
   const flowLines: React.ReactNode[] = [];
-  const gateways = [200, 500, 800];
-  gateways.forEach(gx => {
-    servicesToRender.forEach((svc, idx) => {
-      const sx = n > 1 ? startX + idx * spacing : 500;
+  flowGateways.forEach((gw, gIdx) => {
+    const gx = gwCount > 1 ? gwStartX + gIdx * gwSpacing : 500;
+    coreServices.forEach((svc, sIdx) => {
+      const sx = svcCount > 1 ? svcStartX + sIdx * svcSpacing : 500;
       flowLines.push(
         <path
-          key={`line-g-s-${gx}-${idx}`}
+          key={`line-g-s-${gIdx}-${sIdx}`}
           d={`M ${gx},58 C ${gx},100 ${sx},100 ${sx},145`}
           className="flowing-line"
           fill="none"
@@ -367,11 +393,11 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
     });
   });
 
-  servicesToRender.forEach((svc, idx) => {
-    const sx = n > 1 ? startX + idx * spacing : 500;
+  coreServices.forEach((svc, sIdx) => {
+    const sx = svcCount > 1 ? svcStartX + sIdx * svcSpacing : 500;
     flowLines.push(
       <path
-        key={`line-s-i-${idx}`}
+        key={`line-s-i-${sIdx}`}
         d={`M ${sx},208 C ${sx},242 500,242 500,275`}
         className="flowing-line"
         fill="none"
@@ -613,34 +639,23 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
           <div className="flow-interactive-canvas">
             <svg viewBox="0 0 1000 360" className="flow-lines-svg">
               {flowLines}
-              {/* Ingress Gateway 1 */}
-              <foreignObject x={200 - 75} y="15" width="150" height="44">
-                <div className="flow-node node-gateway">
-                  <span className="node-icon">⚡</span>
-                  <span className="node-label">ingress-gateway-1</span>
-                  <span className="node-dot status-green" />
-                </div>
-              </foreignObject>
-              {/* Ingress Gateway 2 */}
-              <foreignObject x={500 - 75} y="15" width="150" height="44">
-                <div className="flow-node node-gateway">
-                  <span className="node-icon">⚡</span>
-                  <span className="node-label">ingress-gateway-2</span>
-                  <span className="node-dot status-green" />
-                </div>
-              </foreignObject>
-              {/* Ingress Gateway 3 */}
-              <foreignObject x={800 - 75} y="15" width="150" height="44">
-                <div className="flow-node node-gateway">
-                  <span className="node-icon">⚡</span>
-                  <span className="node-label">ingress-gateway-3</span>
-                  <span className="node-dot status-green" />
-                </div>
-              </foreignObject>
+              {/* Dynamic Ingress Gateways */}
+              {flowGateways.map((gw, idx) => {
+                const gx = gwCount > 1 ? gwStartX + idx * gwSpacing : 500;
+                return (
+                  <foreignObject key={`gw-${idx}`} x={gx - 75} y="15" width="150" height="44">
+                    <div className="flow-node node-gateway">
+                      <span className="node-icon">⚡</span>
+                      <span className="node-label truncate" title={gw.serviceName}>{gw.serviceName}</span>
+                      <span className="node-dot status-green" style={{ background: getStatusColor(gw.errorCount) }} />
+                    </div>
+                  </foreignObject>
+                );
+              })}
 
               {/* Dynamic Service Nodes in Middle Row */}
-              {servicesToRender.map((svc, idx) => {
-                const sx = n > 1 ? startX + idx * spacing : 500;
+              {coreServices.map((svc, idx) => {
+                const sx = svcCount > 1 ? svcStartX + idx * svcSpacing : 500;
                 return (
                   <foreignObject key={idx} x={sx - 65} y="145" width="130" height="66">
                     <div className="flow-node node-service">
