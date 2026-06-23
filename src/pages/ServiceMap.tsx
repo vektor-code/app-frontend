@@ -52,7 +52,11 @@ const isInfraNode = (node: ServiceStats) => {
     name.includes('liqui') ||
     name.includes('liquid') ||
     name.includes('nginx') ||
-    name.includes('kong')
+    name.includes('kong') ||
+    /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(name) ||
+    name.includes('.az') ||
+    name.includes('.gov') ||
+    name.includes('bridge')
   );
 };
 
@@ -93,7 +97,22 @@ const getNodeSize = (
 const parseInfraName = (name: string): { system: string; host?: string; detail?: string } => {
   const match = name.match(/^([^(]+)\(([^)]+)\)$/);
   if (!match) {
-    return { system: name };
+    const lower = name.toLowerCase();
+    if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(name) || lower.includes('vm')) {
+      return {
+        system: 'Virtual Machine',
+        host: name,
+      };
+    }
+    if (lower.includes('bridge') || lower.includes('.gov.az') || lower.includes('.az')) {
+      return {
+        system: 'API Bridge',
+        host: name,
+      };
+    }
+    return {
+      system: name,
+    };
   }
   const system = match[1].trim();
   const inner = match[2].trim();
@@ -138,6 +157,8 @@ const drawInfraIcon = (
   else if (sys.includes('liqui') || sys.includes('liquid')) matchedKey = 'liquibase';
   else if (sys.includes('nginx')) matchedKey = 'nginx';
   else if (sys.includes('kong')) matchedKey = 'kong';
+  else if (sys.includes('vm') || sys.includes('virtual machine') || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(sys)) matchedKey = 'vm';
+  else if (sys.includes('bridge') || sys.includes('gov.az')) matchedKey = 'bridge';
 
   const img = (iconImages && matchedKey) ? iconImages.get(matchedKey) : null;
   if (img && img.complete && img.naturalWidth !== 0) {
@@ -396,6 +417,62 @@ const drawInfraIcon = (
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+  } else if (sys.includes('vm') || sys.includes('virtual machine') || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(sys)) {
+    // VM: Stacked server blades with status indicator
+    ctx.strokeStyle = isDark ? '#a855f7' : '#9333ea';
+    ctx.fillStyle = isDark ? 'rgba(168, 85, 247, 0.15)' : 'rgba(168, 85, 247, 0.08)';
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(x, y, size, size, 2);
+    } else {
+      ctx.rect(x, y, size, size);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    const rackH = (size - 6) / 3;
+    for (let i = 0; i < 3; i++) {
+      const ry = y + 2 + i * rackH;
+      ctx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)';
+      ctx.fillRect(x + 2, ry + 1, size - 4, rackH - 2);
+      ctx.strokeRect(x + 2, ry + 1, size - 4, rackH - 2);
+
+      ctx.fillStyle = '#10b981';
+      ctx.beginPath();
+      ctx.arc(x + 6, ry + rackH / 2, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (sys.includes('bridge') || sys.includes('gov.az')) {
+    // Bridge / API Gateway: Two columns connected by bridge deck
+    ctx.strokeStyle = isDark ? '#06b6d4' : '#0891b2';
+    ctx.fillStyle = isDark ? 'rgba(6, 182, 212, 0.15)' : 'rgba(6, 182, 212, 0.08)';
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    // left pier
+    ctx.moveTo(x + 2, y + size - 2);
+    ctx.lineTo(x + 5, y + size - 2);
+    ctx.lineTo(x + 5, y + size / 2);
+    ctx.lineTo(x + 2, y + size / 2);
+    ctx.closePath();
+
+    // right pier
+    ctx.moveTo(x + size - 5, y + size - 2);
+    ctx.lineTo(x + size - 2, y + size - 2);
+    ctx.lineTo(x + size - 2, y + size / 2);
+    ctx.lineTo(x + size - 5, y + size / 2);
+    ctx.closePath();
+
+    // deck & arch
+    ctx.moveTo(x + 2, y + size / 2);
+    ctx.quadraticCurveTo(x + size / 2, y + 4, x + size - 2, y + size / 2);
+    ctx.lineTo(x + size - 2, y + size / 2 + 2);
+    ctx.quadraticCurveTo(x + size / 2, y + 8, x + 2, y + size / 2 + 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
   } else if (sys.includes('kong')) {
     // Kong: Orange/Royal Blue geometric crown/shield
     ctx.strokeStyle = '#1155cc';
@@ -631,6 +708,8 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       nginx: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nginx/nginx-original.svg',
       kong: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/kong.svg',
       mygov: '/mygov-id.svg',
+      vm: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linux.svg',
+      bridge: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linkerd.svg',
     };
 
     Object.entries(urls).forEach(([key, url]) => {
