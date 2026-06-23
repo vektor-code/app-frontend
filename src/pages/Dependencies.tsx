@@ -23,6 +23,21 @@ interface DependencyItem {
 // Helper to determine dependency type
 const getDependencyType = (name: string): 'database' | 'messaging' | '3rdparty' | 'other' => {
   const n = name.toLowerCase();
+  // Check VM pattern first so it doesn't get matched as 3rdparty due to IP dots
+  if (
+    n.includes('vm') ||
+    n.includes('virtual machine') ||
+    /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(n)
+  ) {
+    return 'other';
+  }
+  if (
+    n.includes('bridge') ||
+    n.includes('.gov.az') ||
+    n.includes('.az')
+  ) {
+    return '3rdparty';
+  }
   if (
     n.includes('redis') ||
     n.includes('postgres') ||
@@ -92,6 +107,8 @@ const getDependencyEmoji = (name: string): string => {
   if (n.includes('db-') || n.endsWith('-db') || n.includes('database') || n.includes('db') || n.includes('sqlite')) return '🗄️';
   if (n.includes('mail') || n.includes('smtp')) return '📧';
   if (n.includes('dns')) return '🌐';
+  if (n.includes('vm') || n.includes('virtual machine') || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(n)) return '📟';
+  if (n.includes('bridge') || n.includes('.gov.az') || n.includes('.az')) return '🌉';
   return '⚙️';
 };
 
@@ -114,6 +131,8 @@ const BRAND_LOGOS: Record<string, string> = {
   slack: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/slack.svg',
   discord: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/discord.svg',
   github: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/github.svg',
+  vm: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linux.svg',
+  bridge: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linkerd.svg',
 };
 
 const getDependencyLogo = (name: string): string | null => {
@@ -136,6 +155,8 @@ const getDependencyLogo = (name: string): string | null => {
   if (n.includes('slack')) return BRAND_LOGOS.slack;
   if (n.includes('discord')) return BRAND_LOGOS.discord;
   if (n.includes('github')) return BRAND_LOGOS.github;
+  if (n.includes('vm') || n.includes('virtual machine') || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(n)) return BRAND_LOGOS.vm;
+  if (n.includes('bridge') || n.includes('.gov.az') || n.includes('.az')) return BRAND_LOGOS.bridge;
   return null;
 };
 
@@ -143,6 +164,19 @@ const getDependencyLogo = (name: string): string | null => {
 const parseRawName = (rawName: string) => {
   const match = rawName.match(/^([^(]+)\(([^)]+)\)$/);
   if (!match) {
+    const lower = rawName.toLowerCase();
+    if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(rawName) || lower.includes('vm')) {
+      return {
+        system: 'Virtual Machine',
+        details: rawName,
+      };
+    }
+    if (lower.includes('bridge') || lower.includes('.gov.az') || lower.includes('.az')) {
+      return {
+        system: 'API Bridge',
+        details: rawName,
+      };
+    }
     return { system: rawName, details: '' };
   }
   return {
@@ -205,12 +239,24 @@ export default function Dependencies({ namespace }: DependenciesProps) {
         nName.includes('mysql') ||
         nName.includes('mongo') ||
         nName.includes('database') ||
+        nName.includes('db-') ||
+        nName.endsWith('-db') ||
+        nName.includes('nosql') ||
+        nName.includes('cassandra') ||
+        nName.includes('elasticsearch') ||
         nName.includes('clickhouse') ||
         nName.includes('vault') ||
         nName.includes('minio') ||
         nName.includes('dns') ||
+        nName.includes('config') ||
+        nName.includes('liqui') ||
+        nName.includes('liquid') ||
         nName.includes('nginx') ||
         nName.includes('kong') ||
+        /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(nName) ||
+        nName.includes('.az') ||
+        nName.includes('.gov') ||
+        nName.includes('bridge') ||
         nName.includes('mygov')
       );
     });
