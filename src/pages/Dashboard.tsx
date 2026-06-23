@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { api, type NamespaceStats, type DatabaseQueryMetric } from '../api/client';
 
 interface DashboardProps {
@@ -9,9 +8,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ namespaces, selectedNamespace, onSelectNamespace }: DashboardProps) {
-  const navigate = useNavigate();
   const [dbMetrics, setDbMetrics] = useState<DatabaseQueryMetric[]>([]);
-  const [telemetryTrend, setTelemetryTrend] = useState<number[]>([]);
 
   // Load database metrics
   const loadDbMetrics = useCallback(async () => {
@@ -26,11 +23,6 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
   useEffect(() => {
     loadDbMetrics();
   }, [loadDbMetrics]);
-
-  // Reset trend when namespace changes for proper namespace-by-namespace sorting
-  useEffect(() => {
-    setTelemetryTrend([]);
-  }, [selectedNamespace]);
 
   // Filter namespaces based on selection
   const filteredNamespaces = selectedNamespace
@@ -63,25 +55,6 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
   const avgDbLatency = dbMetrics.length > 0 ? dbMetrics.reduce((sum, q) => sum + q.avgDurationMs, 0) / dbMetrics.length : 0;
   const avgResponseTime = filteredNamespaces.length > 0 ? filteredNamespaces.reduce((a, b) => a + b.avgDurationMs, 0) / filteredNamespaces.length : 0;
 
-  // Track telemetry trend history data
-  useEffect(() => {
-    setTelemetryTrend(prev => {
-      const currentVal = totalTraces;
-      if (prev.length === 0) {
-        // Seed initial history trail with minor noise around the current baseline
-        return Array.from({ length: 15 }, () => {
-          const variance = 0.75 + Math.random() * 0.45;
-          return Math.max(0, Math.round(currentVal * variance));
-        });
-      }
-      const lastVal = prev[prev.length - 1];
-      if (Math.abs(lastVal - currentVal) > 0.0001 || Math.random() > 0.6) {
-        return [...prev.slice(1), currentVal];
-      }
-      return prev;
-    });
-  }, [totalTraces, selectedNamespace]); // Include selectedNamespace to ensure trend recalculates
-
   // Auto-refresh trigger
   useEffect(() => {
     const iv = setInterval(() => {
@@ -93,35 +66,13 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
   return (
     <div className="animate-fade-in dashboard-page">
       {/* Top Header Bar */}
-      <div className="visibility-header-bar" style={{ paddingBottom: '12px', borderBottom: '1px solid var(--border-primary)' }}>
+      <div className="visibility-header-bar" style={{ paddingBottom: '12px', borderBottom: '1px solid var(--border-primary)', justifyContent: 'flex-start' }}>
         <div className="visibility-title-container">
           <div className="visibility-breadcrumbs" style={{ fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
             <span className="breadcrumb-parent" style={{ color: 'var(--text-tertiary)' }}>Dashboards</span>
             <span className="breadcrumb-separator" style={{ margin: '0 8px', color: 'var(--text-muted)' }}>&gt;</span>
             <span className="breadcrumb-active" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>Visibility</span>
           </div>
-        </div>
-        <div className="visibility-actions">
-          <button className="btn btn-secondary btn-sm" onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
-              <line x1="10" y1="9" x2="8" y2="9" />
-            </svg>
-            Export as PDF
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={loadDbMetrics} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M23 4v6h-6M1 20v-6h6" />
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-            </svg>
-            Refresh Data
-          </button>
-          <button className="btn btn-primary btn-sm btn-glowing" style={{ background: 'var(--accent-indigo)', borderColor: 'var(--accent-indigo)', color: '#ffffff' }}>
-            Dashboard Workspace
-          </button>
         </div>
       </div>
 
@@ -195,10 +146,10 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
           <div className="stat-grid-item">
             <div className="grid-item-icon color-violet">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
-                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
-                <line x1="6" y1="6" x2="6.01" y2="6"/>
-                <line x1="6" y1="18" x2="6.01" y2="18"/>
+                <rect x="2" y="3" width="20" height="18" rx="2" ry="2" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                <line x1="2" y1="7" x2="22" y2="7" />
+                <line x1="2" y1="17" x2="22" y2="17" />
               </svg>
             </div>
             <div className="grid-item-content">
@@ -210,9 +161,9 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
           <div className="stat-grid-item">
             <div className="grid-item-icon color-indigo">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-                <polyline points="2 17 12 22 22 17"/>
-                <polyline points="2 12 12 17 22 12"/>
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                <line x1="12" y1="22.08" x2="12" y2="12" />
               </svg>
             </div>
             <div className="grid-item-content">
@@ -224,7 +175,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
           <div className="stat-grid-item">
             <div className="grid-item-icon color-emerald">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
               </svg>
             </div>
             <div className="grid-item-content">
@@ -236,16 +187,10 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
           <div className="stat-grid-item">
             <div className="grid-item-icon color-cyan">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
-                <rect x="9" y="9" width="6" height="6"/>
-                <line x1="9" y1="1" x2="9" y2="4"/>
-                <line x1="15" y1="1" x2="15" y2="4"/>
-                <line x1="9" y1="20" x2="9" y2="23"/>
-                <line x1="15" y1="20" x2="15" y2="23"/>
-                <line x1="20" y1="9" x2="23" y2="9"/>
-                <line x1="20" y1="15" x2="23" y2="15"/>
-                <line x1="1" y1="9" x2="4" y2="9"/>
-                <line x1="1" y1="15" x2="4" y2="15"/>
+                <rect x="3" y="3" width="7" height="7" />
+                <rect x="14" y="3" width="7" height="7" />
+                <rect x="14" y="14" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" />
               </svg>
             </div>
             <div className="grid-item-content">
@@ -257,11 +202,9 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
           <div className="stat-grid-item">
             <div className="grid-item-icon color-amber">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <ellipse cx="12" cy="5" rx="9" ry="3"/>
-                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-                <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
-                <polyline points="12 10 12 16 14 14"/>
-                <polyline points="12 16 10 14"/>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
             </div>
             <div className="grid-item-content">
@@ -273,9 +216,9 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
           <div className="stat-grid-item">
             <div className="grid-item-icon color-rose">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                <line x1="12" y1="9" x2="12" y2="13"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <circle cx="12" cy="16" r="0.8" fill="currentColor" />
               </svg>
             </div>
             <div className="grid-item-content">
@@ -301,7 +244,6 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             <div className="grid-item-icon color-emerald">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                <path d="M9 11l2 2 4-4"/>
               </svg>
             </div>
             <div className="grid-item-content">
@@ -313,12 +255,9 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
           <div className="stat-grid-item">
             <div className="grid-item-icon color-violet">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
-                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
-                <line x1="6" y1="6" x2="6.01" y2="6"/>
-                <line x1="6" y1="18" x2="6.01" y2="18"/>
-                <line x1="10" y1="6" x2="18" y2="6"/>
-                <line x1="10" y1="18" x2="18" y2="18"/>
+                <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
               </svg>
             </div>
             <div className="grid-item-content">
@@ -330,9 +269,11 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
           <div className="stat-grid-item">
             <div className="grid-item-icon color-rose">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="15" y1="9" x2="9" y2="15"/>
-                <line x1="9" y1="9" x2="15" y2="15"/>
+                <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
+                <line x1="12" y1="10" x2="12" y2="14" stroke="currentColor" />
+                <circle cx="12" cy="18" r="0.8" fill="currentColor"/>
               </svg>
             </div>
             <div className="grid-item-content">
@@ -356,45 +297,16 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
           <div className="stat-grid-item">
             <div className="grid-item-icon color-amber">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
-                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
-                <line x1="6" y1="6" x2="6.01" y2="6"/>
-                <line x1="6" y1="18" x2="6.01" y2="18"/>
-                <path d="M18 8v6"/>
-                <path d="M14 10h8"/>
+                <rect x="2" y="3" width="20" height="18" rx="2" ry="2" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                <line x1="2" y1="7" x2="22" y2="7" />
+                <line x1="2" y1="17" x2="22" y2="17" />
               </svg>
             </div>
             <div className="grid-item-content">
               <div className="grid-item-value">{Math.max(2, filteredNamespaces.length * 2 - 1)}</div>
               <div className="grid-item-label">System Nodes</div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Premium Visual Telemetry Analytics Charts */}
-      <div className="dashboard-charts-row" style={{ display: 'flex', gap: '20px', marginTop: '24px', flexWrap: 'wrap' }}>
-        {/* Service Ingestion Inbound */}
-        <div className="card chart-card" style={{ flex: '1 1 540px', minHeight: '380px', display: 'flex', flexDirection: 'column' }}>
-          <div className="card-header" style={{ borderBottom: '1px solid var(--border-primary)', padding: '16px 20px' }}>
-            <div className="card-title" style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>
-              Service Ingestion Inbound (Throughput)
-            </div>
-          </div>
-          <div className="card-body" style={{ padding: '10px 20px 20px 20px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <SVGBarChart namespaces={filteredNamespaces} />
-          </div>
-        </div>
-
-        {/* Real-time Ingestion Trend */}
-        <div className="card chart-card" style={{ flex: '1 1 540px', minHeight: '380px', display: 'flex', flexDirection: 'column' }}>
-          <div className="card-header" style={{ borderBottom: '1px solid var(--border-primary)', padding: '16px 20px' }}>
-            <div className="card-title" style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>
-              Real-Time Ingestion Trend (Spans)
-            </div>
-          </div>
-          <div className="card-body" style={{ padding: '10px 20px 20px 20px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <SVGLineChart data={telemetryTrend} color="indigo" metric="traces" />
           </div>
         </div>
       </div>
@@ -419,18 +331,6 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
           color: var(--text-muted);
           margin: 4px 0 0 0;
         }
-
-        .chart-card {
-          background: var(--bg-secondary);
-          border: 1px solid var(--border-primary);
-          border-radius: var(--radius-md);
-          box-shadow: var(--shadow-sm);
-          transition: transform 0.2s ease, border-color 0.2s ease;
-        }
-
-        .chart-card:hover {
-          border-color: rgba(99, 102, 241, 0.2);
-        }
       `}</style>
     </div>
   );
@@ -448,261 +348,4 @@ function formatMetric(val: number, metric: string): string {
     return `${(val / 1000).toFixed(2)}s`;
   }
   return val.toLocaleString(undefined, { maximumFractionDigits: 0 });
-}
-
-interface SVGLineChartProps {
-  data: number[];
-  color: string;
-  metric: string;
-}
-
-function SVGLineChart({ data, color, metric }: SVGLineChartProps) {
-  if (!data || data.length === 0) return <div style={{ padding: '20px', color: 'var(--text-muted)', fontSize: '12px', textAlign: 'center' }}>Loading chart data...</div>;
-  const max = Math.max(...data) * 1.1 || 1;
-  const min = Math.min(...data) * 0.9 || 0;
-  const range = max - min;
-
-  const width = 500;
-  const height = 240;
-  const paddingX = 20;
-  const paddingY = 20;
-
-  const points = data.map((val, i) => {
-    const x = paddingX + (i / (data.length - 1)) * (width - 2 * paddingX);
-    const y = height - paddingY - (range > 0 ? ((val - min) / range) * (height - 2 * paddingY) : 0);
-    return { x, y, value: val };
-  });
-
-  // Create smooth bezier curve path
-  let pathD = '';
-  if (points.length > 0) {
-    pathD = `M ${points[0].x} ${points[0].y}`;
-    for (let i = 0; i < points.length - 1; i++) {
-      const p0 = points[i];
-      const p1 = points[i + 1];
-      const cpX1 = p0.x + (p1.x - p0.x) / 2;
-      const cpY1 = p0.y;
-      const cpX2 = p0.x + (p1.x - p0.x) / 2;
-      const cpY2 = p1.y;
-      pathD += ` C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${p1.x} ${p1.y}`;
-    }
-  }
-
-  const areaD = `${pathD} L ${points[points.length - 1].x} ${height - paddingY} L ${points[0].x} ${height - paddingY} Z`;
-
-  const colorHex = {
-    indigo: '#6366f1',
-    violet: '#8b5cf6',
-    emerald: '#10b981',
-    rose: '#f43f5e',
-    amber: '#f59e0b',
-    cyan: '#06b6d4',
-  }[color] || '#6366f1';
-
-  return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '240px', overflow: 'visible' }}>
-        <defs>
-          <linearGradient id={`grad-${color}-${metric}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={colorHex} stopOpacity="0.2" />
-            <stop offset="100%" stopColor={colorHex} stopOpacity="0.0" />
-          </linearGradient>
-          <filter id="line-glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor={colorHex} floodOpacity="0.25"/>
-          </filter>
-        </defs>
-        {/* Horizontal grid lines */}
-        {[0, 0.33, 0.66, 1].map((p, idx) => (
-          <line
-            key={idx}
-            x1={paddingX}
-            y1={paddingY + p * (height - 2 * paddingY)}
-            x2={width - paddingX}
-            y2={paddingY + p * (height - 2 * paddingY)}
-            stroke="var(--border-primary)"
-            strokeWidth="0.5"
-            strokeDasharray="4 4"
-          />
-        ))}
-        {/* Area fill */}
-        <path d={areaD} fill={`url(#grad-${color}-${metric})`} />
-        {/* Line stroke */}
-        <path d={pathD} fill="none" stroke={colorHex} strokeWidth="3" filter="url(#line-glow)" style={{ strokeLinecap: 'round', strokeLinejoin: 'round' }} />
-        {/* Highlight vertical cursor on the latest point */}
-        {points.length > 0 && (
-          <g>
-            <line
-              x1={points[points.length - 1].x}
-              y1={paddingY}
-              x2={points[points.length - 1].x}
-              y2={height - paddingY}
-              stroke="var(--border-primary)"
-              strokeWidth="0.5"
-              strokeDasharray="2 2"
-              opacity="0.3"
-            />
-            <circle
-              cx={points[points.length - 1].x}
-              cy={points[points.length - 1].y}
-              r="4.5"
-              fill={colorHex}
-              stroke="#ffffff"
-              strokeWidth="1.5"
-              style={{ filter: `drop-shadow(0 0 4px ${colorHex})` }}
-            />
-          </g>
-        )}
-      </svg>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '8px', padding: '0 4px' }}>
-        <span>Real-time Ingestion Trend</span>
-        <span>Peak Ingestion: {formatMetric(Math.max(...data), metric)} spans</span>
-      </div>
-    </div>
-  );
-}
-
-function SVGBarChart({ namespaces }: { namespaces: NamespaceStats[] }) {
-  // Aggregate all services across all monitored namespaces
-  const serviceStatsMap = new Map<string, { serviceName: string; requestCount: number; errorCount: number }>();
-  namespaces.forEach(ns => {
-    ns.services?.forEach(s => {
-      const existing = serviceStatsMap.get(s.serviceName);
-      if (existing) {
-        existing.requestCount += s.requestCount;
-        existing.errorCount += s.errorCount;
-      } else {
-        serviceStatsMap.set(s.serviceName, {
-          serviceName: s.serviceName,
-          requestCount: s.requestCount,
-          errorCount: s.errorCount
-        });
-      }
-    });
-  });
-
-  const data = Array.from(serviceStatsMap.values())
-    .sort((a, b) => b.requestCount - a.requestCount)
-    .slice(0, 5); // top 5 services
-
-  if (data.length === 0) {
-    return <div style={{ padding: '20px', color: 'var(--text-muted)', fontSize: '12px', textAlign: 'center' }}>No service telemetry captured yet</div>;
-  }
-
-  const maxVal = Math.max(...data.map(d => d.requestCount)) * 1.1 || 1;
-  const width = 500;
-  const height = 240;
-  const paddingLeft = 40;
-  const paddingRight = 20;
-  const paddingTop = 25;
-  const paddingBottom = 45;
-
-  const chartWidth = width - paddingLeft - paddingRight;
-  const chartHeight = height - paddingTop - paddingBottom;
-  const barWidth = 36;
-  const barSpacing = data.length > 1 ? (chartWidth - barWidth * data.length) / (data.length - 1) : 0;
-
-  return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '240px', overflow: 'visible' }}>
-        <defs>
-          <linearGradient id="bar-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent-indigo)" />
-            <stop offset="100%" stopColor="var(--accent-cyan)" />
-          </linearGradient>
-          <linearGradient id="bar-grad-error" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#f43f5e" />
-            <stop offset="100%" stopColor="#e11d48" />
-          </linearGradient>
-          <filter id="bar-shadow">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="var(--accent-indigo)" floodOpacity="0.2"/>
-          </filter>
-        </defs>
-
-        {/* Y Axis Gridlines */}
-        {[0, 0.25, 0.5, 0.75, 1].map((p, idx) => {
-          const y = paddingTop + (1 - p) * chartHeight;
-          const gridVal = maxVal * p;
-          return (
-            <g key={idx} opacity="0.8">
-              <line
-                x1={paddingLeft}
-                y1={y}
-                x2={width - paddingRight}
-                y2={y}
-                stroke="var(--border-primary)"
-                strokeWidth="0.5"
-                strokeDasharray="4 4"
-              />
-              <text
-                x={paddingLeft - 8}
-                y={y + 3}
-                textAnchor="end"
-                fill="var(--text-tertiary)"
-                style={{ fontSize: '9px', fontFamily: 'var(--font-sans)' }}
-              >
-                {gridVal >= 1000 ? `${(gridVal / 1000).toFixed(0)}k` : gridVal.toFixed(0)}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* Bars */}
-        {data.map((item, idx) => {
-          const barHeight = (item.requestCount / maxVal) * chartHeight;
-          const x = paddingLeft + idx * (barWidth + barSpacing);
-          const y = height - paddingBottom - barHeight;
-          const hasErrors = item.errorCount > 0;
-          const fillGrad = hasErrors ? 'url(#bar-grad-error)' : 'url(#bar-grad)';
-          const formattedName = item.serviceName.replace('-backend', '').replace('-frontend', '');
-
-          return (
-            <g key={idx} className="chart-bar-group">
-              {/* Bar rectangle with rounded top */}
-              <rect
-                x={x}
-                y={y}
-                width={barWidth}
-                height={Math.max(4, barHeight)}
-                rx="4"
-                ry="4"
-                fill={fillGrad}
-                filter="url(#bar-shadow)"
-                style={{ transition: 'all 0.3s ease' }}
-              />
-              {/* Value Label above Bar */}
-              <text
-                x={x + barWidth / 2}
-                y={y - 6}
-                textAnchor="middle"
-                fill="var(--text-primary)"
-                style={{ fontSize: '9.5px', fontWeight: 700, fontFamily: 'var(--font-sans)' }}
-              >
-                {item.requestCount >= 1000 ? `${(item.requestCount / 1000).toFixed(1)}k` : item.requestCount}
-              </text>
-              {/* X Axis Label */}
-              <text
-                x={x + barWidth / 2}
-                y={height - paddingBottom + 16}
-                textAnchor="middle"
-                fill="var(--text-secondary)"
-                style={{ fontSize: '9px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px' }}
-              >
-                {formattedName}
-              </text>
-              {/* Sub-label for health */}
-              <text
-                x={x + barWidth / 2}
-                y={height - paddingBottom + 28}
-                textAnchor="middle"
-                fill={hasErrors ? 'var(--accent-rose)' : 'var(--accent-emerald)'}
-                style={{ fontSize: '8px', fontWeight: 700, fontFamily: 'var(--font-sans)' }}
-              >
-                {hasErrors ? 'ERR' : 'OK'}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
 }

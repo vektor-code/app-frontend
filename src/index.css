@@ -211,6 +211,7 @@ body {
   box-sizing: border-box;
   z-index: 5;
   position: relative;
+  overflow: hidden;
 }
 
 .primary-sidebar-logo {
@@ -263,12 +264,7 @@ body {
   width: 100%;
   padding: 14px 0;
   flex: 1;
-  overflow-y: auto;
-  scrollbar-width: none; /* Firefox */
-}
-
-.primary-sidebar-nav::-webkit-scrollbar {
-  display: none; /* Webkit */
+  overflow: hidden;
 }
 
 .primary-nav-item {
@@ -1644,12 +1640,12 @@ body.modal-open .app-main {
 
 /* Sidebar Collapse System */
 .sidebar-collapsed .app-sidebar {
-  width: 76px;
-  min-width: 76px;
+  width: 84px;
+  min-width: 84px;
 }
 
 .sidebar-collapsed .app-main {
-  margin-left: 76px;
+  margin-left: 84px;
 }
 
 /* Drawer backdrop global overrides to blur whole screen */
