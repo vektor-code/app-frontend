@@ -343,33 +343,62 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
       }
     });
   });
-  const servicesToRender = Array.from(allServicesMap.values()).slice(0, 8);
-  const n = servicesToRender.length;
-  const startX = 100;
-  const endX = 900;
-  const spacing = n > 1 ? (endX - startX) / (n - 1) : 0;
+
+  const allServices = Array.from(allServicesMap.values());
+
+  // Detect which services are gateways dynamically
+  const flowGateways = allServices.filter(s => 
+    s.serviceName.toLowerCase().includes('gateway') || 
+    s.serviceName.toLowerCase().includes('gw') || 
+    s.serviceName.toLowerCase().includes('ingress')
+  );
+
+  // Fallback to a single default gateway if none are active in the selected namespace
+  const finalGateways = flowGateways.length > 0
+    ? flowGateways
+    : [{ serviceName: 'api-ingress-controller', errorCount: 0, requestCount: totalTraces }];
+
+  // Core services are the remaining microservices (max 8)
+  const coreServices = allServices.filter(s => 
+    !s.serviceName.toLowerCase().includes('gateway') && 
+    !s.serviceName.toLowerCase().includes('gw') && 
+    !s.serviceName.toLowerCase().includes('ingress')
+  ).slice(0, 8);
+
+  const gwCount = finalGateways.length;
+  const gwStartX = gwCount > 1 ? 250 : 600;
+  const gwEndX = gwCount > 1 ? 950 : 600;
+  const gwSpacing = gwCount > 1 ? (gwEndX - gwStartX) / (gwCount - 1) : 0;
+
+  const svcCount = coreServices.length;
+  const svcStartX = svcCount > 1 ? 80 : 600;
+  const svcEndX = svcCount > 1 ? 1120 : 600;
+  const svcSpacing = svcCount > 1 ? (svcEndX - svcStartX) / (svcCount - 1) : 0;
 
   // Render SVG Flow lines
   const flowLines: React.ReactNode[] = [];
-  servicesToRender.forEach((svc, idx) => {
-    const sx = n > 1 ? startX + idx * spacing : 500;
-    flowLines.push(
-      <path
-        key={`line-g-s-${idx}`}
-        d={`M 500,58 C 500,105 ${sx},105 ${sx},145`}
-        className="flowing-line"
-        fill="none"
-        strokeWidth="1.2"
-      />
-    );
+  finalGateways.forEach((gw, gIdx) => {
+    const gx = gwCount > 1 ? gwStartX + gIdx * gwSpacing : 600;
+    coreServices.forEach((svc, sIdx) => {
+      const sx = svcCount > 1 ? svcStartX + sIdx * svcSpacing : 600;
+      flowLines.push(
+        <path
+          key={`line-g-s-${gIdx}-${sIdx}`}
+          d={`M ${gx},64 C ${gx},110 ${sx},110 ${sx},155`}
+          className="flowing-line"
+          fill="none"
+          strokeWidth="1.2"
+        />
+      );
+    });
   });
 
-  servicesToRender.forEach((svc, idx) => {
-    const sx = n > 1 ? startX + idx * spacing : 500;
+  coreServices.forEach((svc, sIdx) => {
+    const sx = svcCount > 1 ? svcStartX + sIdx * svcSpacing : 600;
     flowLines.push(
       <path
-        key={`line-s-i-${idx}`}
-        d={`M ${sx},208 C ${sx},242 500,242 500,275`}
+        key={`line-s-i-${sIdx}`}
+        d={`M ${sx},231 C ${sx},270 600,270 600,300`}
         className="flowing-line"
         fill="none"
         strokeWidth="1.2"
@@ -608,43 +637,64 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
         </div>
         <div className="card-body flow-map-wrapper">
           <div className="flow-interactive-canvas">
-            <svg viewBox="0 0 1000 360" className="flow-lines-svg">
+            <svg viewBox="0 0 1200 380" className="flow-lines-svg">
               {flowLines}
-              {/* Ingress Gateway (Single Centered) */}
-              <foreignObject x={500 - 90} y="15" width="180" height="44">
-                <div className="flow-node node-gateway" style={{ borderLeftColor: 'var(--accent-indigo)' }}>
-                  <span className="node-icon">🌐</span>
-                  <span className="node-label">api-ingress-controller</span>
-                  <span className="node-dot status-green" />
-                </div>
-              </foreignObject>
+              {/* Dynamic Ingress Gateways */}
+              {finalGateways.map((gw, idx) => {
+                const gx = gwCount > 1 ? gwStartX + idx * gwSpacing : 600;
+                return (
+                  <foreignObject key={`gw-${idx}`} x={gx - 70} y="20" width="140" height="44">
+                    <div className="flow-node node-gateway" style={{ borderLeftColor: 'var(--accent-indigo)' }}>
+                      <span className="node-label truncate" title={gw.serviceName}>{gw.serviceName}</span>
+                      <span className="node-dot status-green" style={{ background: getStatusColor(gw.errorCount) }} />
+                    </div>
+                  </foreignObject>
+                );
+              })}
 
               {/* Dynamic Service Nodes in Middle Row */}
-              {servicesToRender.map((svc, idx) => {
-                const sx = n > 1 ? startX + idx * spacing : 500;
+              {coreServices.map((svc, idx) => {
+                const sx = svcCount > 1 ? svcStartX + idx * svcSpacing : 600;
+                const svcHealth = svc.requestCount > 0 
+                  ? Math.max(0, Math.min(100, ((svc.requestCount - svc.errorCount) / svc.requestCount) * 100))
+                  : 100;
+                const healthColor = svc.errorCount > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)';
                 return (
-                  <foreignObject key={idx} x={sx - 65} y="145" width="130" height="66">
+                  <foreignObject key={`svc-${idx}`} x={sx - 60} y="155" width="120" height="76">
                     <div className="flow-node node-service">
                       <span className="node-service-name truncate" title={svc.serviceName}>
                         {svc.serviceName}
                       </span>
-                      <span className="node-service-stats">
-                        Req: {svc.requestCount}
-                      </span>
-                      <span className="node-status-bar" style={{ background: getStatusColor(svc.errorCount) }} />
+                      <div className="node-service-badge truncate">
+                        Req: {formatMetric(svc.requestCount, 'traces')}
+                      </div>
+                      <div className="node-health-bar-container">
+                        <div className="node-health-label">
+                          <span>Errors</span>
+                          <span style={{ color: svc.errorCount > 0 ? 'var(--accent-rose)' : 'var(--text-tertiary)', fontWeight: 700 }}>
+                            {svc.errorCount}
+                          </span>
+                        </div>
+                        <div className="node-health-track">
+                          <div 
+                            className="node-health-fill" 
+                            style={{ 
+                              width: `${svcHealth}%`, 
+                              background: healthColor 
+                            }} 
+                          />
+                        </div>
+                      </div>
                     </div>
                   </foreignObject>
                 );
               })}
 
               {/* Bottom Ingestor Storage Node */}
-              <foreignObject x="390" y="275" width="220" height="66">
+              <foreignObject x="490" y="300" width="220" height="64">
                 <div className="flow-node node-storage">
-                  <div className="storage-header">
-                    <span className="storage-icon">🗄️</span>
-                    <span className="storage-title">ClickHouse APM Storage</span>
-                  </div>
-                  <div className="storage-stats">
+                  <span className="storage-title">ClickHouse APM Storage</span>
+                  <div className="storage-badge">
                     Ingested: {formatMetric(totalTraces, 'traces')} | Err: {totalErrors}
                   </div>
                   <span className="node-status-bar status-active-glow" />
