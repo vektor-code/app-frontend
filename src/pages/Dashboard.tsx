@@ -43,12 +43,6 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
   // health score starts at 100, drops by errRate * 3.5. Clamp between 45 and 100
   const healthScore = Math.max(45, Math.min(100, 100 - errRate * 3.5));
 
-  // Compute pointer position for the Reliability circular gauge (radius = 70.7, center = 100,100, sweep 270 deg starting at 135 deg)
-  const angle = 135 + (healthScore / 100) * 270;
-  const rad = (angle * Math.PI) / 180;
-  const pointerX = 100 + 70.7 * Math.cos(rad);
-  const pointerY = 100 + 70.7 * Math.sin(rad);
-
   // Apdex Score calculation
   const apdexScore = totalTraces > 0 ? Math.max(0.75, 1 - (totalErrors / totalTraces) * 1.5) : 1.0;
 
@@ -141,11 +135,21 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
               {/* Outer dial ring */}
               <circle cx="100" cy="100" r="85" fill="none" stroke="var(--border-primary)" strokeWidth="1" strokeDasharray="4 4" opacity="0.6"/>
               {/* Background Track */}
-              <path d="M 50,150 A 70.7,70.7 0 1,1 150,150" fill="none" stroke="var(--border-primary)" strokeWidth="8" strokeLinecap="round" opacity="0.3" />
-              {/* Value Path */}
-              <path d="M 50,150 A 70.7,70.7 0 1,1 150,150" fill="none" stroke="url(#gauge-gradient)" strokeWidth="8" strokeLinecap="round" strokeDasharray="333" strokeDashoffset={333 - (333 * healthScore) / 100} filter="url(#gauge-shadow)" />
-              {/* Needle Glow Dot */}
-              <circle cx={pointerX} cy={pointerY} r="7" fill="var(--bg-secondary)" stroke="var(--accent-indigo)" strokeWidth="3" style={{ filter: 'drop-shadow(0 0 5px var(--accent-indigo))' }} />
+              <circle cx="100" cy="100" r="70" fill="none" stroke="var(--border-primary)" strokeWidth="10" opacity="0.3" />
+              {/* Value Path (Concentric Glowing Ring) */}
+              <circle 
+                cx="100" 
+                cy="100" 
+                r="70" 
+                fill="none" 
+                stroke="url(#gauge-gradient)" 
+                strokeWidth="10" 
+                strokeLinecap="round"
+                strokeDasharray={2 * Math.PI * 70}
+                strokeDashoffset={2 * Math.PI * 70 - (healthScore / 100) * (2 * Math.PI * 70)}
+                transform="rotate(-90 100 100)"
+                filter="url(#gauge-shadow)" 
+              />
               {/* Score text in center */}
               <text x="100" y="105" textAnchor="middle" className="gauge-score-value" fill="var(--text-primary)" style={{ fontSize: '28px', fontWeight: '800', fontFamily: 'var(--font-sans)', letterSpacing: '-0.5px' }}>
                 {healthScore.toFixed(1)}%
@@ -154,7 +158,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
                 System Health
               </text>
             </svg>
-            <div style={{ marginTop: '-15px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+            <div style={{ marginTop: '-10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
               <span className="badge" style={{ 
                 background: healthScore > 90 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)', 
                 color: healthScore > 90 ? 'var(--accent-emerald)' : 'var(--accent-rose)',
@@ -440,13 +444,13 @@ interface SVGLineChartProps {
 
 function SVGLineChart({ data, color, metric }: SVGLineChartProps) {
   if (!data || data.length === 0) return <div style={{ padding: '20px', color: 'var(--text-muted)', fontSize: '12px', textAlign: 'center' }}>Loading chart data...</div>;
-  const max = Math.max(...data) * 1.15 || 1;
-  const min = Math.min(...data) * 0.85 || 0;
+  const max = Math.max(...data) * 1.1 || 1;
+  const min = Math.min(...data) * 0.9 || 0;
   const range = max - min;
 
   const width = 500;
   const height = 150;
-  const paddingX = 15;
+  const paddingX = 20;
   const paddingY = 15;
 
   const points = data.map((val, i) => {
@@ -455,7 +459,21 @@ function SVGLineChart({ data, color, metric }: SVGLineChartProps) {
     return { x, y, value: val };
   });
 
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  // Create smooth bezier curve path
+  let pathD = '';
+  if (points.length > 0) {
+    pathD = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[i];
+      const p1 = points[i + 1];
+      const cpX1 = p0.x + (p1.x - p0.x) / 2;
+      const cpY1 = p0.y;
+      const cpX2 = p0.x + (p1.x - p0.x) / 2;
+      const cpY2 = p1.y;
+      pathD += ` C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${p1.x} ${p1.y}`;
+    }
+  }
+
   const areaD = `${pathD} L ${points[points.length - 1].x} ${height - paddingY} L ${points[0].x} ${height - paddingY} Z`;
 
   const colorHex = {
@@ -472,19 +490,15 @@ function SVGLineChart({ data, color, metric }: SVGLineChartProps) {
       <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '200px', overflow: 'visible' }}>
         <defs>
           <linearGradient id={`grad-${color}-${metric}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={colorHex} stopOpacity="0.25" />
+            <stop offset="0%" stopColor={colorHex} stopOpacity="0.2" />
             <stop offset="100%" stopColor={colorHex} stopOpacity="0.0" />
           </linearGradient>
-          <filter id="glow-effect" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="3" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
+          <filter id="line-glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor={colorHex} floodOpacity="0.25"/>
           </filter>
         </defs>
         {/* Horizontal grid lines */}
-        {[0.25, 0.5, 0.75].map((p, idx) => (
+        {[0, 0.33, 0.66, 1].map((p, idx) => (
           <line
             key={idx}
             x1={paddingX}
@@ -493,26 +507,37 @@ function SVGLineChart({ data, color, metric }: SVGLineChartProps) {
             y2={paddingY + p * (height - 2 * paddingY)}
             stroke="var(--border-primary)"
             strokeWidth="0.5"
-            strokeDasharray="3 3"
+            strokeDasharray="4 4"
           />
         ))}
         {/* Area fill */}
         <path d={areaD} fill={`url(#grad-${color}-${metric})`} />
         {/* Line stroke */}
-        <path d={pathD} fill="none" stroke={colorHex} strokeWidth="2.5" className="chart-line-path" filter="url(#glow-effect)" />
-        {/* Circles on vertices */}
-        {points.map((p, i) => (
-          <circle
-            key={i}
-            cx={p.x}
-            cy={p.y}
-            r="3.5"
-            fill="var(--bg-card)"
-            stroke={colorHex}
-            strokeWidth="2"
-            className="chart-point-marker"
-          />
-        ))}
+        <path d={pathD} fill="none" stroke={colorHex} strokeWidth="3" filter="url(#line-glow)" style={{ strokeLinecap: 'round', strokeLinejoin: 'round' }} />
+        {/* Highlight vertical cursor on the latest point */}
+        {points.length > 0 && (
+          <g>
+            <line
+              x1={points[points.length - 1].x}
+              y1={paddingY}
+              x2={points[points.length - 1].x}
+              y2={height - paddingY}
+              stroke="var(--border-primary)"
+              strokeWidth="0.5"
+              strokeDasharray="2 2"
+              opacity="0.3"
+            />
+            <circle
+              cx={points[points.length - 1].x}
+              cy={points[points.length - 1].y}
+              r="4.5"
+              fill={colorHex}
+              stroke="#ffffff"
+              strokeWidth="1.5"
+              style={{ filter: `drop-shadow(0 0 4px ${colorHex})` }}
+            />
+          </g>
+        )}
       </svg>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '8px', padding: '0 4px' }}>
         <span>Real-time Ingestion Trend</span>
@@ -543,47 +568,127 @@ function SVGBarChart({ namespaces }: { namespaces: NamespaceStats[] }) {
 
   const data = Array.from(serviceStatsMap.values())
     .sort((a, b) => b.requestCount - a.requestCount)
-    .slice(0, 6);
+    .slice(0, 5); // top 5 services
 
   if (data.length === 0) {
     return <div style={{ padding: '20px', color: 'var(--text-muted)', fontSize: '12px', textAlign: 'center' }}>No service telemetry captured yet</div>;
   }
 
-  const maxVal = Math.max(...data.map(d => d.requestCount)) || 1;
+  const maxVal = Math.max(...data.map(d => d.requestCount)) * 1.1 || 1;
+  const width = 500;
+  const height = 200;
+  const paddingLeft = 40;
+  const paddingRight = 20;
+  const paddingTop = 25;
+  const paddingBottom = 45;
+
+  const chartWidth = width - paddingLeft - paddingRight;
+  const chartHeight = height - paddingTop - paddingBottom;
+  const barWidth = 36;
+  const barSpacing = data.length > 1 ? (chartWidth - barWidth * data.length) / (data.length - 1) : 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '10px 0' }}>
-      {data.map((item, idx) => {
-        const pct = (item.requestCount / maxVal) * 100;
-        const healthPercent = item.requestCount > 0 
-          ? ((item.requestCount - item.errorCount) / item.requestCount) * 100 
-          : 100;
-        const color = item.errorCount > 0 ? '#f43f5e' : '#6366f1';
-        return (
-          <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
-              <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                {item.serviceName}
-              </span>
-              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                {item.requestCount.toLocaleString()} spans | {healthPercent.toFixed(1)}% health
-              </span>
-            </div>
-            <div style={{ width: '100%', background: 'var(--border-primary)', height: '8px', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
-              <div
-                style={{
-                  width: `${pct}%`,
-                  height: '100%',
-                  background: `linear-gradient(90deg, ${color}, #06b6d4)`,
-                  borderRadius: '4px',
-                  boxShadow: `0 0 10px ${color}30`,
-                  transition: 'width 0.6s cubic-bezier(0.16, 1, 0.3, 1)'
-                }}
+    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '200px', overflow: 'visible' }}>
+        <defs>
+          <linearGradient id="bar-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent-indigo)" />
+            <stop offset="100%" stopColor="var(--accent-cyan)" />
+          </linearGradient>
+          <linearGradient id="bar-grad-error" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#f43f5e" />
+            <stop offset="100%" stopColor="#e11d48" />
+          </linearGradient>
+          <filter id="bar-shadow">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="var(--accent-indigo)" floodOpacity="0.2"/>
+          </filter>
+        </defs>
+
+        {/* Y Axis Gridlines */}
+        {[0, 0.25, 0.5, 0.75, 1].map((p, idx) => {
+          const y = paddingTop + (1 - p) * chartHeight;
+          const gridVal = maxVal * p;
+          return (
+            <g key={idx} opacity="0.8">
+              <line
+                x1={paddingLeft}
+                y1={y}
+                x2={width - paddingRight}
+                y2={y}
+                stroke="var(--border-primary)"
+                strokeWidth="0.5"
+                strokeDasharray="4 4"
               />
-            </div>
-          </div>
-        );
-      })}
+              <text
+                x={paddingLeft - 8}
+                y={y + 3}
+                textAnchor="end"
+                fill="var(--text-tertiary)"
+                style={{ fontSize: '9px', fontFamily: 'var(--font-sans)' }}
+              >
+                {gridVal >= 1000 ? `${(gridVal / 1000).toFixed(0)}k` : gridVal.toFixed(0)}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Bars */}
+        {data.map((item, idx) => {
+          const barHeight = (item.requestCount / maxVal) * chartHeight;
+          const x = paddingLeft + idx * (barWidth + barSpacing);
+          const y = height - paddingBottom - barHeight;
+          const hasErrors = item.errorCount > 0;
+          const fillGrad = hasErrors ? 'url(#bar-grad-error)' : 'url(#bar-grad)';
+          const formattedName = item.serviceName.replace('-backend', '').replace('-frontend', '');
+
+          return (
+            <g key={idx} className="chart-bar-group">
+              {/* Bar rectangle with rounded top */}
+              <rect
+                x={x}
+                y={y}
+                width={barWidth}
+                height={Math.max(4, barHeight)}
+                rx="4"
+                ry="4"
+                fill={fillGrad}
+                filter="url(#bar-shadow)"
+                style={{ transition: 'all 0.3s ease' }}
+              />
+              {/* Value Label above Bar */}
+              <text
+                x={x + barWidth / 2}
+                y={y - 6}
+                textAnchor="middle"
+                fill="var(--text-primary)"
+                style={{ fontSize: '9.5px', fontWeight: 700, fontFamily: 'var(--font-sans)' }}
+              >
+                {item.requestCount >= 1000 ? `${(item.requestCount / 1000).toFixed(1)}k` : item.requestCount}
+              </text>
+              {/* X Axis Label */}
+              <text
+                x={x + barWidth / 2}
+                y={height - paddingBottom + 16}
+                textAnchor="middle"
+                fill="var(--text-secondary)"
+                style={{ fontSize: '9px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px' }}
+              >
+                {formattedName}
+              </text>
+              {/* Sub-label for health */}
+              <text
+                x={x + barWidth / 2}
+                y={height - paddingBottom + 28}
+                textAnchor="middle"
+                fill={hasErrors ? 'var(--accent-rose)' : 'var(--accent-emerald)'}
+                style={{ fontSize: '8px', fontWeight: 700, fontFamily: 'var(--font-sans)' }}
+              >
+                {hasErrors ? 'ERR' : 'OK'}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }
