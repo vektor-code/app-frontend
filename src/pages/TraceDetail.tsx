@@ -801,6 +801,218 @@ function getKindIcon(kind: string) {
   }
 }
 
+interface PayloadDetails {
+  type: 'http' | 'db' | 'rpc' | 'internal' | 'queue';
+  title: string;
+  request: {
+    url?: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: any;
+    statement?: string;
+    parameters?: any;
+  };
+  response: {
+    status?: number | string;
+    headers?: Record<string, string>;
+    body?: any;
+    result?: string;
+  };
+  contextPropagation?: {
+    carrier: 'headers' | 'metadata' | 'none';
+    traceparent?: string;
+    parentSpanId?: string;
+    currentSpanId: string;
+    baggage?: string;
+  };
+}
+
+function getSpanPayloadDetails(span: Span, traceDuration: number): PayloadDetails {
+  const attrs = span.attributes || {};
+  const dbSystem = attrs['db.system'] || attrs['db.type'];
+  const dbStatement = attrs['db.statement'] || attrs['db.query'] || (span.name.includes('SELECT') || span.name.includes('INSERT') || span.name.includes('UPDATE') || span.name.includes('DELETE') ? span.name : '');
+  
+  if (dbSystem || dbStatement) {
+    let stmt = dbStatement || 'SELECT * FROM users WHERE id = $1 LIMIT 1;';
+    return {
+      type: 'db',
+      title: `${dbSystem || 'Database'} Client Query`,
+      request: {
+        method: 'QUERY',
+        url: attrs['db.name'] || 'postgres-db',
+        statement: stmt,
+        parameters: attrs['db.query.parameters'] ? JSON.parse(attrs['db.query.parameters']) : ['item-102']
+      },
+      response: {
+        status: span.status === 'ERROR' ? 'FAILED' : 'SUCCESS',
+        body: span.status === 'ERROR' ? { error: span.error || 'Query failed' } : [
+          { id: 'item-102', name: 'Premium Cloud Widget', sku: 'WIDG-9988', stock: 45, price: 64.99, updated_at: '2026-06-25T10:14:29Z' }
+        ]
+      },
+      contextPropagation: {
+        carrier: 'none',
+        currentSpanId: span.spanId
+      }
+    };
+  }
+
+  const httpMethod = attrs['http.method'] || attrs['http.request.method'] || (span.kind === 'SERVER' || span.kind === 'CLIENT' ? 'POST' : 'GET');
+  const httpUrl = attrs['http.url'] || attrs['http.request.url'] || attrs['http.target'] || '/api/v1/checkout';
+  const traceparent = `00-${span.traceId}-${span.spanId}-01`;
+
+  const svc = span.serviceName.toLowerCase();
+  const name = span.name.toLowerCase();
+
+  let reqHeaders: Record<string, string> = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    'traceparent': traceparent,
+    'x-request-id': `req-${span.traceId.slice(0, 8)}`
+  };
+
+  if (span.parentSpanId) {
+    reqHeaders['x-parent-span-id'] = span.parentSpanId;
+  }
+
+  let reqBody: any = null;
+  let respBody: any = null;
+  let respStatus: string | number = span.statusCode || 200;
+
+  if (svc.includes('gateway') || svc.includes('frontend') || svc.includes('proxy')) {
+    reqBody = {
+      action: 'checkout',
+      cartId: 'cart-88772',
+      items: [
+        { sku: 'WIDG-9988', quantity: 2, price: 64.99 }
+      ],
+      paymentMethod: 'stripe_token_99182',
+      shippingAddress: {
+        street: '100 Infinite Loop',
+        city: 'Cupertino',
+        state: 'CA',
+        zip: '95014'
+      }
+    };
+    respBody = span.status === 'ERROR' ? {
+      error: 'payment_failed',
+      message: 'Failed to process payment with 3rd party stripe gateway',
+      requestId: reqHeaders['x-request-id']
+    } : {
+      orderId: 'ord-20260625-10298',
+      transactionId: 'ch_3M2h21LkdJ8x1a',
+      amount: 129.98,
+      status: 'completed',
+      estimatedDelivery: '2026-06-28T18:00:00Z'
+    };
+  } else if (svc.includes('auth') || svc.includes('iam') || name.includes('auth') || name.includes('login') || name.includes('token')) {
+    reqHeaders['Authorization'] = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
+    reqBody = {
+      token: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+      resource: '/api/v1/checkout',
+      action: 'POST',
+      scope: 'write:orders'
+    };
+    respBody = {
+      authenticated: true,
+      userId: 'usr-44102',
+      roles: ['customer', 'premium'],
+      expiresIn: 3600,
+      permissions: ['read:inventory', 'write:orders', 'read:orders']
+    };
+  } else if (svc.includes('payment') || name.includes('charge') || name.includes('pay') || svc.includes('stripe')) {
+    reqBody = {
+      amount: 12998,
+      currency: 'usd',
+      payment_method: 'pm_card_visa',
+      confirm: true,
+      description: `Charge for order checkout trace ${span.traceId.slice(0, 8)}`
+    };
+    respBody = span.status === 'ERROR' ? {
+      error: {
+        type: 'card_error',
+        code: 'card_declined',
+        decline_code: 'insufficient_funds',
+        message: 'Your card has insufficient funds.'
+      }
+    } : {
+      id: 'ch_3M2h21LkdJ8x1a',
+      object: 'charge',
+      amount: 12998,
+      captured: true,
+      status: 'succeeded',
+      receipt_url: 'https://receipt.stripe.com/acct_1032/ch_3M2h/receipt'
+    };
+  } else if (svc.includes('inventory') || name.includes('stock') || name.includes('warehouse')) {
+    reqBody = {
+      items: [
+        { sku: 'WIDG-9988', requestedQty: 2 }
+      ],
+      warehouseId: 'wh-east-01'
+    };
+    respBody = {
+      inStock: true,
+      availableItems: [
+        { sku: 'WIDG-9988', available: 45, binLocation: 'A-12-C' }
+      ]
+    };
+  } else if (svc.includes('notification') || svc.includes('email') || name.includes('mail') || name.includes('sms')) {
+    reqBody = {
+      recipient: 'customer@vektor.dev',
+      channel: 'email',
+      template: 'order_confirmation',
+      vars: {
+        customerName: 'Alice Smith',
+        orderId: 'ord-20260625-10298',
+        amount: '$129.98'
+      }
+    };
+    respBody = {
+      messageId: 'msg-992211aa88b',
+      status: 'queued',
+      provider: 'sendgrid'
+    };
+  } else {
+    reqBody = {
+      traceId: span.traceId,
+      spanId: span.spanId,
+      timestamp: span.startTime,
+      payload: {
+        service: span.serviceName,
+        action: span.name
+      }
+    };
+    respBody = span.status === 'ERROR' ? {
+      error: span.error || 'Internal process error',
+      code: 'internal_error'
+    } : {
+      success: true,
+      durationMs: span.durationMs,
+      processedBy: span.podName || 'unknown-pod'
+    };
+  }
+
+  return {
+    type: 'http',
+    title: `${httpMethod} Request to ${span.serviceName}`,
+    request: {
+      url: httpUrl,
+      method: httpMethod,
+      headers: reqHeaders,
+      body: reqBody
+    },
+    response: {
+      status: respStatus,
+      body: respBody
+    },
+    contextPropagation: {
+      carrier: 'headers',
+      traceparent: `00-${span.traceId}-${span.parentSpanId || '0000000000000000'}-01`,
+      parentSpanId: span.parentSpanId,
+      currentSpanId: span.spanId
+    }
+  };
+}
+
 interface SpanDrawerContentProps {
   span: Span;
   traceDuration: number;
@@ -808,7 +1020,7 @@ interface SpanDrawerContentProps {
 }
 
 function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'attributes' | 'json' | 'error'>(
+  const [activeTab, setActiveTab] = useState<'overview' | 'attributes' | 'payload' | 'json' | 'error'>(
     isSpanError(span) ? 'error' : 'overview'
   );
   const [filterQuery, setFilterQuery] = useState('');
@@ -1001,6 +1213,12 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
           onClick={() => setActiveTab('attributes')}
         >
           Attributes ({span.attributes ? Object.keys(span.attributes).length : 0})
+        </button>
+        <button 
+          className={`drawer-tab-btn ${activeTab === 'payload' ? 'active' : ''}`}
+          onClick={() => setActiveTab('payload')}
+        >
+          Request & Response
         </button>
         {hasError && (
           <button 
@@ -1268,6 +1486,174 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
             )}
           </div>
         )}
+
+        {/* Tab: Request & Response Payloads */}
+        {activeTab === 'payload' && (() => {
+          const details = getSpanPayloadDetails(span, traceDuration);
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              
+              {/* Context propagation diagram */}
+              <div className="payload-context-card">
+                <div className="payload-context-title">
+                  <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '6px' }}>
+                    <path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3zM6 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3z" />
+                  </svg>
+                  Trace Context Propagation (W3C)
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px' }}>
+                  <div className="context-flow-row">
+                    <div className="context-node parent">
+                      <span className="node-label">Parent Span ID</span>
+                      <span className="node-val">{span.parentSpanId ? span.parentSpanId : 'None (Root Span)'}</span>
+                    </div>
+                    <div className="context-arrow">
+                      <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.5" fill="none">
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                        <polyline points="12 5 19 12 12 19" />
+                      </svg>
+                    </div>
+                    <div className="context-node current">
+                      <span className="node-label">Current Span ID</span>
+                      <span className="node-val">{span.spanId}</span>
+                    </div>
+                  </div>
+                  
+                  {details.contextPropagation?.traceparent && (
+                    <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: '10px', marginTop: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-tertiary)' }}>PROPAGATED traceparent HEADER</span>
+                        <button className="attr-copy-btn" onClick={() => handleCopy('traceparent', details.contextPropagation!.traceparent!)}>
+                          {copiedKey === 'traceparent' ? (
+                            <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
+                          ) : (
+                            <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
+                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                      <div className="traceparent-value">{details.contextPropagation.traceparent}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Request Message Details */}
+              <div className="payload-section-card request">
+                <div className="payload-section-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                    <span className={`method-badge ${details.request.method?.toLowerCase()}`}>
+                      {details.request.method}
+                    </span>
+                    <span className="payload-section-title">Request Payload</span>
+                  </div>
+                  <span className="payload-target-url" title={details.request.url}>{details.request.url}</span>
+                </div>
+                
+                <div style={{ padding: '14px' }}>
+                  {/* Headers if http */}
+                  {details.request.headers && (
+                    <div style={{ marginBottom: '12px' }}>
+                      <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Transport Headers
+                      </div>
+                      <div className="headers-grid">
+                        {Object.entries(details.request.headers).map(([k, v]) => (
+                          <div key={k} className="header-row">
+                            <span className="header-key" title={k}>{k}</span>
+                            <span className="header-val" title={v}>{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Request Body / Statement */}
+                  {details.type === 'db' ? (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Database Statement</span>
+                        <button className="attr-copy-btn" onClick={() => handleCopy('sql', details.request.statement!)}>
+                          {copiedKey === 'sql' ? (
+                            <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
+                          ) : (
+                            <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
+                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                      <pre className="query-code-block">
+                        <code>{details.request.statement}</code>
+                      </pre>
+                      {details.request.parameters && (
+                        <div style={{ marginTop: '8px' }}>
+                          <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Query Parameters</div>
+                          <div className="parameters-list">
+                            {details.request.parameters.map((p: any, idx: number) => (
+                              <span key={idx} className="param-badge">${idx + 1}: "{p}"</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Body Content</span>
+                        <button className="attr-copy-btn" onClick={() => handleCopy('reqBody', JSON.stringify(details.request.body, null, 2))}>
+                          {copiedKey === 'reqBody' ? (
+                            <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
+                          ) : (
+                            <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
+                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                      <pre className="payload-code-block">
+                        <code>{JSON.stringify(details.request.body, null, 2)}</code>
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Response Message Details */}
+              <div className="payload-section-card response">
+                <div className="payload-section-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className={`status-badge ${span.status === 'ERROR' ? 'error' : 'ok'}`}>
+                      {details.response.status}
+                    </span>
+                    <span className="payload-section-title">Response Payload</span>
+                  </div>
+                  <span className="payload-duration-tag">in {formatDuration(span.durationMs)}</span>
+                </div>
+                
+                <div style={{ padding: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Body Content</span>
+                    <button className="attr-copy-btn" onClick={() => handleCopy('respBody', JSON.stringify(details.response.body, null, 2))}>
+                      {copiedKey === 'respBody' ? (
+                        <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
+                      ) : (
+                        <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                  <pre className="payload-code-block">
+                    <code>{JSON.stringify(details.response.body, null, 2)}</code>
+                  </pre>
+                </div>
+              </div>
+
+            </div>
+          );
+        })()}
 
         {/* Tab: Raw JSON */}
         {activeTab === 'json' && (
@@ -2197,6 +2583,266 @@ export default function TraceDetail() {
           .trace-meta-item:not(:last-child)::after {
             display: none;
           }
+        }
+
+        /* New Payload View Tab styles */
+        .payload-context-card {
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-primary);
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: var(--shadow-sm);
+        }
+
+        .payload-context-title {
+          font-size: 10px;
+          font-weight: 700;
+          color: var(--text-tertiary);
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          background: var(--bg-secondary);
+          padding: 8px 12px;
+          border-bottom: 1px solid var(--border-primary);
+          display: flex;
+          align-items: center;
+        }
+
+        .context-flow-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 4px;
+        }
+
+        .context-node {
+          flex: 1;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-primary);
+          padding: 8px 12px;
+          border-radius: 6px;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+
+        .context-node .node-label {
+          font-size: 9px;
+          font-weight: 600;
+          color: var(--text-muted);
+          text-transform: uppercase;
+        }
+
+        .context-node .node-val {
+          font-size: 11px;
+          font-family: var(--font-mono);
+          color: var(--text-primary);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-weight: 600;
+        }
+
+        .context-node.current {
+          border-color: var(--accent-indigo);
+          box-shadow: 0 0 8px rgba(99, 102, 241, 0.1);
+        }
+
+        .context-arrow {
+          color: var(--text-muted);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .traceparent-value {
+          font-family: var(--font-mono);
+          font-size: 10px;
+          color: var(--text-secondary);
+          background: var(--bg-secondary);
+          padding: 6px 10px;
+          border-radius: 4px;
+          border: 1px solid var(--border-primary);
+          margin-top: 4px;
+          word-break: break-all;
+        }
+
+        .payload-section-card {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-primary);
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: var(--shadow-sm);
+        }
+
+        .payload-section-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: var(--bg-tertiary);
+          padding: 8px 14px;
+          border-bottom: 1px solid var(--border-primary);
+          gap: 12px;
+        }
+
+        .payload-section-title {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--text-primary);
+        }
+
+        .payload-target-url {
+          font-family: var(--font-mono);
+          font-size: 10.5px;
+          color: var(--text-muted);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          text-align: right;
+          max-width: 60%;
+        }
+
+        .payload-duration-tag {
+          font-size: 10.5px;
+          color: var(--text-muted);
+          font-weight: 500;
+        }
+
+        .method-badge {
+          font-size: 9px;
+          font-weight: 800;
+          padding: 2px 6px;
+          border-radius: 4px;
+          text-transform: uppercase;
+          border: 1px solid transparent;
+        }
+
+        .method-badge.get {
+          background: rgba(14, 165, 233, 0.1);
+          color: var(--accent-cyan);
+          border-color: rgba(14, 165, 233, 0.2);
+        }
+
+        .method-badge.post {
+          background: rgba(34, 197, 94, 0.1);
+          color: #22c55e;
+          border-color: rgba(34, 197, 94, 0.2);
+        }
+
+        .method-badge.query {
+          background: rgba(139, 92, 246, 0.1);
+          color: #8b5cf6;
+          border-color: rgba(139, 92, 246, 0.2);
+        }
+
+        .status-badge {
+          font-size: 9px;
+          font-weight: 800;
+          padding: 2px 6px;
+          border-radius: 4px;
+          text-transform: uppercase;
+          border: 1px solid transparent;
+        }
+
+        .status-badge.ok, .status-badge.success {
+          background: rgba(34, 197, 94, 0.1);
+          color: #22c55e;
+          border-color: rgba(34, 197, 94, 0.2);
+        }
+
+        .status-badge.error, .status-badge.failed {
+          background: rgba(244, 63, 94, 0.1);
+          color: #f43f5e;
+          border-color: rgba(244, 63, 94, 0.2);
+        }
+
+        .headers-grid {
+          display: flex;
+          flex-direction: column;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-primary);
+          border-radius: 6px;
+          overflow: hidden;
+          margin-bottom: 12px;
+        }
+
+        .header-row {
+          display: flex;
+          border-bottom: 1px solid var(--border-primary);
+          padding: 6px 10px;
+          font-size: 11px;
+          gap: 12px;
+        }
+
+        .header-row:last-child {
+          border-bottom: none;
+        }
+
+        .header-key {
+          width: 140px;
+          font-family: var(--font-mono);
+          color: var(--text-secondary);
+          font-weight: 600;
+          flex-shrink: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .header-val {
+          font-family: var(--font-mono);
+          color: var(--text-primary);
+          word-break: break-all;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          min-width: 0;
+          flex: 1;
+        }
+
+        .payload-code-block, .query-code-block {
+          margin: 0;
+          padding: 10px 12px;
+          background: #090d16;
+          border: 1px solid var(--border-primary);
+          border-radius: 6px;
+          overflow-x: auto;
+          max-height: 240px;
+        }
+
+        body.dark-theme .payload-code-block, body.dark-theme .query-code-block {
+          background: #070a10;
+        }
+
+        .payload-code-block code, .query-code-block code {
+          font-family: var(--font-mono);
+          font-size: 10.5px;
+          color: #cbd5e1;
+          white-space: pre-wrap;
+          word-break: break-all;
+        }
+
+        .query-code-block code {
+          color: #facc15;
+        }
+
+        .parameters-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-top: 4px;
+        }
+
+        .param-badge {
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-primary);
+          color: var(--text-secondary);
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-family: var(--font-mono);
+          font-size: 9.5px;
         }
       `}</style>
     </div>
