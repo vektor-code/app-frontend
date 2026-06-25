@@ -947,24 +947,29 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
     <>
       {/* Header */}
       <div className="drawer-header">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '85%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span 
-              className="badge" 
-              style={{ 
-                background: getSvcColor(span.serviceName) + '15', 
-                color: getSvcColor(span.serviceName), 
-                fontWeight: 700, 
-                fontSize: '10.5px',
-                padding: '2px 8px',
-                border: `1px solid ${getSvcColor(span.serviceName)}40`
-              }}
-            >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxWidth: '85%' }}>
+          {/* Breadcrumbs Row */}
+          <div className="drawer-breadcrumbs">
+            <span className="breadcrumb-item service" style={{ color: getSvcColor(span.serviceName) }}>
+              <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '4px' }}>
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                <line x1="6" y1="6" x2="6.01" y2="6" />
+                <line x1="6" y1="18" x2="6.01" y2="18" />
+              </svg>
               {span.serviceName}
             </span>
-            <span className="panel-span-name" style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}>
+            <span className="breadcrumb-separator">/</span>
+            <span className="breadcrumb-item namespace">
+              <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '4px' }}>
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+              {span.namespace || 'default'}
+            </span>
+            <span className="breadcrumb-separator">/</span>
+            <span className="breadcrumb-item kind">
               {getKindIcon(span.kind)}
-              {span.kind}
+              {span.kind.toLowerCase()}
             </span>
           </div>
           <h2 style={{ fontSize: '15px', fontWeight: 700, margin: '2px 0 0 0', wordBreak: 'break-all', color: 'var(--text-primary)', fontFamily: 'var(--font-sans)' }}>
@@ -973,21 +978,13 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
         </div>
         <button 
           onClick={onClose}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: 'var(--text-secondary)',
-            fontSize: '18px',
-            cursor: 'pointer',
-            padding: '4px',
-            borderRadius: '4px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
+          className="drawer-close-btn"
           title="Close details"
         >
-          ✕
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.5" fill="none">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
         </button>
       </div>
 
@@ -1581,7 +1578,18 @@ export default function TraceDetail() {
               <div 
                 className={`sidebar-drag-handle ${isDragging ? 'active' : ''}`} 
                 onMouseDown={startResize} 
-              />
+              >
+                <div className="drag-grabber-pill">
+                  <svg width="10" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="8" cy="5" r="2" fill="currentColor"/>
+                    <circle cx="8" cy="12" r="2" fill="currentColor"/>
+                    <circle cx="8" cy="19" r="2" fill="currentColor"/>
+                    <circle cx="16" cy="5" r="2" fill="currentColor"/>
+                    <circle cx="16" cy="12" r="2" fill="currentColor"/>
+                    <circle cx="16" cy="19" r="2" fill="currentColor"/>
+                  </svg>
+                </div>
+              </div>
               <SpanDrawerContent 
                 span={selectedSpan} 
                 traceDuration={trace.durationMs}
@@ -1646,21 +1654,20 @@ export default function TraceDetail() {
         }
 
         .trace-detail-sidebar {
-          width: 480px;
-          min-width: 480px;
           background: var(--bg-secondary);
-          border: 1px solid var(--border-primary);
-          border-radius: 12px;
-          height: calc(100vh - 120px);
-          position: sticky;
-          top: 80px;
+          border-left: 1px solid var(--border-primary);
+          height: 100vh;
+          position: fixed;
+          top: 0;
+          right: 0;
+          bottom: 0;
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-          z-index: 100;
-          animation: slideInRight 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-          position: relative;
+          box-shadow: -10px 0 30px rgba(0, 0, 0, 0.15);
+          z-index: 1001;
+          animation: slideInRight 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          border-radius: 0;
         }
 
         .sidebar-drag-handle {
@@ -1694,16 +1701,31 @@ export default function TraceDetail() {
         }
 
         .trace-sidebar-backdrop {
-          display: none;
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(15, 23, 42, 0.3);
+          backdrop-filter: blur(4px);
+          z-index: 1000;
+          animation: fadeIn 0.25s ease-out;
         }
 
         @keyframes slideInRight {
           from {
-            transform: translateX(20px);
-            opacity: 0;
+            transform: translateX(100%);
           }
           to {
             transform: translateX(0);
+          }
+        }
+
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+          }
+          to {
             opacity: 1;
           }
         }
@@ -1716,40 +1738,95 @@ export default function TraceDetail() {
             width: 100% !important;
             max-width: 500px !important;
             min-width: unset !important;
-            position: fixed;
-            top: 0;
-            right: 0;
-            bottom: 0;
-            height: 100vh;
-            border-radius: 0;
-            border-left: 1px solid var(--border-primary);
             box-shadow: -10px 0 30px rgba(0, 0, 0, 0.25);
-            z-index: 1000;
-            animation: slideOverlay 0.25s cubic-bezier(0.4, 0, 0.2, 1);
           }
           .sidebar-drag-handle {
             display: none !important;
           }
           .trace-sidebar-backdrop {
-            display: block;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
             background: rgba(15, 23, 42, 0.4);
-            backdrop-filter: blur(4px);
-            z-index: 999;
           }
         }
 
-        @keyframes slideOverlay {
-          from {
-            transform: translateX(100%);
-          }
-          to {
-            transform: translateX(0);
-          }
+        /* New Drawer Features */
+        .drag-grabber-pill {
+          position: absolute;
+          left: -7px;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 14px;
+          height: 32px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-primary);
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: var(--shadow-sm);
+          color: var(--text-tertiary);
+          transition: all 0.2s ease;
+          pointer-events: none;
+          z-index: 210;
+        }
+
+        .sidebar-drag-handle:hover .drag-grabber-pill,
+        .sidebar-drag-handle.active .drag-grabber-pill {
+          border-color: var(--accent-indigo);
+          color: var(--accent-indigo);
+          height: 36px;
+          box-shadow: 0 0 10px rgba(99, 102, 241, 0.25);
+        }
+
+        .drawer-breadcrumbs {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          color: var(--text-muted);
+          margin-bottom: 4px;
+          flex-wrap: wrap;
+        }
+
+        .breadcrumb-item {
+          display: inline-flex;
+          align-items: center;
+          font-weight: 500;
+        }
+
+        .breadcrumb-item.service {
+          font-weight: 700;
+        }
+
+        .breadcrumb-separator {
+          color: var(--text-tertiary);
+          font-weight: 400;
+        }
+
+        .drawer-close-btn {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-primary);
+          color: var(--text-secondary);
+          width: 28px;
+          height: 28px;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: var(--shadow-sm);
+          flex-shrink: 0;
+        }
+
+        .drawer-close-btn:hover {
+          color: var(--text-primary);
+          background: var(--bg-hover);
+          border-color: var(--accent-indigo);
+          transform: scale(1.05);
+        }
+
+        .drawer-close-btn:active {
+          transform: scale(0.95);
         }
 
         /* Header elements inside the drawer */
