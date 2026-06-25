@@ -572,6 +572,18 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
             <div className="row-grid-line" style={{ left: '50%' }} />
             <div className="row-grid-line" style={{ left: '75%' }} />
 
+            {/* Horizontal reference track representing 100% trace time */}
+            <div style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              height: '4px',
+              background: 'var(--bg-tertiary)',
+              borderRadius: '2px',
+              opacity: 0.5,
+              pointerEvents: 'none'
+            }} />
+
             <div
               className={`waterfall-bar ${isError ? 'error' : isCritical ? 'critical' : ''}`}
               style={{

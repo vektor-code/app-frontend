@@ -761,11 +761,65 @@ interface SpanDrawerContentProps {
   onClose: () => void;
 }
 
+function getKindIcon(kind: string) {
+  switch (kind) {
+    case 'CLIENT':
+      return (
+        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '4px', display: 'inline-block', verticalAlign: 'middle' }}>
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+          <polyline points="15 3 21 3 21 9" />
+          <line x1="10" y1="14" x2="21" y2="3" />
+        </svg>
+      );
+    case 'SERVER':
+      return (
+        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '4px', display: 'inline-block', verticalAlign: 'middle' }}>
+          <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+          <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+          <line x1="6" y1="6" x2="6.01" y2="6" />
+          <line x1="6" y1="18" x2="6.01" y2="18" />
+        </svg>
+      );
+    case 'INTERNAL':
+      return (
+        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '4px', display: 'inline-block', verticalAlign: 'middle' }}>
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+          <rect x="9" y="9" width="6" height="6" />
+          <line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" />
+          <line x1="9" y1="20" x2="9" y2="23" /><line x1="15" y1="20" x2="15" y2="23" />
+          <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="15" x2="23" y2="15" />
+          <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="15" x2="4" y2="15" />
+        </svg>
+      );
+    default:
+      return (
+        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '4px', display: 'inline-block', verticalAlign: 'middle' }}>
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+      );
+  }
+}
+
+interface SpanDrawerContentProps {
+  span: Span;
+  traceDuration: number;
+  onClose: () => void;
+}
+
 function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'attributes' | 'json' | 'error'>(
     isSpanError(span) ? 'error' : 'overview'
   );
   const [filterQuery, setFilterQuery] = useState('');
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const handleCopy = (key: string, val: string) => {
+    navigator.clipboard.writeText(val);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1500);
+  };
+
   const dest = getSpanDestination(span);
 
   const formattedStartTime = useMemo(() => {
@@ -871,33 +925,49 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
     });
   }, [span.attributes, filterQuery]);
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
+  // Grouped attributes
+  const groupedAttributes = useMemo(() => {
+    const groups: Record<string, [string, string][]> = {};
+    filteredAttributes.forEach(([k, v]) => {
+      const parts = k.split('.');
+      const groupName = parts.length > 1 ? parts[0].toUpperCase() : 'GENERAL';
+      if (!groups[groupName]) {
+        groups[groupName] = [];
+      }
+      groups[groupName].push([k, v]);
+    });
+    return Object.entries(groups).sort((a, b) => {
+      if (a[0] === 'GENERAL') return 1;
+      if (b[0] === 'GENERAL') return -1;
+      return a[0].localeCompare(b[0]);
+    });
+  }, [filteredAttributes]);
 
   return (
     <>
       {/* Header */}
       <div className="drawer-header">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxWidth: '85%' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '85%' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span 
               className="badge" 
               style={{ 
-                background: getSvcColor(span.serviceName) + '20', 
+                background: getSvcColor(span.serviceName) + '15', 
                 color: getSvcColor(span.serviceName), 
                 fontWeight: 700, 
-                fontSize: '11px',
-                border: `1px solid ${getSvcColor(span.serviceName)}50`
+                fontSize: '10.5px',
+                padding: '2px 8px',
+                border: `1px solid ${getSvcColor(span.serviceName)}40`
               }}
             >
               {span.serviceName}
             </span>
-            <span className="panel-span-name" style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              Kind: {span.kind}
+            <span className="panel-span-name" style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}>
+              {getKindIcon(span.kind)}
+              {span.kind}
             </span>
           </div>
-          <h2 style={{ fontSize: '15px', fontWeight: 700, margin: '4px 0 0 0', wordBreak: 'break-all', color: 'var(--text-primary)' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: 700, margin: '2px 0 0 0', wordBreak: 'break-all', color: 'var(--text-primary)', fontFamily: 'var(--font-sans)' }}>
             {span.name}
           </h2>
         </div>
@@ -910,7 +980,10 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
             fontSize: '18px',
             cursor: 'pointer',
             padding: '4px',
-            borderRadius: '4px'
+            borderRadius: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
           }}
           title="Close details"
         >
@@ -918,7 +991,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
         </button>
       </div>
 
-      {/* Tabs */}
+      {/* Segmented Pill Tabs */}
       <div className="drawer-tabs">
         <button 
           className={`drawer-tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
@@ -936,7 +1009,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
           <button 
             className={`drawer-tab-btn ${activeTab === 'error' ? 'active' : ''}`}
             onClick={() => setActiveTab('error')}
-            style={{ color: 'var(--accent-rose, #f43f5e)', borderBottomColor: activeTab === 'error' ? 'var(--accent-rose)' : 'transparent' }}
+            style={{ color: 'var(--accent-rose, #f43f5e)' }}
           >
             Failure Details
           </button>
@@ -957,122 +1030,142 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             
             {/* Grid metrics */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <div style={{ background: 'var(--bg-tertiary)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-primary)' }}>
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Duration</div>
-                <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--accent-cyan)' }}>{formatDuration(span.durationMs)}</div>
-                <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{(span.durationMs / traceDuration * 100).toFixed(1)}% of trace</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div className="overview-metric-card duration">
+                <span className="metric-card-label">Duration</span>
+                <span className="metric-card-val">{formatDuration(span.durationMs)}</span>
+                <span className="metric-card-sub">{(span.durationMs / traceDuration * 100).toFixed(1)}% of trace</span>
               </div>
-              <div style={{ background: 'var(--bg-tertiary)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-primary)' }}>
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Status</div>
+              <div className="overview-metric-card status">
+                <span className="metric-card-label">Status</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                  <span className={`badge ${isSpanError(span) ? 'badge-error' : 'badge-ok'}`} style={{ fontSize: '11px', padding: '2px 8px' }}>
+                  <span className={`badge ${isSpanError(span) ? 'badge-error' : 'badge-ok'}`} style={{ fontSize: '11px', padding: '3px 8px' }}>
                     {isSpanError(span) ? 'ERROR' : 'OK'}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Infrastructure Details */}
-            <div>
-              <h3 style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', borderBottom: '1px solid var(--border-primary)', paddingBottom: '4px' }}>
-                Infrastructure Info
-              </h3>
-              <table className="attr-table">
-                <tbody>
-                  {dest.type && (
-                    <tr>
-                      <td className="attr-key">Destination</td>
-                      <td className="attr-val">
-                        <span className="destination-badge" style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          background: dest.type === '3rdparty' ? 'rgba(245, 158, 11, 0.1)' : dest.type === 'infra' ? 'rgba(14, 165, 233, 0.1)' : 'rgba(99, 102, 241, 0.08)',
-                          color: dest.type === '3rdparty' ? 'var(--accent-amber, #f59e0b)' : dest.type === 'infra' ? 'var(--accent-cyan, #0ea5e9)' : 'var(--accent-indigo-light, #818cf8)',
-                          padding: '1px 6px',
-                          borderRadius: '4px',
-                          fontWeight: 600,
-                          fontSize: '10px',
-                          border: dest.type === '3rdparty' ? '1px dashed rgba(245, 158, 11, 0.3)' : '1px solid rgba(14, 165, 233, 0.15)',
-                          textTransform: dest.type === 'infra' ? 'lowercase' : 'none'
-                        }}>
-                          {dest.name} ({dest.type === '3rdparty' ? '3rd party' : dest.type})
-                        </span>
-                      </td>
-                    </tr>
-                  )}
-                  <tr>
-                    <td className="attr-key">Namespace</td>
-                    <td className="attr-val">
-                      <span className="badge badge-ns">{span.namespace || 'unknown'}</span>
-                    </td>
-                  </tr>
-                  {span.podName && (
-                    <tr>
-                      <td className="attr-key">Pod Name</td>
-                      <td className="attr-val">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '11px', wordBreak: 'break-all' }}>{span.podName}</span>
-                          <button className="copy-btn-cell" onClick={() => copyToClipboard(span.podName!)} style={{ fontSize: '10px', padding: '2px 6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'var(--font-sans)', display: 'inline-flex', alignItems: 'center' }}>Copy</button>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                  {span.nodeName && (
-                    <tr>
-                      <td className="attr-key">Node Name</td>
-                      <td className="attr-val">{span.nodeName}</td>
-                    </tr>
-                  )}
-                  <tr>
-                    <td className="attr-key">Span ID</td>
-                    <td className="attr-val">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'var(--font-mono)' }}>
-                        <span style={{ fontSize: '11px' }}>{span.spanId}</span>
-                        <button className="copy-btn-cell" onClick={() => copyToClipboard(span.spanId)} style={{ fontSize: '10px', padding: '2px 6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'var(--font-sans)', display: 'inline-flex', alignItems: 'center' }}>Copy</button>
-                      </div>
-                    </td>
-                  </tr>
-                  {span.parentSpanId && (
-                    <tr>
-                      <td className="attr-key">Parent ID</td>
-                      <td className="attr-val">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'var(--font-mono)' }}>
-                          <span style={{ fontSize: '11px' }}>{span.parentSpanId}</span>
-                          <button className="copy-btn-cell" onClick={() => copyToClipboard(span.parentSpanId!)} style={{ fontSize: '10px', padding: '2px 6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'var(--font-sans)', display: 'inline-flex', alignItems: 'center' }}>Copy</button>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                  <tr>
-                    <td className="attr-key">Start Time</td>
-                    <td className="attr-val">{formattedStartTime}</td>
-                  </tr>
-                </tbody>
-              </table>
+            {/* Infrastructure Details Card */}
+            <div className="attr-group-card">
+              <h4 className="attr-group-title">Infrastructure Info</h4>
+              <div className="attr-group-list">
+                {dest.type && (
+                  <div className="attr-row">
+                    <span className="attr-row-label">Destination</span>
+                    <div style={{ display: 'flex', alignItems: 'center', marginTop: '2px' }}>
+                      <span className="destination-badge" style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        background: dest.type === '3rdparty' ? 'rgba(245, 158, 11, 0.1)' : dest.type === 'infra' ? 'rgba(14, 165, 233, 0.1)' : 'rgba(99, 102, 241, 0.08)',
+                        color: dest.type === '3rdparty' ? 'var(--accent-amber)' : dest.type === 'infra' ? 'var(--accent-cyan)' : 'var(--accent-indigo-light)',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontWeight: 600,
+                        fontSize: '9.5px',
+                        border: dest.type === '3rdparty' ? '1px dashed rgba(245, 158, 11, 0.3)' : '1px solid rgba(14, 165, 233, 0.15)',
+                        textTransform: dest.type === 'infra' ? 'lowercase' : 'none'
+                      }}>
+                        {dest.name} ({dest.type === '3rdparty' ? '3rd party' : dest.type})
+                      </span>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="attr-row">
+                  <span className="attr-row-label">Namespace</span>
+                  <div style={{ marginTop: '2px' }}>
+                    <span className="badge badge-ns" style={{ padding: '2px 8px' }}>{span.namespace || 'unknown'}</span>
+                  </div>
+                </div>
+
+                {span.podName && (
+                  <div className="attr-row">
+                    <div className="attr-row-header">
+                      <span className="attr-row-label">Pod Name</span>
+                      <button className="attr-copy-btn" onClick={() => handleCopy('pod', span.podName!)}>
+                        {copiedKey === 'pod' ? (
+                          <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
+                        ) : (
+                          <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                    <div className="attr-row-value-mini">{span.podName}</div>
+                  </div>
+                )}
+
+                {span.nodeName && (
+                  <div className="attr-row">
+                    <span className="attr-row-label">Node Name</span>
+                    <div className="attr-row-value-mini">{span.nodeName}</div>
+                  </div>
+                )}
+
+                <div className="attr-row">
+                  <div className="attr-row-header">
+                    <span className="attr-row-label">Span ID</span>
+                    <button className="attr-copy-btn" onClick={() => handleCopy('spanId', span.spanId)}>
+                      {copiedKey === 'spanId' ? (
+                        <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
+                      ) : (
+                        <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                  <div className="attr-row-value-mini">{span.spanId}</div>
+                </div>
+
+                {span.parentSpanId && (
+                  <div className="attr-row">
+                    <div className="attr-row-header">
+                      <span className="attr-row-label">Parent ID</span>
+                      <button className="attr-copy-btn" onClick={() => handleCopy('parentSpanId', span.parentSpanId!)}>
+                        {copiedKey === 'parentSpanId' ? (
+                          <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
+                        ) : (
+                          <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                    <div className="attr-row-value-mini">{span.parentSpanId}</div>
+                  </div>
+                )}
+
+                <div className="attr-row">
+                  <span className="attr-row-label">Start Time</span>
+                  <div className="attr-row-value-mini">{formattedStartTime}</div>
+                </div>
+              </div>
             </div>
 
             {/* Span Events/Logs if any */}
             {hasEvents && (
               <div>
-                <h3 style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', borderBottom: '1px solid var(--border-primary)', paddingBottom: '4px' }}>
+                <h3 style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '8px', letterSpacing: '0.5px' }}>
                   Logs / Events ({span.events!.length})
                 </h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {span.events!.map((ev, i) => (
-                    <div key={i} style={{ background: 'var(--bg-tertiary)', padding: '8px 10px', borderRadius: '6px', borderLeft: '3px solid var(--accent-indigo)' }}>
+                    <div key={i} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', padding: '10px 12px', borderRadius: '8px', borderLeft: '3px solid var(--accent-indigo)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <span style={{ fontWeight: 600, fontSize: '11px', color: 'var(--text-primary)' }}>{ev.name}</span>
+                        <span style={{ fontWeight: 700, fontSize: '11.5px', color: 'var(--text-primary)' }}>{ev.name}</span>
                         <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
                           {new Date(ev.timestamp).toLocaleTimeString()}
                         </span>
                       </div>
                       {ev.attributes && Object.keys(ev.attributes).length > 0 && (
-                        <div style={{ fontSize: '10px', display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '4px', borderLeft: '1px solid var(--border-primary)' }}>
+                        <div style={{ fontSize: '10px', display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '8px', borderLeft: '2px solid var(--border-primary)', marginTop: '6px' }}>
                           {Object.entries(ev.attributes).map(([ek, evVal]) => (
                             <div key={ek}>
-                              <span style={{ color: 'var(--text-muted)' }}>{ek}: </span>
-                              <span className="mono" style={{ color: 'var(--text-secondary)' }}>{String(evVal)}</span>
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{ek}: </span>
+                              <span className="mono" style={{ color: 'var(--text-primary)', wordBreak: 'break-all' }}>{String(evVal)}</span>
                             </div>
                           ))}
                         </div>
@@ -1087,42 +1180,57 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
 
         {/* Tab: Attributes */}
         {activeTab === 'attributes' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <input
-              type="text"
-              placeholder="Filter attributes..."
-              value={filterQuery}
-              onChange={(e) => setFilterQuery(e.target.value)}
-              className="filter-select"
-              style={{ width: '100%', fontSize: '12px', padding: '6px 10px', marginBottom: '6px' }}
-            />
-            {filteredAttributes.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }}>
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Filter attributes..."
+                value={filterQuery}
+                onChange={(e) => setFilterQuery(e.target.value)}
+                className="filter-select"
+                style={{ width: '100%', fontSize: '11px', padding: '5px 8px 5px 28px', height: '28px' }}
+              />
+            </div>
+            
+            {groupedAttributes.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)', fontSize: '12px' }}>
                 No matching attributes.
               </div>
             ) : (
-              <table className="attr-table">
-                <tbody>
-                  {filteredAttributes.map(([k, v]) => (
-                    <tr key={k}>
-                      <td className="attr-key" style={{ width: '160px', wordBreak: 'break-all' }}>{k}</td>
-                      <td className="attr-val">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                          <span style={{ wordBreak: 'break-all' }}>{String(v)}</span>
+              groupedAttributes.map(([groupName, attrsList]) => (
+                <div key={groupName} className="attr-group-card">
+                  <h4 className="attr-group-title">{groupName}</h4>
+                  <div className="attr-group-list">
+                    {attrsList.map(([k, v]) => (
+                      <div key={k} className="attr-row">
+                        <div className="attr-row-header">
+                          <span className="attr-row-key" title={k}>{k}</span>
                           <button 
-                            className="copy-btn-cell" 
-                            style={{ flexShrink: 0, fontSize: '10px', padding: '2px 6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'var(--font-sans)' }}
-                            onClick={() => copyToClipboard(String(v))}
-                            title="Copy Value"
+                            className="attr-copy-btn"
+                            onClick={() => handleCopy(k, String(v))}
+                            title={copiedKey === k ? "Copied!" : "Copy value"}
                           >
-                            Copy
+                            {copiedKey === k ? (
+                              <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
+                            ) : (
+                              <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                              </svg>
+                            )}
                           </button>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        <div className="attr-row-value">
+                          {String(v) || <span className="attr-empty-val">—</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
             )}
           </div>
         )}
@@ -1130,22 +1238,34 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
         {/* Tab: Failure details */}
         {activeTab === 'error' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div style={{ background: 'rgba(244, 63, 94, 0.08)', border: '1px solid rgba(244, 63, 94, 0.3)', padding: '12px 14px', borderRadius: '8px', borderLeft: '4px solid var(--accent-rose)' }}>
-              <div style={{ color: 'var(--accent-rose)', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                Error Summary
+            <div className="failure-banner">
+              <div className="failure-icon-wrapper">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
               </div>
-              <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', wordBreak: 'break-all' }}>{errorMsg}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                <span className="failure-title">Error Exception</span>
+                <span className="failure-msg">{errorMsg}</span>
+              </div>
             </div>
 
             {stackTrace && (
-              <div>
-                <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                  Execution Stack Trace
+              <div className="stacktrace-container">
+                <div className="stacktrace-header">
+                  <span>Stack Trace</span>
+                  <button 
+                    className="btn btn-ghost btn-sm"
+                    style={{ fontSize: '9px', padding: '2px 8px', height: '20px', border: '1px solid rgba(255,255,255,0.15)', color: '#94a3b8' }}
+                    onClick={() => handleCopy('stacktrace', stackTrace)}
+                  >
+                    {copiedKey === 'stacktrace' ? 'Copied ✓' : 'Copy Stack Trace'}
+                  </button>
                 </div>
-                <pre style={{ background: '#0f172a', padding: '12px', borderRadius: '8px', overflowX: 'auto', border: '1px solid rgba(255,255,255,0.05)', margin: 0 }}>
-                  <code style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: '#f1f5f9', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                    {stackTrace}
-                  </code>
+                <pre className="stacktrace-pre">
+                  <code>{stackTrace}</code>
                 </pre>
               </div>
             )}
@@ -1154,17 +1274,18 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
 
         {/* Tab: Raw JSON */}
         {activeTab === 'json' && (
-          <div style={{ background: '#0f172a', padding: '14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', overflowX: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+          <div className="stacktrace-container">
+            <div className="stacktrace-header">
+              <span>Full Payload</span>
               <button 
                 className="btn btn-ghost btn-sm" 
-                style={{ fontSize: '10px', padding: '2px 8px', color: '#cbd5e1', borderColor: 'rgba(255,255,255,0.2)' }}
-                onClick={() => copyToClipboard(JSON.stringify(span, null, 2))}
+                style={{ fontSize: '9px', padding: '2px 8px', height: '20px', border: '1px solid rgba(255,255,255,0.15)', color: '#94a3b8' }}
+                onClick={() => handleCopy('json', JSON.stringify(span, null, 2))}
               >
-                Copy Full JSON
+                {copiedKey === 'json' ? 'Copied ✓' : 'Copy JSON'}
               </button>
             </div>
-            <pre style={{ margin: 0 }}>
+            <pre className="stacktrace-pre">
               {renderJson}
             </pre>
           </div>
@@ -1186,6 +1307,15 @@ export default function TraceDetail() {
   // Sidebar drag-resize states
   const [sidebarWidth, setSidebarWidth] = useState(480);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Trace ID copy animation
+  const [copiedTraceId, setCopiedTraceId] = useState(false);
+
+  const handleCopyTraceId = () => {
+    navigator.clipboard.writeText(trace?.traceId || '');
+    setCopiedTraceId(true);
+    setTimeout(() => setCopiedTraceId(false), 1500);
+  };
 
   const startResize = (mouseDownEvent: React.MouseEvent) => {
     mouseDownEvent.preventDefault();
@@ -1297,29 +1427,51 @@ export default function TraceDetail() {
           <div className="trace-meta">
             <div className="trace-meta-item">
               <span className="trace-meta-label">Trace ID</span>
-              <span className="trace-meta-value mono" style={{ color: 'var(--accent-indigo-light)' }}>{trace.traceId}</span>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                <span className="trace-meta-value mono" style={{ color: 'var(--accent-indigo-light)', fontSize: '11.5px' }} title={trace.traceId}>
+                  {trace.traceId.slice(0, 16)}...
+                </span>
+                <button 
+                  className="attr-copy-btn" 
+                  onClick={handleCopyTraceId}
+                  title={copiedTraceId ? "Copied!" : "Copy Full Trace ID"}
+                  style={{ padding: '2px', height: '20px', width: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  {copiedTraceId ? (
+                    <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
+                  ) : (
+                    <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
             <div className="trace-meta-item">
               <span className="trace-meta-label">Root Service</span>
-              <span className="trace-meta-value" style={{ fontWeight: 600 }}>{trace.serviceName}</span>
+              <span className="trace-meta-value" style={{ fontWeight: 600, marginTop: '2px' }}>{trace.serviceName}</span>
             </div>
             <div className="trace-meta-item">
               <span className="trace-meta-label">Namespace</span>
-              <span className="trace-meta-value"><span className="badge badge-ns">{trace.namespace}</span></span>
+              <div style={{ marginTop: '2px' }}>
+                <span className="badge badge-ns">{trace.namespace}</span>
+              </div>
             </div>
             <div className="trace-meta-item">
               <span className="trace-meta-label">Duration</span>
-              <span className="trace-meta-value" style={{ color: 'var(--accent-cyan)' }}>{trace.durationMs.toFixed(2)}ms</span>
+              <span className="trace-meta-value" style={{ color: 'var(--accent-cyan)', fontWeight: 600, marginTop: '2px' }}>{trace.durationMs.toFixed(2)}ms</span>
             </div>
             <div className="trace-meta-item">
               <span className="trace-meta-label">Spans</span>
-              <span className="trace-meta-value">{trace.spanCount}</span>
+              <span className="trace-meta-value" style={{ fontWeight: 600, marginTop: '2px' }}>{trace.spanCount}</span>
             </div>
             <div className="trace-meta-item">
               <span className="trace-meta-label">Status</span>
-              <span className={`badge ${trace.hasError ? 'badge-error' : 'badge-ok'}`} style={{ marginTop: '2px' }}>
-                {trace.hasError ? 'ERROR' : 'OK'}
-              </span>
+              <div style={{ marginTop: '2px' }}>
+                <span className={`badge ${trace.hasError ? 'badge-error' : 'badge-ok'}`}>
+                  {trace.hasError ? 'ERROR' : 'OK'}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -1612,47 +1764,232 @@ export default function TraceDetail() {
 
         .drawer-tabs {
           display: flex;
+          background: var(--bg-tertiary);
+          padding: 6px;
+          gap: 4px;
           border-bottom: 1px solid var(--border-primary);
-          background: var(--bg-secondary);
         }
 
         .drawer-tab-btn {
           flex: 1;
-          padding: 12px;
+          padding: 8px 12px;
           background: transparent;
           border: none;
           color: var(--text-secondary);
-          font-size: 11.5px;
+          font-size: 11px;
           font-weight: 600;
           cursor: pointer;
-          border-bottom: 2px solid transparent;
-          transition: color 0.15s, border-color 0.15s;
+          border-radius: 6px;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
           text-align: center;
         }
         .drawer-tab-btn:hover {
           color: var(--text-primary);
+          background: rgba(0, 0, 0, 0.03);
+        }
+        body.dark-theme .drawer-tab-btn:hover {
+          background: rgba(255, 255, 255, 0.03);
         }
         .drawer-tab-btn.active {
-          color: var(--accent-indigo);
-          border-bottom-color: var(--accent-indigo);
+          color: var(--accent-indigo) !important;
+          background: var(--bg-secondary);
+          box-shadow: var(--shadow-sm);
         }
 
-        /* Small copy button inside table cells */
-        .copy-btn-cell {
+        /* Overview Metric Card Styles */
+        .overview-metric-card {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-primary);
+          padding: 14px 16px;
+          border-radius: 8px;
+          box-shadow: var(--shadow-sm);
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+        }
+        .overview-metric-card.duration {
+          border-left: 3px solid var(--accent-cyan);
+        }
+        .overview-metric-card.status {
+          border-left: 3px solid var(--accent-indigo);
+        }
+        .metric-card-label {
+          font-size: 9.5px;
+          color: var(--text-tertiary);
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .metric-card-val {
+          font-size: 18px;
+          font-weight: 800;
+          color: var(--text-primary);
+          font-family: var(--font-mono);
+          margin-top: 4px;
+        }
+        .metric-card-sub {
+          font-size: 10px;
+          color: var(--text-secondary);
+          margin-top: 2px;
+        }
+
+        /* Grouped Attribute Card Styles */
+        .attr-group-card {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-primary);
+          border-radius: 8px;
+          overflow: hidden;
+          margin-bottom: 12px;
+          box-shadow: var(--shadow-sm);
+        }
+        .attr-group-title {
+          font-size: 10px;
+          font-weight: 700;
+          color: var(--text-tertiary);
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          background: var(--bg-tertiary);
+          padding: 8px 12px;
+          border-bottom: 1px solid var(--border-primary);
+        }
+        .attr-group-list {
+          display: flex;
+          flex-direction: column;
+        }
+        .attr-row {
+          padding: 10px 12px;
+          border-bottom: 1px solid var(--border-primary);
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          transition: background 0.15s ease;
+        }
+        .attr-row:last-child {
+          border-bottom: none;
+        }
+        .attr-row:hover {
+          background: var(--bg-hover);
+        }
+        .attr-row-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+        }
+        .attr-row-label {
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--text-tertiary);
+        }
+        .attr-row-key {
+          font-size: 11.5px;
+          font-weight: 600;
+          color: var(--text-secondary);
+          font-family: var(--font-mono);
+          word-break: break-all;
+        }
+        .attr-row-value {
+          font-size: 12px;
+          color: var(--text-primary);
+          font-family: var(--font-mono);
+          word-break: break-all;
+          background: var(--bg-tertiary);
+          padding: 6px 10px;
+          border-radius: 4px;
+          border: 1px solid var(--border-primary);
+          margin-top: 2px;
+          white-space: pre-wrap;
+        }
+        .attr-row-value-mini {
+          font-size: 11.5px;
+          font-family: var(--font-mono);
+          color: var(--text-primary);
+          word-break: break-all;
+          margin-top: 1px;
+        }
+        .attr-copy-btn {
           background: transparent;
           border: none;
+          color: var(--text-muted);
           cursor: pointer;
-          font-size: 11px;
-          padding: 2px 4px;
+          padding: 4px;
           border-radius: 4px;
-          transition: transform 0.1s, background 0.1s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s ease;
         }
-        .copy-btn-cell:hover {
+        .attr-copy-btn:hover {
+          color: var(--accent-indigo);
+          background: var(--bg-active);
+          transform: scale(1.1);
+        }
+
+        /* Failure Details Diagnostic Card Styles */
+        .failure-banner {
+          background: rgba(244, 63, 94, 0.04);
+          border: 1px solid rgba(244, 63, 94, 0.15);
+          border-left: 4px solid var(--accent-rose);
+          border-radius: 8px;
+          padding: 12px 16px;
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+        }
+        .failure-icon-wrapper {
+          color: var(--accent-rose);
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+        .failure-title {
+          font-size: 10.5px;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: var(--accent-rose);
+          letter-spacing: 0.5px;
+        }
+        .failure-msg {
+          font-size: 12.5px;
+          color: var(--text-primary);
+          font-weight: 600;
+          word-break: break-all;
+          margin-top: 2px;
+        }
+        .stacktrace-container {
+          display: flex;
+          flex-direction: column;
+          border: 1px solid var(--border-primary);
+          border-radius: 8px;
+          overflow: hidden;
+          background: #090d16;
+        }
+        body.dark-theme .stacktrace-container {
+          background: #070a10;
+        }
+        .stacktrace-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
           background: var(--bg-tertiary);
-          transform: scale(1.15);
+          padding: 6px 12px;
+          font-size: 9.5px;
+          font-weight: 700;
+          color: var(--text-secondary);
+          text-transform: uppercase;
+          border-bottom: 1px solid var(--border-primary);
         }
-        .copy-btn-cell:active {
-          transform: scale(0.95);
+        .stacktrace-pre {
+          margin: 0;
+          padding: 12px;
+          overflow-x: auto;
+          max-height: 400px;
+        }
+        .stacktrace-pre code {
+          font-family: var(--font-mono);
+          font-size: 10.5px;
+          color: #f1f5f9;
+          white-space: pre-wrap;
+          word-break: break-all;
         }
 
         /* Header control overlay buttons */
@@ -1745,6 +2082,44 @@ export default function TraceDetail() {
           color: var(--text-primary);
           font-family: var(--font-mono);
           font-weight: 600;
+        }
+
+        /* Top Grid Metadata Separators */
+        .trace-meta {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+          gap: 16px;
+          padding: 18px 24px;
+          background: var(--bg-card);
+          border: 1px solid var(--border-primary);
+          border-radius: var(--radius-lg);
+          box-shadow: var(--shadow-sm);
+        }
+        @media (min-width: 768px) {
+          .trace-meta {
+            grid-template-columns: 2fr 1.2fr 1fr 1fr 1fr 1fr;
+          }
+        }
+        .trace-meta-item {
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          position: relative;
+        }
+        .trace-meta-item:not(:last-child)::after {
+          content: '';
+          position: absolute;
+          right: -8px;
+          top: 15%;
+          bottom: 15%;
+          width: 1px;
+          background-color: var(--border-primary);
+          opacity: 0.6;
+        }
+        @media (max-width: 767px) {
+          .trace-meta-item:not(:last-child)::after {
+            display: none;
+          }
         }
       `}</style>
     </div>
