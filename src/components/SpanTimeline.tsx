@@ -77,6 +77,39 @@ export function getSpanDestination(span: Span): DestinationInfo {
   return { type: null, name: '' };
 }
 
+export function getSpanInlineSummary(span: Span): string | null {
+  const attrs = span.attributes || {};
+  
+  // 1. HTTP calls
+  if (attrs['http.method']) {
+    const method = attrs['http.method'];
+    const status = attrs['http.status_code'] || attrs['http.status'];
+    return status ? `${method} (${status})` : `${method}`;
+  }
+  
+  // 2. Database calls
+  if (attrs['db.system']) {
+    const statement = attrs['db.statement'];
+    if (statement) {
+      // Truncate SQL query to show first 40 chars
+      return statement.length > 40 ? `${statement.slice(0, 40)}...` : statement;
+    }
+    return attrs['db.system'];
+  }
+  
+  // 3. RPC calls
+  if (attrs['rpc.method']) {
+    return `rpc: ${attrs['rpc.method']}`;
+  }
+
+  // 4. Messaging
+  if (attrs['messaging.operation']) {
+    return `msg: ${attrs['messaging.operation']}`;
+  }
+
+  return null;
+}
+
 interface SpanTimelineProps {
   spans: Span[];
   traceStartTime: number;
@@ -234,6 +267,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
     const color = svcColor(span.serviceName);
     const attrs = span.attributes || {};
     const dest = getSpanDestination(span);
+    const inlineSummary = getSpanInlineSummary(span);
 
     const isDbOrInternal = span.kind === 'INTERNAL' || kindInfo.label === 'INT' || kindInfo.label === 'CLI' || !!attrs['db.system'] || !!attrs['db.statement'];
     if (hideInternalDb && isDbOrInternal) {
@@ -336,13 +370,13 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
             transition: 'opacity 0.2s, background 0.15s',
             display: 'flex',
             alignItems: 'center',
-            padding: '1px 8px 1px 0',
+            padding: '3px 8px 3px 0',
             borderBottom: '1px solid var(--border-primary)',
-            minHeight: '26px'
+            minHeight: '34px'
           }}
           onClick={() => onSelectSpan && onSelectSpan(span)}
         >
-          {/* Tree and Name Column (40% Width) */}
+          {/* Tree and Name Column (42% Width) */}
           <div className="waterfall-label" style={{ 
             width: '42%', 
             minWidth: '320px', 
@@ -358,13 +392,11 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
               {guides}
             </div>
 
-            {/* Tree Toggle Arrow (+ / - style) */}
+            {/* Tree Toggle Arrow (Chevron SVG style) */}
             <span 
               className="expanded-arrow" 
               style={{ 
                 marginRight: '5px', 
-                fontSize: '8.5px',
-                color: 'var(--text-secondary)',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -381,7 +413,33 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
                 if (children.length > 0) toggleCollapse(span.spanId);
               }}
             >
-              {children.length > 0 ? (isCollapsed ? '+' : '−') : '•'}
+              {children.length > 0 ? (
+                <svg 
+                  viewBox="0 0 24 24" 
+                  width="10" 
+                  height="10" 
+                  stroke="currentColor" 
+                  strokeWidth="3.5" 
+                  fill="none" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  style={{
+                    transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                    transition: 'transform var(--transition-fast)',
+                    color: 'var(--text-secondary)'
+                  }}
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              ) : (
+                <span style={{
+                  width: '3.5px',
+                  height: '3.5px',
+                  borderRadius: '50%',
+                  background: 'var(--text-muted)',
+                  opacity: 0.5
+                }} />
+              )}
             </span>
 
             {/* Child Spans Count Pill */}
@@ -403,7 +461,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
 
             {/* Span service/operation name (Stacked layout) */}
             <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1, paddingLeft: '2px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', flexWrap: 'wrap' }}>
                 <span className="waterfall-name" title={span.name} style={{ 
                   fontWeight: 600, 
                   color: isError ? 'var(--accent-rose)' : 'var(--text-primary)', 
@@ -428,6 +486,41 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
                 }}>
                   {kindInfo.label}
                 </span>
+
+                {isError && (
+                  <span style={{
+                    color: 'var(--accent-rose)',
+                    fontSize: '9px',
+                    fontWeight: 700,
+                    background: 'rgba(244, 63, 94, 0.1)',
+                    padding: '0px 4px',
+                    borderRadius: '3px',
+                    border: '1px solid rgba(244, 63, 94, 0.2)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    flexShrink: 0
+                  }} title={span.error || "Span failed"}>
+                    ⚠ error
+                  </span>
+                )}
+
+                {inlineSummary && (
+                  <span className="span-summary-badge" style={{
+                    fontSize: '9px',
+                    fontFamily: 'var(--font-mono)',
+                    padding: '0px 5px',
+                    borderRadius: '3px',
+                    background: 'var(--bg-tertiary)',
+                    color: 'var(--text-secondary)',
+                    border: '1px solid var(--border-primary)',
+                    textOverflow: 'ellipsis',
+                    overflow: 'hidden',
+                    whiteSpace: 'nowrap',
+                    maxWidth: '180px'
+                  }} title={span.attributes?.['db.statement'] || inlineSummary}>
+                    {inlineSummary}
+                  </span>
+                )}
               </div>
 
               {/* Service name below operation */}
@@ -474,6 +567,11 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
             alignItems: 'center',
             background: 'transparent'
           }}>
+            {/* Vertical timeline grid lines */}
+            <div className="row-grid-line" style={{ left: '25%' }} />
+            <div className="row-grid-line" style={{ left: '50%' }} />
+            <div className="row-grid-line" style={{ left: '75%' }} />
+
             <div
               className={`waterfall-bar ${isError ? 'error' : isCritical ? 'critical' : ''}`}
               style={{
@@ -481,10 +579,14 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
                 left: `${Math.max(0, offsetPercent)}%`,
                 width: `${Math.max(0.8, widthPercent)}%`,
                 minWidth: '4px',
-                background: isError ? 'var(--accent-rose)' : isCritical ? 'var(--accent-amber)' : color,
+                background: isError 
+                  ? 'linear-gradient(90deg, var(--accent-rose), #e11d48)' 
+                  : isCritical 
+                    ? 'linear-gradient(90deg, var(--accent-amber), #d97706)' 
+                    : `linear-gradient(90deg, ${color}, ${color}cc)`,
                 boxShadow: isCritical ? '0 0 6px rgba(245, 158, 11, 0.2)' : undefined,
-                height: '4px',
-                borderRadius: '2px'
+                height: '12px',
+                borderRadius: '3px'
               }}
             />
 
@@ -498,8 +600,9 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
               fontFamily: 'var(--font-mono)',
               whiteSpace: 'nowrap',
               background: isBarFarRight ? 'var(--bg-secondary)' : 'transparent',
-              padding: isBarFarRight ? '0 2px' : '0',
-              borderRadius: '2px'
+              padding: isBarFarRight ? '0 3px' : '0',
+              borderRadius: '2px',
+              fontWeight: 600
             }}>
               {formatDuration(span.durationMs)}
             </span>
@@ -587,14 +690,16 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
       </div>
 
       {/* 3. Sticky Time Ruler Grid Header */}
-      <div className="waterfall-header-sticky" style={{ padding: '6px 12px' }}>
-        <div className="ruler-label-section" style={{ fontSize: '10px' }}>Spans & Hierarchy</div>
-        <div className="ruler-grid-section" style={{ fontSize: '9px' }}>
-          <div className="ruler-tick">0%</div>
-          <div className="ruler-tick">25%</div>
-          <div className="ruler-tick">50%</div>
-          <div className="ruler-tick">75%</div>
-          <div className="ruler-tick">100%</div>
+      <div className="waterfall-header-sticky" style={{ padding: '8px 8px 8px 0', borderLeft: '3px solid transparent' }}>
+        <div className="ruler-label-section" style={{ width: '42%', minWidth: '320px', flexShrink: 0, fontSize: '10px', paddingLeft: '12px' }}>
+          Spans & Hierarchy
+        </div>
+        <div className="ruler-grid-section" style={{ flex: 1, position: 'relative', height: '16px', fontSize: '9px' }}>
+          <div className="ruler-tick" style={{ position: 'absolute', left: '0%', transform: 'translateX(0%)' }}>0%</div>
+          <div className="ruler-tick" style={{ position: 'absolute', left: '25%', transform: 'translateX(-50%)' }}>25%</div>
+          <div className="ruler-tick" style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>50%</div>
+          <div className="ruler-tick" style={{ position: 'absolute', left: '75%', transform: 'translateX(-50%)' }}>75%</div>
+          <div className="ruler-tick" style={{ position: 'absolute', left: '100%', transform: 'translateX(-100%)' }}>100%</div>
         </div>
       </div>
 
@@ -733,22 +838,28 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
         }
         
         .ruler-label-section {
-          width: 40%;
-          min-width: 260px;
+          width: 42%;
+          min-width: 320px;
           flex-shrink: 0;
         }
         
         .ruler-grid-section {
           flex: 1;
-          display: flex;
-          justify-content: space-between;
-          padding-left: 16px;
           position: relative;
         }
         
         .ruler-tick {
-          position: relative;
           color: var(--text-muted);
+        }
+
+        .row-grid-line {
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          width: 1px;
+          background-color: var(--border-primary);
+          opacity: 0.12;
+          pointer-events: none;
         }
         
         .span-kind-badge {

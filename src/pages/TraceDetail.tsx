@@ -1183,6 +1183,35 @@ export default function TraceDetail() {
   const [selectedSpan, setSelectedSpan] = useState<Span | null>(null);
   const navigate = useNavigate();
 
+  // Sidebar drag-resize states
+  const [sidebarWidth, setSidebarWidth] = useState(480);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const startResize = (mouseDownEvent: React.MouseEvent) => {
+    mouseDownEvent.preventDefault();
+    setIsDragging(true);
+
+    const startWidth = sidebarWidth;
+    const startX = mouseDownEvent.clientX;
+
+    const doDrag = (mouseMoveEvent: MouseEvent) => {
+      const deltaX = mouseMoveEvent.clientX - startX;
+      const newWidth = startWidth - deltaX;
+      if (newWidth >= 300 && newWidth <= window.innerWidth * 0.85) {
+        setSidebarWidth(newWidth);
+      }
+    };
+
+    const stopDrag = () => {
+      setIsDragging(false);
+      document.removeEventListener('mousemove', doDrag);
+      document.removeEventListener('mouseup', stopDrag);
+    };
+
+    document.addEventListener('mousemove', doDrag);
+    document.addEventListener('mouseup', stopDrag);
+  };
+
   useEffect(() => {
     if (selectedSpan) {
       document.body.classList.add('drawer-open');
@@ -1393,7 +1422,14 @@ export default function TraceDetail() {
         {selectedSpan && (
           <>
             <div className="trace-sidebar-backdrop" onClick={() => setSelectedSpan(null)} />
-            <div className="trace-detail-sidebar">
+            <div 
+              className={`trace-detail-sidebar ${isDragging ? 'resizing' : ''}`}
+              style={{ width: `${sidebarWidth}px`, minWidth: `${sidebarWidth}px` }}
+            >
+              <div 
+                className={`sidebar-drag-handle ${isDragging ? 'active' : ''}`} 
+                onMouseDown={startResize} 
+              />
               <SpanDrawerContent 
                 span={selectedSpan} 
                 traceDuration={trace.durationMs}
@@ -1472,6 +1508,37 @@ export default function TraceDetail() {
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
           z-index: 100;
           animation: slideInRight 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          position: relative;
+        }
+
+        .sidebar-drag-handle {
+          position: absolute;
+          left: -4px;
+          top: 0;
+          bottom: 0;
+          width: 8px;
+          cursor: col-resize;
+          z-index: 200;
+          background: transparent;
+        }
+
+        .sidebar-drag-handle::after {
+          content: '';
+          position: absolute;
+          left: 3px;
+          top: 0;
+          bottom: 0;
+          width: 2px;
+          background-color: var(--border-primary);
+          transition: background-color 0.15s, width 0.15s, left 0.15s;
+        }
+
+        .sidebar-drag-handle:hover::after,
+        .sidebar-drag-handle.active::after {
+          background-color: var(--accent-indigo);
+          width: 4px;
+          left: 2px;
+          box-shadow: 0 0 8px var(--accent-indigo);
         }
 
         .trace-sidebar-backdrop {
@@ -1494,9 +1561,9 @@ export default function TraceDetail() {
             flex-direction: column;
           }
           .trace-detail-sidebar {
-            width: 100%;
-            max-width: 500px;
-            min-width: unset;
+            width: 100% !important;
+            max-width: 500px !important;
+            min-width: unset !important;
             position: fixed;
             top: 0;
             right: 0;
@@ -1507,6 +1574,9 @@ export default function TraceDetail() {
             box-shadow: -10px 0 30px rgba(0, 0, 0, 0.25);
             z-index: 1000;
             animation: slideOverlay 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+          .sidebar-drag-handle {
+            display: none !important;
           }
           .trace-sidebar-backdrop {
             display: block;
