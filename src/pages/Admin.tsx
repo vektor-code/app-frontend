@@ -22,7 +22,10 @@ export default function Admin() {
         api.getClusters().catch(() => ({ clusters: ['default'] })),
       ]);
 
-      setNsData(namespacesRes);
+      setNsData({
+        enabled: namespacesRes?.enabled || [],
+        disabled: namespacesRes?.disabled || []
+      });
       setInfraConfig(configRes);
       setClusters(clustersRes.clusters || ['default']);
     } catch (err: any) {
@@ -125,7 +128,7 @@ export default function Admin() {
                 </tr>
               </thead>
               <tbody>
-                {nsData.enabled.map((ns) => (
+                {(nsData?.enabled || []).map((ns) => (
                   <tr key={ns}>
                     <td style={{ fontWeight: 600 }}>{ns}</td>
                     <td>
@@ -145,7 +148,7 @@ export default function Admin() {
                     </td>
                   </tr>
                 ))}
-                {nsData.disabled.map((ns) => (
+                {(nsData?.disabled || []).map((ns) => (
                   <tr key={ns}>
                     <td style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{ns}</td>
                     <td>
@@ -165,7 +168,7 @@ export default function Admin() {
                     </td>
                   </tr>
                 ))}
-                {nsData.enabled.length === 0 && nsData.disabled.length === 0 && (
+                {(nsData?.enabled || []).length === 0 && (nsData?.disabled || []).length === 0 && (
                   <tr>
                     <td colSpan={3} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                       No active namespaces detected
