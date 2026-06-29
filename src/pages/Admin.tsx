@@ -13,12 +13,7 @@ export default function Admin() {
   
   // Interaction States
   const [togglingNs, setTogglingNs] = useState<string | null>(null);
-  const [editMode, setEditMode] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newNsName, setNewNsName] = useState('');
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
-  const [addingNs, setAddingNs] = useState(false);
-  const [deletingNs, setDeletingNs] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -51,44 +46,38 @@ export default function Admin() {
     setTogglingNs(namespace);
     try {
       await api.toggleNamespace(namespace, makeDisabled);
-      await fetchData();
+      
+      // Real-time optimistic update of the local state so the user sees changes instantly
+      setNsData(prev => {
+        const enabled = [...prev.enabled];
+        const disabled = [...prev.disabled];
+        
+        if (makeDisabled) {
+          const idx = enabled.indexOf(namespace);
+          if (idx !== -1) {
+            enabled.splice(idx, 1);
+            disabled.push(namespace);
+          }
+        } else {
+          const idx = disabled.indexOf(namespace);
+          if (idx !== -1) {
+            disabled.splice(idx, 1);
+            enabled.push(namespace);
+          }
+        }
+        
+        // Keep lists alphabetically sorted for neatness
+        enabled.sort();
+        disabled.sort();
+        
+        return { enabled, disabled };
+      });
+
       setActionSuccessMessage(`Successfully ${makeDisabled ? 'disabled' : 'enabled'} ingestion for namespace "${namespace}"!`);
     } catch (err: any) {
       setError(err.message || 'Failed to update namespace status');
     } finally {
       setTogglingNs(null);
-    }
-  };
-
-  const handleAddNamespace = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newNsName.trim()) return;
-    setAddingNs(true);
-    setError(null);
-    try {
-      await api.addNamespace(newNsName.trim());
-      setNewNsName('');
-      setShowAddModal(false);
-      await fetchData();
-      setActionSuccessMessage(`Successfully registered namespace "${newNsName.trim()}"!`);
-    } catch (err: any) {
-      setError(err.message || 'Failed to add namespace');
-    } finally {
-      setAddingNs(false);
-    }
-  };
-
-  const handleDeleteNamespace = async (namespace: string) => {
-    if (!window.confirm(`Are you sure you want to completely remove namespace "${namespace}"?`)) return;
-    setDeletingNs(namespace);
-    try {
-      await api.deleteNamespace(namespace);
-      await fetchData();
-      setActionSuccessMessage(`Successfully removed namespace "${namespace}"!`);
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete namespace');
-    } finally {
-      setDeletingNs(null);
     }
   };
 
@@ -248,43 +237,10 @@ export default function Admin() {
       {/* Tab Contents */}
       {activeTab === 'namespaces' && (
         <div>
-          {/* Header Controls for Namespace Manager */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <div>
-              <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>Ingestion Registry</h2>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Toggle tracing status dynamically or register/delete namespace contexts.</span>
-            </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              {editMode && (
-                <button
-                  type="button"
-                  className="btn btn-indigo"
-                  style={{ borderRadius: '18px', padding: '6px 14px', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  onClick={() => setShowAddModal(true)}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  Add Namespace
-                </button>
-              )}
-              <button
-                type="button"
-                className={`btn ${editMode ? 'btn-rose' : 'btn-ghost'}`}
-                style={{
-                  borderRadius: '18px',
-                  padding: '6px 14px',
-                  fontSize: '12.5px',
-                  border: '1px solid var(--border-primary)',
-                  background: editMode ? 'var(--accent-rose)' : 'var(--bg-secondary)',
-                  color: editMode ? '#ffffff' : 'var(--text-secondary)'
-                }}
-                onClick={() => setEditMode(!editMode)}
-              >
-                {editMode ? 'Exit Edit Mode' : 'Edit Configuration'}
-              </button>
-            </div>
+          {/* Header for Namespace Manager */}
+          <div style={{ marginBottom: '20px' }}>
+            <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>Ingestion Control</h2>
+            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Toggle tracing ingestion status dynamically. Disabled namespaces completely drop telemetry events at the collector.</span>
           </div>
 
           {/* Cards Layout Grid */}
@@ -327,25 +283,6 @@ export default function Admin() {
                   >
                     Disable Ingestion
                   </button>
-
-                  {editMode && (
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      style={{ color: 'var(--accent-rose)', padding: '4px', borderRadius: '50%' }}
-                      disabled={deletingNs === ns}
-                      onClick={() => handleDeleteNamespace(ns)}
-                    >
-                      {deletingNs === ns ? '...' : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          <line x1="10" y1="11" x2="10" y2="17" />
-                          <line x1="14" y1="11" x2="14" y2="17" />
-                        </svg>
-                      )}
-                    </button>
-                  )}
                 </div>
               </div>
             ))}
@@ -388,25 +325,6 @@ export default function Admin() {
                   >
                     Enable Ingestion
                   </button>
-
-                  {editMode && (
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      style={{ color: 'var(--accent-rose)', padding: '4px', borderRadius: '50%' }}
-                      disabled={deletingNs === ns}
-                      onClick={() => handleDeleteNamespace(ns)}
-                    >
-                      {deletingNs === ns ? '...' : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          <line x1="10" y1="11" x2="10" y2="17" />
-                          <line x1="14" y1="11" x2="14" y2="17" />
-                        </svg>
-                      )}
-                    </button>
-                  )}
                 </div>
               </div>
             ))}
@@ -414,63 +332,9 @@ export default function Admin() {
             {/* Empty view check */}
             {nsData.enabled.length === 0 && nsData.disabled.length === 0 && (
               <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', background: 'var(--bg-secondary)', border: '1px dashed var(--border-primary)', borderRadius: '16px', color: 'var(--text-secondary)' }}>
-                No active tracking namespaces registered. Use Edit Mode to add one!
+                No active tracking namespaces registered.
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Add Namespace Modal Overlay */}
-      {showAddModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(10, 14, 23, 0.7)',
-          backdropFilter: 'blur(4px)',
-          zIndex: 200,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-          <div className="card animate-fade-in" style={{ width: '400px', border: '1px solid var(--border-primary)', background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-lg)' }}>
-            <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="card-title">Register Namespace</span>
-              <button type="button" className="btn btn-ghost" onClick={() => setShowAddModal(false)} style={{ padding: '2px 8px' }}>✕</button>
-            </div>
-            <form onSubmit={handleAddNamespace} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                  Namespace Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="econtract-dev"
-                  value={newNsName}
-                  onChange={(e) => setNewNsName(e.target.value)}
-                  style={{
-                    width: '100%',
-                    background: 'var(--bg-primary)',
-                    border: '1px solid var(--border-primary)',
-                    borderRadius: '8px',
-                    padding: '8px 12px',
-                    fontSize: '13.5px',
-                    color: 'var(--text-primary)',
-                    outline: 'none',
-                    transition: 'border 0.2s',
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = 'var(--accent-indigo)'}
-                  onBlur={(e) => e.target.style.borderColor = 'var(--border-primary)'}
-                  required
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
-                <button type="button" className="btn btn-ghost" onClick={() => setShowAddModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-indigo" disabled={addingNs}>
-                  {addingNs ? 'Registering...' : 'Register'}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
