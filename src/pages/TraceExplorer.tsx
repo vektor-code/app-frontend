@@ -4,6 +4,7 @@ import { api, type TraceListItem } from '../api/client';
 
 interface TraceExplorerProps {
   namespace: string;
+  cluster: string;
 }
 
 const SERVICE_COLORS: Record<string, string> = {};
@@ -21,7 +22,7 @@ function getServiceColor(name: string): string {
   return SERVICE_COLORS[name];
 }
 
-export default function TraceExplorer({ namespace }: TraceExplorerProps) {
+export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps) {
   const [traces, setTraces] = useState<TraceListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [services, setServices] = useState<string[]>([]);
@@ -53,6 +54,7 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
       setLoading(true);
       const params: Record<string, string> = { limit: '100' };
       if (namespace) params.namespace = namespace;
+      if (cluster) params.cluster = cluster;
       if (serviceFilter) params.service = serviceFilter;
       if (errorFilter) params.hasError = errorFilter;
       if (operationFilter) params.operation = operationFilter;
@@ -67,7 +69,7 @@ export default function TraceExplorer({ namespace }: TraceExplorerProps) {
     } finally {
       setLoading(false);
     }
-  }, [namespace, serviceFilter, errorFilter, operationFilter, traceIdFilter, minSpans, minDuration]);
+  }, [namespace, cluster, serviceFilter, errorFilter, operationFilter, traceIdFilter, minSpans, minDuration]);
 
   useEffect(() => { loadTraces(); }, [loadTraces]);
 

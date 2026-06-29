@@ -145,6 +145,12 @@ class ApiClient {
   getHealth() { return this.get<{ status: string }>('/health'); }
   getNamespaces() { return this.get<{ namespaces: string[] }>('/namespaces'); }
   getStats() { return this.get<{ namespaces: NamespaceStats[] }>('/stats'); }
+  getClusters() { return this.get<{ clusters: string[] }>('/clusters'); }
+  getAdminConfig() { return this.get<any>('/admin/config'); }
+  getNamespaceStatuses() { return this.get<{ enabled: string[]; disabled: string[] }>('/admin/namespaces'); }
+  toggleNamespace(namespace: string, disabled: boolean) {
+    return this.post<{ success: boolean }>('/admin/namespaces/toggle', { namespace, disabled });
+  }
 
   getTraces(params?: Record<string, string>) {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';

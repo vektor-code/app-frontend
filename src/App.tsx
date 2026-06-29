@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import { api, type NamespaceStats } from './api/client';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
@@ -10,6 +10,7 @@ import DbAnalytics from './pages/DbAnalytics';
 import LiveStream from './pages/LiveStream';
 import Login from './pages/Login';
 import Dependencies from './pages/Dependencies';
+import Admin from './pages/Admin';
 
 
 export default function App() {
@@ -20,9 +21,19 @@ export default function App() {
     return localStorage.getItem('selectedNamespace') || '';
   });
 
+  const [selectedCluster, setSelectedCluster] = useState(() => {
+    return localStorage.getItem('selectedCluster') || '';
+  });
+  const [clusters, setClusters] = useState<string[]>([]);
+
   const handleNamespaceChange = useCallback((ns: string) => {
     setSelectedNamespace(ns);
     localStorage.setItem('selectedNamespace', ns);
+  }, []);
+
+  const handleClusterChange = useCallback((cluster: string) => {
+    setSelectedCluster(cluster);
+    localStorage.setItem('selectedCluster', cluster);
   }, []);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -71,9 +82,10 @@ export default function App() {
 
   const loadStats = useCallback(async () => {
     try {
-      const [statsData, nsData] = await Promise.all([
+      const [statsData, nsData, clustersData] = await Promise.all([
         api.getStats(),
         api.getNamespaces().catch(() => ({ namespaces: [] as string[] })),
+        api.getClusters().catch(() => ({ clusters: [] as string[] })),
       ]);
       const statsNs = statsData.namespaces || [];
       const statsMap = new Map(statsNs.map(ns => [ns.namespace, ns]));
@@ -94,6 +106,7 @@ export default function App() {
       }
 
       setNamespaces(statsNs);
+      setClusters(clustersData.clusters || []);
       setConnected(true);
     } catch {
       setConnected(false);
@@ -185,6 +198,7 @@ export default function App() {
         }}
         collapsed={sidebarCollapsed}
         onToggleCollapse={handleToggleSidebar}
+        user={user}
       />
       <div className="app-main">
         <header className="app-header">
@@ -196,6 +210,30 @@ export default function App() {
             )}
           </div>
           <div className="header-actions">
+            {/* Cluster Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
+              <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 600, color: 'var(--text-secondary)' }}>Cluster:</span>
+              <select
+                value={selectedCluster}
+                onChange={(e) => handleClusterChange(e.target.value)}
+                style={{
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: '12px',
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  outline: 'none',
+                }}
+              >
+                <option value="">All Clusters</option>
+                {clusters.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
             <button className="btn btn-ghost" onClick={toggleTheme} style={{ borderRadius: '50%', width: '36px', height: '36px', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }} title="Toggle Theme">
               {isDark ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -254,13 +292,14 @@ export default function App() {
         </header>
         <main className="app-content">
           <Routes>
-            <Route path="/" element={<Dashboard namespaces={namespaces} selectedNamespace={selectedNamespace} onSelectNamespace={handleNamespaceChange} />} />
-            <Route path="/traces" element={<TraceExplorer namespace={selectedNamespace} />} />
+             <Route path="/" element={<Dashboard namespaces={namespaces} selectedNamespace={selectedNamespace} onSelectNamespace={handleNamespaceChange} />} />
+            <Route path="/traces" element={<TraceExplorer namespace={selectedNamespace} cluster={selectedCluster} />} />
             <Route path="/traces/:traceId" element={<TraceDetail />} />
             <Route path="/servicemap" element={<ServiceMap namespace={selectedNamespace} collapsed={sidebarCollapsed} />} />
             <Route path="/dependencies" element={<Dependencies namespace={selectedNamespace} />} />
             <Route path="/database" element={<DbAnalytics namespace={selectedNamespace} />} />
             <Route path="/live" element={<LiveStream namespace={selectedNamespace} />} />
+            <Route path="/admin" element={user?.role === 'admin' ? <Admin /> : <Navigate to="/" replace />} />
 
           </Routes>
         </main>
