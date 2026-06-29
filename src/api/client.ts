@@ -151,6 +151,12 @@ class ApiClient {
   toggleNamespace(namespace: string, disabled: boolean) {
     return this.post<{ success: boolean }>('/admin/namespaces/toggle', { namespace, disabled });
   }
+  addNamespace(namespace: string) {
+    return this.post<{ success: boolean }>('/admin/namespaces/add', { namespace });
+  }
+  deleteNamespace(namespace: string) {
+    return this.post<{ success: boolean }>('/admin/namespaces/delete', { namespace });
+  }
 
   getTraces(params?: Record<string, string>) {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';

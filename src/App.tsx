@@ -211,8 +211,8 @@ export default function App() {
           </div>
           <div className="header-actions">
             {/* Cluster Selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
-              <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 600, color: 'var(--text-secondary)' }}>Cluster:</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px', position: 'relative' }}>
+              <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-tertiary)' }}>Cluster:</span>
               <select
                 value={selectedCluster}
                 onChange={(e) => handleClusterChange(e.target.value)}
@@ -220,13 +220,22 @@ export default function App() {
                   background: 'var(--bg-secondary)',
                   color: 'var(--text-primary)',
                   border: '1px solid var(--border-primary)',
-                  borderRadius: '12px',
-                  padding: '4px 10px',
+                  borderRadius: '20px',
+                  padding: '6px 32px 6px 14px',
                   fontSize: '12px',
                   fontWeight: 600,
                   cursor: 'pointer',
                   outline: 'none',
+                  appearance: 'none',
+                  backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 10px center',
+                  backgroundSize: '14px',
+                  transition: 'all 0.2s',
+                  boxShadow: 'var(--shadow-sm)',
                 }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--border-secondary)'}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-primary)'}
               >
                 <option value="">All Clusters</option>
                 {clusters.map((c) => (
@@ -234,7 +243,27 @@ export default function App() {
                 ))}
               </select>
             </div>
-            <button className="btn btn-ghost" onClick={toggleTheme} style={{ borderRadius: '50%', width: '36px', height: '36px', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }} title="Toggle Theme">
+            <button
+              className="btn btn-ghost"
+              onClick={toggleTheme}
+              style={{
+                borderRadius: '50%',
+                width: '36px',
+                height: '36px',
+                padding: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--text-secondary)',
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border-primary)',
+                boxShadow: 'var(--shadow-sm)',
+                transition: 'all 0.2s',
+              }}
+              title="Toggle Theme"
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
               {isDark ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="5" />
@@ -253,9 +282,12 @@ export default function App() {
                 </svg>
               )}
             </button>
-            <div className="header-user" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '16px', fontSize: '12.5px', fontWeight: 500, color: 'var(--text-secondary)' }}>
-              <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
-                {(user?.username || user?.name || 'U').charAt(0)}
+            <div className="header-user" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 14px', background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '20px', fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', boxShadow: 'var(--shadow-sm)' }}>
+              <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-violet) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: 'auto' }}>
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
               </div>
               <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{user?.username || user?.name || 'User'}</span>
             </div>
