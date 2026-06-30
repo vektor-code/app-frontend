@@ -812,6 +812,13 @@ interface TopologyEdge {
 
 const getTopoEmoji = (name: string): string => {
   const n = name.toLowerCase();
+  // Frontend services
+  if (n.includes('frontend') || n.includes('ui') || n.includes('client')) return '🖥️';
+  // Backend microservices
+  if (n.includes('api')) return '🔌';
+  if (n.includes('ingestor')) return '📥';
+  if (n.includes('agent')) return '🕵️';
+  // Infrastructure / Databases / 3rd Party
   if (n.includes('postgres')) return '🐘';
   if (n.includes('mysql')) return '🐬';
   if (n.includes('redis')) return '⚡';
@@ -1023,7 +1030,7 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
               />
               {/* Icon */}
               <text x="-56" y="5" style={{ fontSize: '15px', userSelect: 'none' }}>
-                {node.type === 'service' ? '⚙️' : getTopoEmoji(node.name)}
+                {getTopoEmoji(node.name)}
               </text>
               {/* Name */}
               <text x="-34" y="-5" style={{ fontSize: '10.5px', fontWeight: 700, fill: 'var(--text-primary)', fontFamily: 'var(--font-sans)' }}>
