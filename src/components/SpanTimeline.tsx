@@ -592,13 +592,19 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
                 width: `${Math.max(0.8, widthPercent)}%`,
                 minWidth: '4px',
                 background: isError 
-                  ? 'linear-gradient(90deg, var(--accent-rose), #e11d48)' 
+                  ? 'linear-gradient(180deg, #fb7185 0%, #e11d48 100%)' 
                   : isCritical 
-                    ? 'linear-gradient(90deg, var(--accent-amber), #d97706)' 
-                    : `linear-gradient(90deg, ${color}, ${color}cc)`,
-                boxShadow: isCritical ? '0 0 6px rgba(245, 158, 11, 0.2)' : undefined,
-                height: '12px',
-                borderRadius: '3px'
+                    ? 'linear-gradient(180deg, #fbbf24 0%, #d97706 100%)' 
+                    : `linear-gradient(180deg, ${color} 0%, ${color}aa 100%)`,
+                boxShadow: isSelected 
+                  ? `0 0 12px ${color}, 0 0 4px rgba(255,255,255,0.3)` 
+                  : isError 
+                    ? '0 0 8px rgba(244, 63, 94, 0.35)' 
+                    : isCritical 
+                      ? '0 0 8px rgba(245, 158, 11, 0.35)' 
+                      : `0 1px 4px ${color}25`,
+                height: '13px',
+                borderRadius: '6px'
               }}
             />
 

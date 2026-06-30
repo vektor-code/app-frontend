@@ -69,6 +69,7 @@ export interface ServiceStats {
 
 export interface NamespaceStats {
   namespace: string;
+  cluster?: string;
   traceCount: number;
   errorCount: number;
   errorRate: number;
@@ -147,7 +148,11 @@ class ApiClient {
   getStats() { return this.get<{ namespaces: NamespaceStats[] }>('/stats'); }
   getClusters() { return this.get<{ clusters: string[] }>('/clusters'); }
   getAdminConfig() { return this.get<any>('/admin/config'); }
+  updateAdminConfig(config: any) { return this.post<{ success: boolean }>('/admin/config', config); }
   getNamespaceStatuses() { return this.get<{ enabled: string[]; disabled: string[] }>('/admin/namespaces'); }
+  getAdminInstrumentations() {
+    return this.get<{ instrumentations: { name: string; namespace: string; endpoint: string; sampler: string }[] }>('/admin/instrumentations');
+  }
   toggleNamespace(namespace: string, disabled: boolean) {
     return this.post<{ success: boolean }>('/admin/namespaces/toggle', { namespace, disabled });
   }

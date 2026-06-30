@@ -22,12 +22,171 @@ function getServiceColor(name: string): string {
   return SERVICE_COLORS[name];
 }
 
+function CustomDropdown({
+  options,
+  value,
+  onChange,
+  placeholder
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (val: string) => void;
+  placeholder: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const currentOption = options.find(o => o.value === value);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClose = () => setIsOpen(false);
+    window.addEventListener('click', handleClose);
+    return () => window.removeEventListener('click', handleClose);
+  }, [isOpen]);
+
+  return (
+    <div style={{ position: 'relative', width: '100%' }} onClick={e => e.stopPropagation()}>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          background: 'var(--bg-secondary)',
+          color: value ? 'var(--text-primary)' : 'var(--text-secondary)',
+          border: '1px solid var(--border-primary)',
+          borderRadius: '8px',
+          padding: '8px 12px',
+          fontSize: '13px',
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '8px',
+          boxShadow: isOpen ? '0 0 0 2px rgba(99, 102, 241, 0.2)' : 'none',
+          borderColor: isOpen ? 'var(--accent-indigo)' : 'var(--border-primary)',
+          transition: 'all 0.15s ease',
+          height: '36px'
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {currentOption ? currentOption.label : placeholder}
+        </span>
+        <svg 
+          viewBox="0 0 24 24" 
+          width="14" 
+          height="14" 
+          fill="none" 
+          stroke="var(--text-secondary)" 
+          strokeWidth="2.5" 
+          style={{ 
+            transform: isOpen ? 'rotate(180deg)' : 'none', 
+            transition: 'transform 0.15s ease',
+            flexShrink: 0
+          }}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+
+      {isOpen && (
+        <div 
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            left: 0,
+            right: 0,
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border-primary)',
+            borderRadius: '8px',
+            boxShadow: 'var(--shadow-lg), 0 10px 15px -3px rgba(0, 0, 0, 0.3)',
+            zIndex: 100,
+            maxHeight: '220px',
+            overflowY: 'auto',
+            padding: '4px',
+            animation: 'fadeIn 0.1s ease-out'
+          }}
+        >
+          {options.map(opt => (
+            <div
+              key={opt.value}
+              onClick={() => {
+                onChange(opt.value);
+                setIsOpen(false);
+              }}
+              style={{
+                padding: '8px 12px',
+                fontSize: '13px',
+                color: value === opt.value ? 'var(--accent-indigo)' : 'var(--text-primary)',
+                background: value === opt.value ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                transition: 'background 0.12s'
+              }}
+              onMouseEnter={e => {
+                if (value !== opt.value) e.currentTarget.style.background = 'var(--bg-hover)';
+              }}
+              onMouseLeave={e => {
+                if (value !== opt.value) e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '8px' }}>
+                {opt.label}
+              </span>
+              {value === opt.value && (
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--accent-indigo)" strokeWidth="3" style={{ flexShrink: 0 }}>
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps) {
   const [traces, setTraces] = useState<TraceListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [services, setServices] = useState<string[]>([]);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  const [colWidths, setColWidths] = useState({
+    traceId: 110,
+    service: 150,
+    operation: 280,
+    services: 180,
+    duration: 200,
+    spans: 65,
+    status: 65,
+    time: 85,
+  });
+
+  const startResize = (e: React.MouseEvent, col: keyof typeof colWidths) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = colWidths[col];
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const newWidth = Math.max(50, startWidth + (moveEvent.clientX - startX));
+      setColWidths(prev => ({
+        ...prev,
+        [col]: newWidth
+      }));
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+  };
 
   // Filters read directly from URL search params
   const serviceFilter = searchParams.get('service') || '';
@@ -36,6 +195,25 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
   const traceIdFilter = searchParams.get('traceId') || '';
   const minSpans = searchParams.get('minSpans') || '2';
   const minDuration = searchParams.get('minDuration') || '';
+
+  const serviceOptions = [
+    { value: '', label: 'All Services' },
+    ...services.map(s => ({ value: s, label: s }))
+  ];
+
+  const statusOptions = [
+    { value: '', label: 'All Status' },
+    { value: 'true', label: 'Errors Only' },
+    { value: 'false', label: 'Success Only' }
+  ];
+
+  const spanOptions = [
+    { value: '0', label: 'All (incl. DB noise)' },
+    { value: '2', label: '≥ 2 spans (requests)' },
+    { value: '3', label: '≥ 3 spans' },
+    { value: '5', label: '≥ 5 spans' },
+    { value: '10', label: '≥ 10 spans' }
+  ];
 
   const setFilterVal = (key: string, val: string) => {
     setSearchParams(prev => {
@@ -92,27 +270,30 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
     <div className="animate-fade-in">
       <h1 className="page-title">Trace Explorer</h1>
       <p className="page-subtitle">
-        {namespace ? `Traces in ${namespace}` : 'All traces across namespaces'}
+        Search and filter requests flowing through your services
       </p>
 
       {/* Advanced Filter Bar */}
-      <div className="card" style={{ marginBottom: '16px' }}>
-        <div className="card-body" style={{ padding: '16px 20px' }}>
+      <div className="card" style={{ marginBottom: '16px', overflow: 'visible' }}>
+        <div className="card-body" style={{ padding: '16px 20px', overflow: 'visible' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px', alignItems: 'end' }}>
             <div>
               <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Service</label>
-              <select className="filter-select" value={serviceFilter} onChange={e => setFilterVal('service', e.target.value)} style={{ width: '100%' }}>
-                <option value="">All Services</option>
-                {services.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <CustomDropdown
+                options={serviceOptions}
+                value={serviceFilter}
+                onChange={val => setFilterVal('service', val)}
+                placeholder="All Services"
+              />
             </div>
             <div>
               <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Status</label>
-              <select className="filter-select" value={errorFilter} onChange={e => setFilterVal('hasError', e.target.value)} style={{ width: '100%' }}>
-                <option value="">All Status</option>
-                <option value="true">Errors Only</option>
-                <option value="false">Success Only</option>
-              </select>
+              <CustomDropdown
+                options={statusOptions}
+                value={errorFilter}
+                onChange={val => setFilterVal('hasError', val)}
+                placeholder="All Status"
+              />
             </div>
             <div>
               <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Operation</label>
@@ -122,7 +303,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
                 placeholder="e.g. GET catalog"
                 value={operationFilter}
                 onChange={e => setFilterVal('operation', e.target.value)}
-                style={{ width: '100%' }}
+                style={{ width: '100%', height: '36px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-primary)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', outline: 'none' }}
               />
             </div>
             <div>
@@ -133,18 +314,17 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
                 placeholder="Search by ID..."
                 value={traceIdFilter}
                 onChange={e => setFilterVal('traceId', e.target.value)}
-                style={{ width: '100%' }}
+                style={{ width: '100%', height: '36px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-primary)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', outline: 'none' }}
               />
             </div>
             <div>
               <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Min Spans</label>
-              <select className="filter-select" value={minSpans} onChange={e => setFilterVal('minSpans', e.target.value)} style={{ width: '100%' }}>
-                <option value="0">All (incl. DB noise)</option>
-                <option value="2">≥ 2 spans (requests)</option>
-                <option value="3">≥ 3 spans</option>
-                <option value="5">≥ 5 spans</option>
-                <option value="10">≥ 10 spans</option>
-              </select>
+              <CustomDropdown
+                options={spanOptions}
+                value={minSpans}
+                onChange={val => setFilterVal('minSpans', val)}
+                placeholder="≥ 2 spans (requests)"
+              />
             </div>
             <div>
               <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Min Duration</label>
@@ -154,7 +334,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
                 placeholder="ms"
                 value={minDuration}
                 onChange={e => setFilterVal('minDuration', e.target.value)}
-                style={{ width: '100%' }}
+                style={{ width: '100%', height: '36px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-primary)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', outline: 'none' }}
               />
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end' }}>
@@ -171,33 +351,57 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
           <span className="text-sm text-muted">{traces.length} traces</span>
         </div>
         <div className="table-wrapper">
-          <table style={{ tableLayout: 'fixed', width: '100%' }}>
+          <table style={{ tableLayout: 'fixed', width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                <th style={{ width: '110px' }}>Trace ID</th>
-                <th style={{ width: '150px' }}>Root Service</th>
-                <th style={{ width: '280px' }}>Operation</th>
-                <th style={{ width: '180px' }}>Services</th>
-                <th style={{ width: '200px' }}>Duration</th>
-                <th style={{ width: '65px', textAlign: 'center' }}>Spans</th>
-                <th style={{ width: '65px', textAlign: 'center' }}>Status</th>
-                <th style={{ width: '85px' }}>Time</th>
+                <th style={{ width: colWidths.traceId, position: 'relative' }}>
+                  Trace ID
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'traceId')} />
+                </th>
+                <th style={{ width: colWidths.service, position: 'relative' }}>
+                  Root Service
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'service')} />
+                </th>
+                <th style={{ width: colWidths.operation, position: 'relative' }}>
+                  Operation
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'operation')} />
+                </th>
+                <th style={{ width: colWidths.services, position: 'relative' }}>
+                  Services
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'services')} />
+                </th>
+                <th style={{ width: colWidths.duration, position: 'relative' }}>
+                  Duration
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'duration')} />
+                </th>
+                <th style={{ width: colWidths.spans, textAlign: 'center', position: 'relative' }}>
+                  Spans
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'spans')} />
+                </th>
+                <th style={{ width: colWidths.status, textAlign: 'center', position: 'relative' }}>
+                  Status
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'status')} />
+                </th>
+                <th style={{ width: colWidths.time, position: 'relative' }}>
+                  Time
+                  <div className="resize-handle" onMouseDown={e => startResize(e, 'time')} />
+                </th>
               </tr>
             </thead>
             <tbody>
               {traces.map(t => {
                 const durationPct = maxDuration > 0 ? (t.durationMs / maxDuration) * 100 : 0;
                 return (
-                  <tr key={t.traceId} onClick={() => navigate(`/traces/${t.traceId}`)} style={{ cursor: 'pointer' }}>
-                    <td style={{ width: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <tr key={t.traceId} onClick={() => navigate(`/traces/${t.traceId}`)} style={{ cursor: 'pointer' }} className="hover-row">
+                    <td style={{ width: colWidths.traceId, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       <span className="mono" style={{ color: 'var(--accent-indigo-light)', fontSize: '12px' }}>
                         {t.traceId.slice(0, 14)}…
                       </span>
                     </td>
-                    <td style={{ fontWeight: 600, fontSize: '13px', width: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.serviceName}>
+                    <td style={{ fontWeight: 600, fontSize: '13px', width: colWidths.service, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.serviceName}>
                       {t.serviceName}
                     </td>
-                    <td className="mono" style={{ fontSize: '12px', color: 'var(--text-secondary)', width: '280px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <td className="mono" style={{ fontSize: '12px', color: 'var(--text-secondary)', width: colWidths.operation, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.rootName || '—'}>
                         {t.rootName || '—'}
                       </div>
@@ -238,7 +442,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
                         </div>
                       )}
                     </td>
-                    <td style={{ width: '180px', overflow: 'hidden' }}>
+                    <td style={{ width: colWidths.services, overflow: 'hidden' }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
                         {/* Internal Services */}
                         {(t.services || []).slice(0, 3).map(svc => (
@@ -289,7 +493,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
                         )}
                       </div>
                     </td>
-                    <td style={{ width: '200px' }}>
+                    <td style={{ width: colWidths.duration }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <div style={{
                           flex: 1,
@@ -315,7 +519,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
                         </span>
                       </div>
                     </td>
-                    <td style={{ width: '65px', textAlign: 'center' }}>
+                    <td style={{ width: colWidths.spans, textAlign: 'center' }}>
                       <span style={{
                         fontSize: '11px',
                         fontWeight: 700,
@@ -327,10 +531,10 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
                         {t.spanCount}
                       </span>
                     </td>
-                    <td style={{ width: '65px', textAlign: 'center' }}>
+                    <td style={{ width: colWidths.status, textAlign: 'center' }}>
                       <span className={`badge ${t.hasError ? 'badge-error' : 'badge-ok'}`}>{t.hasError ? 'ERR' : 'OK'}</span>
                     </td>
-                    <td className="text-sm text-muted" style={{ width: '85px', whiteSpace: 'nowrap' }}>{formatTime(t.startTime)}</td>
+                    <td className="text-sm text-muted" style={{ width: colWidths.time, whiteSpace: 'nowrap' }}>{formatTime(t.startTime)}</td>
                   </tr>
                 );
               })}

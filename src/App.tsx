@@ -215,7 +215,11 @@ export default function App() {
               <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-tertiary)' }}>Cluster:</span>
               <select
                 value={selectedCluster}
-                onChange={(e) => handleClusterChange(e.target.value)}
+                onChange={(e) => {
+                  handleClusterChange(e.target.value);
+                  // Reset selected namespace if it does not belong to the selected cluster
+                  handleNamespaceChange('');
+                }}
                 style={{
                   background: 'var(--bg-secondary)',
                   color: 'var(--text-primary)',
@@ -241,6 +245,44 @@ export default function App() {
                 {clusters.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
+              </select>
+            </div>
+
+            {/* Namespace Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px', position: 'relative' }}>
+              <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-tertiary)' }}>Namespace:</span>
+              <select
+                value={selectedNamespace}
+                onChange={(e) => handleNamespaceChange(e.target.value)}
+                style={{
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: '20px',
+                  padding: '6px 32px 6px 14px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  outline: 'none',
+                  appearance: 'none',
+                  backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 10px center',
+                  backgroundSize: '14px',
+                  transition: 'all 0.2s',
+                  boxShadow: 'var(--shadow-sm)',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--border-secondary)'}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-primary)'}
+              >
+                <option value="">All Namespaces</option>
+                {namespaces
+                  .filter(ns => !selectedCluster || ns.cluster === selectedCluster)
+                  .map((ns) => (
+                    <option key={ns.namespace} value={ns.namespace}>
+                      {ns.namespace}
+                    </option>
+                  ))}
               </select>
             </div>
             <button

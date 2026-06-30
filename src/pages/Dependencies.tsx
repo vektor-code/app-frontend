@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { api, type ServiceMapData, type ServiceStats } from '../api/client';
+import { api, type ServiceMapData } from '../api/client';
 
 interface DependenciesProps {
   namespace: string;
@@ -20,10 +20,132 @@ interface DependencyItem {
   lastSeen?: string;
 }
 
+function CustomDropdown({
+  options,
+  value,
+  onChange,
+  placeholder
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (val: string) => void;
+  placeholder: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const currentOption = options.find(o => o.value === value);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClose = () => setIsOpen(false);
+    window.addEventListener('click', handleClose);
+    return () => window.removeEventListener('click', handleClose);
+  }, [isOpen]);
+
+  return (
+    <div style={{ position: 'relative', minWidth: '160px' }} onClick={e => e.stopPropagation()}>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          background: 'var(--bg-secondary)',
+          color: value ? 'var(--text-primary)' : 'var(--text-secondary)',
+          border: '1px solid var(--border-primary)',
+          borderRadius: '8px',
+          padding: '8px 12px',
+          fontSize: '13px',
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '8px',
+          boxShadow: isOpen ? '0 0 0 2px rgba(99, 102, 241, 0.2)' : 'none',
+          borderColor: isOpen ? 'var(--accent-indigo)' : 'var(--border-primary)',
+          transition: 'all 0.15s ease',
+          height: '36px'
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {currentOption ? currentOption.label : placeholder}
+        </span>
+        <svg 
+          viewBox="0 0 24 24" 
+          width="14" 
+          height="14" 
+          fill="none" 
+          stroke="var(--text-secondary)" 
+          strokeWidth="2.5" 
+          style={{ 
+            transform: isOpen ? 'rotate(180deg)' : 'none', 
+            transition: 'transform 0.15s ease',
+            flexShrink: 0
+          }}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+
+      {isOpen && (
+        <div 
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            left: 0,
+            right: 0,
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border-primary)',
+            borderRadius: '8px',
+            boxShadow: 'var(--shadow-lg), 0 10px 15px -3px rgba(0, 0, 0, 0.3)',
+            zIndex: 100,
+            maxHeight: '220px',
+            overflowY: 'auto',
+            padding: '4px',
+            animation: 'fadeIn 0.1s ease-out'
+          }}
+        >
+          {options.map(opt => (
+            <div
+              key={opt.value}
+              onClick={() => {
+                onChange(opt.value);
+                setIsOpen(false);
+              }}
+              style={{
+                padding: '8px 12px',
+                fontSize: '13px',
+                color: value === opt.value ? 'var(--accent-indigo)' : 'var(--text-primary)',
+                background: value === opt.value ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                transition: 'background 0.12s'
+              }}
+              onMouseEnter={e => {
+                if (value !== opt.value) e.currentTarget.style.background = 'var(--bg-hover)';
+              }}
+              onMouseLeave={e => {
+                if (value !== opt.value) e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '8px' }}>
+                {opt.label}
+              </span>
+              {value === opt.value && (
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--accent-indigo)" strokeWidth="3" style={{ flexShrink: 0 }}>
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Helper to determine dependency type
 const getDependencyType = (name: string): 'database' | 'messaging' | '3rdparty' | 'other' => {
   const n = name.toLowerCase();
-  // Check VM pattern first so it doesn't get matched as 3rdparty due to IP dots
   if (
     n.includes('vm') ||
     n.includes('virtual machine') ||
@@ -160,7 +282,6 @@ const getDependencyLogo = (name: string): string | null => {
   return null;
 };
 
-// Parse raw system names like "postgresql (users_db)"
 const parseRawName = (rawName: string) => {
   const match = rawName.match(/^([^(]+)\(([^)]+)\)$/);
   if (!match) {
@@ -191,6 +312,41 @@ export default function Dependencies({ namespace }: DependenciesProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [activeNamespaceFilter, setActiveNamespaceFilter] = useState<string>('all');
+
+  const [colWidths, setColWidths] = useState({
+    name: 260,
+    health: 90,
+    namespace: 100,
+    latency: 150,
+    throughput: 130,
+    errorRate: 120,
+    consumers: 200,
+  });
+
+  const startResize = (e: React.MouseEvent, col: keyof typeof colWidths) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = colWidths[col];
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const newWidth = Math.max(50, startWidth + (moveEvent.clientX - startX));
+      setColWidths(prev => ({
+        ...prev,
+        [col]: newWidth
+      }));
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+  };
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -228,7 +384,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
     if (!data || !data.nodes) return [];
 
     const infraNodes = data.nodes.filter(n => {
-      // Is infrastructure node or matches infra naming convention
       if (n.isInfrastructure) return true;
       const nName = n.serviceName.toLowerCase();
       return (
@@ -267,19 +422,16 @@ export default function Dependencies({ namespace }: DependenciesProps) {
       const { system, details } = parseRawName(node.serviceName);
       const depType = getDependencyType(node.serviceName);
 
-      // Find all incoming edges (services calling this infra node)
       const incomingEdges = (data.edges || []).filter(
         e => e.target === node.serviceName && e.targetNamespace === node.namespace
       );
 
-      // Extract details about consumers
       const consumers = incomingEdges.map(e => ({
         serviceName: e.source,
         count: e.callCount,
         duration: e.avgDurationMs
       })).sort((a, b) => b.count - a.count);
 
-      // Compute aggregates
       let totalCalls = 0;
       let totalErrors = 0;
       let totalDurationSum = 0;
@@ -315,16 +467,12 @@ export default function Dependencies({ namespace }: DependenciesProps) {
   // Filtered and searched items
   const filteredItems = useMemo(() => {
     return dependencyItems.filter(item => {
-      // Search text filter
       const matchesSearch = 
         item.system.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.details.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.consumers.some(c => c.serviceName.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      // Dependency type filter
       const matchesType = selectedType === 'all' || item.type === selectedType;
-
-      // Namespace filter
       const matchesNamespace = activeNamespaceFilter === 'all' || item.namespace === activeNamespaceFilter;
 
       return matchesSearch && matchesType && matchesNamespace;
@@ -354,7 +502,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
     };
   }, [filteredItems]);
 
-  // Calculate maximum values for relative bar charts
   const maxValues = useMemo(() => {
     let maxLatency = 1;
     let maxThroughput = 1;
@@ -376,7 +523,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
   };
 
   const getNamespaceStyle = (ns: string) => {
-    // Generate simple stable hash coloring
     let hash = 0;
     for (let i = 0; i < ns.length; i++) {
       hash = ns.charCodeAt(i) + ((hash << 5) - hash);
@@ -390,6 +536,19 @@ export default function Dependencies({ namespace }: DependenciesProps) {
     };
   };
 
+  const namespaceOptions = [
+    { value: 'all', label: 'All Namespaces' },
+    ...namespacesList.map(ns => ({ value: ns, label: ns }))
+  ];
+
+  const typeOptions = [
+    { value: 'all', label: 'All Types' },
+    { value: 'database', label: 'Databases / Cache' },
+    { value: 'messaging', label: 'Message Queues' },
+    { value: '3rdparty', label: '3rd-Party APIs' },
+    { value: 'other', label: 'Other' }
+  ];
+
   return (
     <div className="animate-fade-in dependencies-page" style={{ paddingBottom: '40px' }}>
       <h1 className="page-title">Dependencies</h1>
@@ -398,46 +557,104 @@ export default function Dependencies({ namespace }: DependenciesProps) {
       </p>
 
       {/* Overview stats cards grid */}
-      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-        <div className="card">
-          <div className="card-body">
-            <div className="stat-label">Total Dependencies</div>
-            <div className="stat-val">{summaryMetrics.count}</div>
-            <div className="stat-change text-muted">Active components</div>
+      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+        {/* Metric 1: Total Dependencies */}
+        <div className="card" style={{
+          position: 'relative',
+          padding: '24px 20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          borderLeft: '4px solid var(--accent-indigo)',
+          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(99, 102, 241, 0.03) 100%)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>Total Dependencies</span>
+            <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-indigo)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              </svg>
+            </div>
+          </div>
+          <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
+            {summaryMetrics.count}
           </div>
         </div>
-        <div className="card">
-          <div className="card-body">
-            <div className="stat-label">Avg Connection Latency</div>
-            <div className="stat-val" style={{ color: 'var(--accent-cyan)' }}>
-              {summaryMetrics.avgLatency.toFixed(1)}ms
+
+        {/* Metric 2: Connection Latency */}
+        <div className="card" style={{
+          position: 'relative',
+          padding: '24px 20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          borderLeft: '4px solid var(--accent-emerald)',
+          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(16, 185, 129, 0.03) 100%)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>Avg Connection Latency</span>
+            <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
             </div>
-            <div className="stat-change text-muted">Weighted avg duration</div>
+          </div>
+          <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
+            {summaryMetrics.avgLatency.toFixed(1)} <span style={{ fontSize: '13px', fontWeight: 400, color: 'var(--text-secondary)' }}>ms</span>
           </div>
         </div>
-        <div className="card">
-          <div className="card-body">
-            <div className="stat-label">Total Throughput</div>
-            <div className="stat-val" style={{ color: 'var(--accent-indigo-light)' }}>
-              {summaryMetrics.calls}
+
+        {/* Metric 3: Total Throughput */}
+        <div className="card" style={{
+          position: 'relative',
+          padding: '24px 20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          borderLeft: '4px solid var(--accent-cyan)',
+          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(14, 165, 233, 0.03) 100%)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>Total Throughput</span>
+            <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(14, 165, 233, 0.1)', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+              </svg>
             </div>
-            <div className="stat-change text-muted">Aggregated executions</div>
+          </div>
+          <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
+            {summaryMetrics.calls.toLocaleString()}
           </div>
         </div>
-        <div className="card">
-          <div className="card-body">
-            <div className="stat-label">System Error Rate</div>
-            <div className="stat-val" style={{ color: summaryMetrics.errorRate > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)' }}>
-              {summaryMetrics.errorRate.toFixed(2)}%
+
+        {/* Metric 4: System Error Rate */}
+        <div className="card" style={{
+          position: 'relative',
+          padding: '24px 20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          borderLeft: `4px solid ${summaryMetrics.errorRate > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)'}`,
+          background: `linear-gradient(135deg, var(--bg-secondary) 0%, ${summaryMetrics.errorRate > 0 ? 'rgba(244, 63, 94, 0.03)' : 'rgba(16, 185, 129, 0.03)'} 100%)`
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>System Error Rate</span>
+            <div style={{ padding: '6px', borderRadius: '8px', background: summaryMetrics.errorRate > 0 ? 'rgba(244, 63, 94, 0.1)' : 'rgba(16, 185, 129, 0.1)', color: summaryMetrics.errorRate > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              </svg>
             </div>
-            <div className="stat-change text-muted">Failure ratio</div>
+          </div>
+          <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: summaryMetrics.errorRate > 0 ? 'var(--accent-rose)' : 'var(--text-primary)' }}>
+            {summaryMetrics.errorRate.toFixed(2)}%
           </div>
         </div>
       </div>
 
       {/* Filter Toolbar */}
-      <div className="card" style={{ marginBottom: '16px' }}>
-        <div className="card-body filter-bar" style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className="card" style={{ marginBottom: '16px', overflow: 'visible' }}>
+        <div className="card-body filter-bar" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', overflow: 'visible' }}>
           
           {/* Search box */}
           <div style={{ flex: 1, minWidth: '220px', position: 'relative' }}>
@@ -446,50 +663,64 @@ export default function Dependencies({ namespace }: DependenciesProps) {
               placeholder="Search dependencies or consumers..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="filter-select"
-              style={{ width: '100%', paddingLeft: '12px' }}
+              style={{
+                width: '100%',
+                padding: '8px 12px 8px 36px',
+                background: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-primary)',
+                borderRadius: '8px',
+                fontSize: '13px',
+                outline: 'none',
+                transition: 'all 0.15s ease-out'
+              }}
+              onFocus={e => {
+                e.currentTarget.style.borderColor = 'var(--accent-indigo)';
+                e.currentTarget.style.boxShadow = '0 0 0 2px rgba(99, 102, 241, 0.15)';
+              }}
+              onBlur={e => {
+                e.currentTarget.style.borderColor = 'var(--border-primary)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
             />
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="var(--text-secondary)"
+              strokeWidth="2.5"
+              style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
           </div>
 
-          {/* Namespace Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Namespace:</span>
-            <select
+          {/* Namespace Selector - Hidden if filtered globally */}
+          {!namespace && (
+            <CustomDropdown
+              options={namespaceOptions}
               value={activeNamespaceFilter}
-              onChange={(e) => setActiveNamespaceFilter(e.target.value)}
-              className="filter-select"
-              style={{ minWidth: '130px' }}
-            >
-              <option value="all">All Namespaces</option>
-              {namespacesList.map(ns => (
-                <option key={ns} value={ns}>{ns}</option>
-              ))}
-            </select>
-          </div>
+              onChange={setActiveNamespaceFilter}
+              placeholder="All Namespaces"
+            />
+          )}
 
           {/* Type Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Type:</span>
-            <select
-              value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value)}
-              className="filter-select"
-              style={{ minWidth: '130px' }}
-            >
-              <option value="all">All Types</option>
-              <option value="database">Databases / Cache</option>
-              <option value="messaging">Message Queues</option>
-              <option value="3rdparty">3rd-Party APIs</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
+          <CustomDropdown
+            options={typeOptions}
+            value={selectedType}
+            onChange={setSelectedType}
+            placeholder="All Types"
+          />
 
         </div>
       </div>
 
       {/* Main Dependencies Table */}
       <div className="card">
-        <div className="card-header">
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="card-title">Dependency Metrics</div>
           <span className="text-sm text-muted">{filteredItems.length} active connection targets</span>
         </div>
@@ -504,16 +735,39 @@ export default function Dependencies({ namespace }: DependenciesProps) {
               </div>
             </div>
           ) : (
-            <table className="dependencies-table">
+            <table className="db-table" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
               <thead>
                 <tr>
-                  <th style={{ width: '260px' }}>Dependency Name</th>
-                  <th style={{ width: '90px' }}>Health</th>
-                  <th style={{ width: '100px' }}>Namespace</th>
-                  <th style={{ width: '150px' }}>Latency (Avg)</th>
-                  <th style={{ width: '130px' }}>Throughput</th>
-                  <th style={{ width: '120px' }}>Error Rate</th>
-                  <th>Calling Services (Consumers)</th>
+                  <th style={{ width: colWidths.name, position: 'relative' }}>
+                    Dependency
+                    <div className="resize-handle" onMouseDown={e => startResize(e, 'name')} />
+                  </th>
+                  <th style={{ width: colWidths.health, position: 'relative' }}>
+                    Health
+                    <div className="resize-handle" onMouseDown={e => startResize(e, 'health')} />
+                  </th>
+                  {!namespace && (
+                    <th style={{ width: colWidths.namespace, position: 'relative' }}>
+                      Namespace
+                      <div className="resize-handle" onMouseDown={e => startResize(e, 'namespace')} />
+                    </th>
+                  )}
+                  <th style={{ width: colWidths.latency, position: 'relative' }}>
+                    Latency (Avg)
+                    <div className="resize-handle" onMouseDown={e => startResize(e, 'latency')} />
+                  </th>
+                  <th style={{ width: colWidths.throughput, position: 'relative' }}>
+                    Throughput
+                    <div className="resize-handle" onMouseDown={e => startResize(e, 'throughput')} />
+                  </th>
+                  <th style={{ width: colWidths.errorRate, position: 'relative' }}>
+                    Error Rate
+                    <div className="resize-handle" onMouseDown={e => startResize(e, 'errorRate')} />
+                  </th>
+                  <th style={{ width: colWidths.consumers, position: 'relative' }}>
+                    Consumers
+                    <div className="resize-handle" onMouseDown={e => startResize(e, 'consumers')} />
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -521,13 +775,11 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                   const latencyPct = maxValues.maxLatency > 0 ? (item.avgDurationMs / maxValues.maxLatency) * 100 : 0;
                   const throughputPct = maxValues.maxThroughput > 0 ? (item.requestCount / maxValues.maxThroughput) * 100 : 0;
                   const errorPct = item.errorRate;
-
                   const nsStyle = getNamespaceStyle(item.namespace);
 
                   return (
-                    <tr key={item.id}>
-                      {/* Name & Details */}
-                      <td>
+                    <tr key={item.id} className="hover-row" style={{ cursor: 'pointer', transition: 'background 0.2s' }}>
+                      <td data-label="Dependency" style={{ width: colWidths.name, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <span style={{ 
                             height: '24px', 
@@ -571,12 +823,12 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                               );
                             })()}
                           </span>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                            <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {item.system.toUpperCase()}
                             </span>
                             {item.details && (
-                              <span className="mono" style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px', wordBreak: 'break-all' }}>
+                              <span className="mono" style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.details}>
                                 {item.details}
                               </span>
                             )}
@@ -584,20 +836,19 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                         </div>
                       </td>
 
-                      {/* Health Badge */}
-                      <td>{getHealthBadge(item.errorRate)}</td>
+                      <td data-label="Health" style={{ width: colWidths.health }}>{getHealthBadge(item.errorRate)}</td>
 
-                      {/* Namespace Badge */}
-                      <td>
-                        <span className="badge badge-ns" style={{ ...nsStyle, fontSize: '10px', padding: '2px 8px', borderRadius: '12px' }}>
-                          {item.namespace}
-                        </span>
-                      </td>
+                      {!namespace && (
+                        <td data-label="Namespace" style={{ width: colWidths.namespace, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span className="badge badge-ns" style={{ ...nsStyle, fontSize: '10px', padding: '2px 8px', borderRadius: '12px' }}>
+                            {item.namespace}
+                          </span>
+                        </td>
+                      )}
 
-                      {/* Latency avg + bar */}
-                      <td>
+                      <td data-label="Latency" style={{ width: colWidths.latency }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <span className="mono" style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          <span className="mono" style={{ fontSize: '12.5px', fontWeight: 600, color: item.avgDurationMs > 200 ? 'var(--accent-amber)' : 'var(--text-primary)' }}>
                             {item.avgDurationMs.toFixed(1)} ms
                           </span>
                           <div className="progress-bar-bg">
@@ -606,8 +857,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                         </div>
                       </td>
 
-                      {/* Throughput + bar */}
-                      <td>
+                      <td data-label="Throughput" style={{ width: colWidths.throughput }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           <span className="mono" style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>
                             {item.requestCount} calls
@@ -618,8 +868,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                         </div>
                       </td>
 
-                      {/* Error rate + bar */}
-                      <td>
+                      <td data-label="Error Rate" style={{ width: colWidths.errorRate }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           <span className="mono" style={{ fontSize: '12.5px', fontWeight: 600, color: item.errorRate > 0 ? 'var(--accent-rose)' : 'var(--text-secondary)' }}>
                             {item.errorRate.toFixed(1)}%
@@ -630,8 +879,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                         </div>
                       </td>
 
-                      {/* Consumers calling list */}
-                      <td>
+                      <td data-label="Consumers" style={{ width: colWidths.consumers }}>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                           {item.consumers.slice(0, 3).map(c => (
                             <span
@@ -658,7 +906,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                           )}
                         </div>
                       </td>
-
                     </tr>
                   );
                 })}
@@ -677,7 +924,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
           border-radius: 20px;
           font-size: 10.5px;
           font-weight: 700;
-          text-transform: uppercase;
           letter-spacing: 0.3px;
         }
         .health-ok {
@@ -706,30 +952,69 @@ export default function Dependencies({ namespace }: DependenciesProps) {
           transition: width 0.3s ease;
         }
 
-        .dependencies-table {
-          width: 100%;
-          min-width: 960px;
-          border-collapse: collapse;
-        }
-        .dependencies-table th, .dependencies-table td {
-          padding: 12px 16px;
-          text-align: left;
-          border-bottom: 1px solid var(--border-primary);
-        }
-        .dependencies-table th {
-          font-size: 11px;
-          font-weight: 700;
-          text-transform: uppercase;
-          color: var(--text-tertiary);
-          letter-spacing: 0.5px;
-          background: var(--bg-tertiary);
-        }
-        .dependencies-table tr:hover {
-          background: var(--bg-hover);
+        .hover-row:hover {
+          background: var(--bg-hover) !important;
         }
 
         .filter-bar {
           padding: 12px 16px !important;
+        }
+
+        /* Resizable Column Handles */
+        .resize-handle {
+          position: absolute;
+          right: 0;
+          top: 0;
+          bottom: 0;
+          width: 6px;
+          cursor: col-resize;
+          user-select: none;
+          z-index: 10;
+          transition: background 0.15s;
+        }
+        .resize-handle:hover {
+          background: rgba(99, 102, 241, 0.45) !important;
+        }
+
+        /* Responsive: mobile card layout */
+        @media (max-width: 768px) {
+          .db-table thead {
+            display: none;
+          }
+          .db-table tbody,
+          .db-table tbody tr {
+            display: block;
+            width: 100%;
+          }
+          .db-table tbody tr.hover-row {
+            display: block;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 12px;
+          }
+          .db-table tbody tr.hover-row td {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0 !important;
+            border: none !important;
+            text-align: right;
+            max-width: none !important;
+            white-space: normal !important;
+            overflow: visible !important;
+          }
+          .db-table tbody tr.hover-row td::before {
+            content: attr(data-label);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-tertiary);
+            text-align: left;
+            flex-shrink: 0;
+            margin-right: 12px;
+          }
         }
       `}</style>
     </div>

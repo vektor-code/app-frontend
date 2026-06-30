@@ -5,6 +5,128 @@ interface DbAnalyticsProps {
   namespace: string;
 }
 
+function CustomDropdown({
+  options,
+  value,
+  onChange,
+  placeholder
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (val: string) => void;
+  placeholder: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const currentOption = options.find(o => o.value === value);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClose = () => setIsOpen(false);
+    window.addEventListener('click', handleClose);
+    return () => window.removeEventListener('click', handleClose);
+  }, [isOpen]);
+
+  return (
+    <div style={{ position: 'relative', minWidth: '200px' }} onClick={e => e.stopPropagation()}>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          background: 'var(--bg-secondary)',
+          color: value ? 'var(--text-primary)' : 'var(--text-secondary)',
+          border: '1px solid var(--border-primary)',
+          borderRadius: '8px',
+          padding: '8px 14px',
+          fontSize: '13px',
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '8px',
+          boxShadow: isOpen ? '0 0 0 2px rgba(99, 102, 241, 0.2)' : 'none',
+          borderColor: isOpen ? 'var(--accent-indigo)' : 'var(--border-primary)',
+          transition: 'all 0.15s ease'
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {currentOption ? currentOption.label : placeholder}
+        </span>
+        <svg 
+          viewBox="0 0 24 24" 
+          width="14" 
+          height="14" 
+          fill="none" 
+          stroke="var(--text-secondary)" 
+          strokeWidth="2.5" 
+          style={{ 
+            transform: isOpen ? 'rotate(180deg)' : 'none', 
+            transition: 'transform 0.15s ease',
+            flexShrink: 0
+          }}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+
+      {isOpen && (
+        <div 
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            left: 0,
+            right: 0,
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border-primary)',
+            borderRadius: '8px',
+            boxShadow: 'var(--shadow-lg), 0 10px 15px -3px rgba(0, 0, 0, 0.3)',
+            zIndex: 100,
+            maxHeight: '220px',
+            overflowY: 'auto',
+            padding: '4px',
+            animation: 'fadeIn 0.1s ease-out'
+          }}
+        >
+          {options.map(opt => (
+            <div
+              key={opt.value}
+              onClick={() => {
+                onChange(opt.value);
+                setIsOpen(false);
+              }}
+              style={{
+                padding: '8px 12px',
+                fontSize: '13px',
+                color: value === opt.value ? 'var(--accent-indigo)' : 'var(--text-primary)',
+                background: value === opt.value ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                transition: 'background 0.12s'
+              }}
+              onMouseEnter={e => {
+                if (value !== opt.value) e.currentTarget.style.background = 'var(--bg-hover)';
+              }}
+              onMouseLeave={e => {
+                if (value !== opt.value) e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '8px' }}>
+                {opt.label}
+              </span>
+              {value === opt.value && (
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--accent-indigo)" strokeWidth="3" style={{ flexShrink: 0 }}>
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
   const [metrics, setMetrics] = useState<DatabaseQueryMetric[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,10 +166,12 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
   };
 
   const loadMetrics = useCallback(async () => {
@@ -125,69 +249,194 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
+  const systemOptions = [
+    { value: '', label: 'All Dialects' },
+    ...systems.map(sys => ({ value: sys, label: sys.toUpperCase() }))
+  ];
+
+  const serviceOptions = [
+    { value: '', label: 'All Services' },
+    ...services.map(svc => ({ value: svc, label: svc }))
+  ];
+
   return (
     <div className="animate-fade-in">
-      <h1 className="page-title">Database Performance Analyzer</h1>
+      <h1 className="page-title">Query Performance</h1>
       <p className="page-subtitle">
-        {namespace ? `Database call performance and hot queries in ${namespace}` : 'Database call performance across all namespaces'}
+        Analyze query performance, database engines, and call metrics across all clusters
       </p>
 
       {/* Grid of Key Metrics */}
-      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '24px' }}>
-        <div className="card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '4px solid var(--accent-indigo)' }}>
-          <div style={{ fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 'bold' }}>Total DB Calls</div>
-          <div style={{ fontSize: '28px', fontWeight: 'bold', fontFamily: 'var(--font-sans)', color: 'var(--text-primary)' }}>
-            {totalCalls.toLocaleString()}
+      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+        {/* Card 1: Total DB Calls */}
+        <div className="card" style={{
+          position: 'relative',
+          padding: '24px 20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          borderLeft: '4px solid var(--accent-indigo)',
+          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(99, 102, 241, 0.03) 100%)',
+          overflow: 'hidden'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>Total Calls</span>
+            <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-indigo)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                <path d="M3 5V19A9 3 0 0 0 21 19V5"></path>
+                <path d="M3 12A9 3 0 0 0 21 12"></path>
+              </svg>
+            </div>
           </div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Aggregate across active operations</div>
+          <div>
+            <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', lineHeight: 1 }}>
+              {totalCalls.toLocaleString()}
+            </div>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>Aggregate trace operations</span>
+          </div>
         </div>
 
-        <div className="card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '4px solid var(--accent-emerald)' }}>
-          <div style={{ fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 'bold' }}>Avg Response Time</div>
-          <div style={{ fontSize: '28px', fontWeight: 'bold', fontFamily: 'var(--font-sans)', color: 'var(--text-primary)' }}>
-            {formatDuration(avgLatency)}
+        {/* Card 2: Avg Response Time */}
+        <div className="card" style={{
+          position: 'relative',
+          padding: '24px 20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          borderLeft: '4px solid var(--accent-emerald)',
+          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(16, 185, 129, 0.03) 100%)',
+          overflow: 'hidden'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>Avg Latency</span>
+            <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            </div>
           </div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Weighted execution average</div>
+          <div>
+            <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', lineHeight: 1 }}>
+              {formatDuration(avgLatency)}
+            </div>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>Weighted execution avg</span>
+          </div>
         </div>
 
-        <div className="card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '4px solid var(--accent-rose)' }}>
-          <div style={{ fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 'bold' }}>DB Error Rate</div>
-          <div style={{ fontSize: '28px', fontWeight: 'bold', fontFamily: 'var(--font-sans)', color: errorRate > 0 ? 'var(--accent-rose)' : 'var(--text-primary)' }}>
-            {errorRate.toFixed(2)}%
+        {/* Card 3: DB Error Rate */}
+        <div className="card" style={{
+          position: 'relative',
+          padding: '24px 20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          borderLeft: `4px solid ${errorRate > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)'}`,
+          background: `linear-gradient(135deg, var(--bg-secondary) 0%, ${errorRate > 0 ? 'rgba(244, 63, 94, 0.03)' : 'rgba(16, 185, 129, 0.03)'} 100%)`,
+          overflow: 'hidden'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>Error Rate</span>
+            <div style={{ padding: '6px', borderRadius: '8px', background: errorRate > 0 ? 'rgba(244, 63, 94, 0.1)' : 'rgba(16, 185, 129, 0.1)', color: errorRate > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+            </div>
           </div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{totalErrors} failed statements</div>
+          <div>
+            <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: errorRate > 0 ? 'var(--accent-rose)' : 'var(--text-primary)', lineHeight: 1 }}>
+              {errorRate.toFixed(2)}%
+            </div>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>{totalErrors} failed statements</span>
+          </div>
         </div>
 
-        <div className="card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '4px solid var(--accent-amber)' }}>
-          <div style={{ fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 'bold' }}>Worst Latency</div>
-          <div style={{ fontSize: '28px', fontWeight: 'bold', fontFamily: 'var(--font-sans)', color: slowestQuery > 500 ? 'var(--accent-amber)' : 'var(--text-primary)' }}>
-            {formatDuration(slowestQuery)}
+        {/* Card 4: Worst Latency */}
+        <div className="card" style={{
+          position: 'relative',
+          padding: '24px 20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          borderLeft: '4px solid var(--accent-amber)',
+          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(245, 158, 11, 0.03) 100%)',
+          overflow: 'hidden'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>Peak Latency</span>
+            <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.1)', color: 'var(--accent-amber)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="12 2 2 22 22 22"></polygon>
+                <line x1="12" y1="9" x2="12" y2="17"></line>
+              </svg>
+            </div>
           </div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Peak statement duration</div>
+          <div>
+            <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: slowestQuery > 500 ? 'var(--accent-amber)' : 'var(--text-primary)', lineHeight: 1 }}>
+              {formatDuration(slowestQuery)}
+            </div>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>Peak statement duration</span>
+          </div>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="filter-bar db-filter-bar" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '20px', background: 'var(--bg-secondary)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-primary)' }}>
-        <div style={{ flex: '1', minWidth: '240px' }}>
+      <div className="filter-bar db-filter-bar" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', marginBottom: '20px', background: 'var(--bg-secondary)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-primary)' }}>
+        <div style={{ flex: '1', minWidth: '240px', position: 'relative' }}>
           <input
             type="text"
-            className="filter-select"
-            style={{ width: '100%', padding: '8px 12px' }}
             placeholder="Search query statements..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '8px 12px 8px 36px',
+              background: 'var(--bg-tertiary)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-primary)',
+              borderRadius: '8px',
+              fontSize: '13px',
+              outline: 'none',
+              transition: 'all 0.15s ease-out'
+            }}
+            onFocus={e => {
+              e.currentTarget.style.borderColor = 'var(--accent-indigo)';
+              e.currentTarget.style.boxShadow = '0 0 0 2px rgba(99, 102, 241, 0.15)';
+            }}
+            onBlur={e => {
+              e.currentTarget.style.borderColor = 'var(--border-primary)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
           />
+          <svg
+            viewBox="0 0 24 24"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="var(--text-secondary)"
+            strokeWidth="2.5"
+            style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+          >
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
         </div>
-        <select className="filter-select" value={selectedSystem} onChange={e => setSelectedSystem(e.target.value)}>
-          <option value="">All Dialects / Engines</option>
-          {systems.map(sys => <option key={sys} value={sys}>{sys.toUpperCase()}</option>)}
-        </select>
-        <select className="filter-select" value={selectedService} onChange={e => setSelectedService(e.target.value)}>
-          <option value="">All Services</option>
-          {services.map(svc => <option key={svc} value={svc}>{svc}</option>)}
-        </select>
-        <button className="btn btn-ghost btn-sm" onClick={loadMetrics} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <CustomDropdown
+          options={systemOptions}
+          value={selectedSystem}
+          onChange={setSelectedSystem}
+          placeholder="All Dialects"
+        />
+        <CustomDropdown
+          options={serviceOptions}
+          value={selectedService}
+          onChange={setSelectedService}
+          placeholder="All Services"
+        />
+        <button className="btn btn-ghost btn-sm" onClick={loadMetrics} style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '36px', padding: '0 14px', borderRadius: '8px' }}>
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M23 4v6h-6M1 20v-6h6" />
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
@@ -199,7 +448,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
       {/* Query Performance Table */}
       <div className="card">
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="card-title">Database Queries Performance</div>
+          <div className="card-title">Queries & Operations</div>
           <span className="text-sm text-muted">{filteredMetrics.length} query patterns active</span>
         </div>
         <div className="table-wrapper" style={{ overflowX: 'auto' }}>

@@ -70,6 +70,25 @@ function buildSpanTree(spans: Span[]): { rootNodes: SpanNode[]; maxDepth: number
   return { rootNodes, maxDepth };
 }
 
+function adjustColorBrightness(hex: string, percent: number): string {
+  let hexVal = hex.replace('#', '');
+  if (hexVal.length !== 6) return hex;
+  
+  let R = parseInt(hexVal.substring(0, 2), 16);
+  let G = parseInt(hexVal.substring(2, 4), 16);
+  let B = parseInt(hexVal.substring(4, 6), 16);
+
+  R = Math.max(0, Math.min(255, R + percent));
+  G = Math.max(0, Math.min(255, G + percent));
+  B = Math.max(0, Math.min(255, B + percent));
+
+  const rHex = R.toString(16).padStart(2, '0');
+  const gHex = G.toString(16).padStart(2, '0');
+  const bHex = B.toString(16).padStart(2, '0');
+
+  return `#${rHex}${gHex}${bHex}`;
+}
+
 interface FlameGraphProps {
   spans: Span[];
   traceStartTime: number;
@@ -292,12 +311,17 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
       ctx.globalAlpha = matches ? 1.0 : 0.25;
 
       const baseColor = getSvcColor(item.span.serviceName);
-      ctx.fillStyle = baseColor;
+      
+      // Vertical linear gradient for premium 3D glossy look
+      const grad = ctx.createLinearGradient(rx, ry, rx, ry + barHeight);
+      grad.addColorStop(0, adjustColorBrightness(baseColor, 25));
+      grad.addColorStop(1, adjustColorBrightness(baseColor, -20));
+      ctx.fillStyle = grad;
       
       // Draw rounded rectangle for bar
       ctx.beginPath();
       if (ctx.roundRect) {
-        ctx.roundRect(rx, ry, rw, barHeight, 3);
+        ctx.roundRect(rx, ry, rw, barHeight, 3.5);
       } else {
         ctx.rect(rx, ry, rw, barHeight);
       }
@@ -332,8 +356,17 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
       // Border highlight styling
       if (isHovered) {
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.5;
         ctx.strokeRect(rx + 1, ry + 1, Math.max(1, rw - 2), barHeight - 2);
+        // Premium glossy overlay on hover
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(rx + 1, ry + 1, Math.max(1, rw - 2), barHeight - 2, 3);
+        } else {
+          ctx.rect(rx + 1, ry + 1, Math.max(1, rw - 2), barHeight - 2);
+        }
+        ctx.fill();
       } else if (searchQuery.trim() && matches) {
         ctx.strokeStyle = '#facc15'; // Glowing gold border for search matches
         ctx.lineWidth = 2.5;
@@ -750,6 +783,301 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// --- Trace Topology View Component ---
+interface TopologyNode {
+  id: string;
+  name: string;
+  type: 'service' | 'infra' | '3rdparty';
+  errorCount: number;
+  durationMs: number;
+  callCount: number;
+  spanIds: string[];
+  x: number;
+  y: number;
+}
+
+interface TopologyEdge {
+  id: string;
+  source: string;
+  target: string;
+  callCount: number;
+  avgDurationMs: number;
+  hasError: boolean;
+}
+
+const getTopoEmoji = (name: string): string => {
+  const n = name.toLowerCase();
+  if (n.includes('postgres')) return '🐘';
+  if (n.includes('mysql')) return '🐬';
+  if (n.includes('redis')) return '⚡';
+  if (n.includes('kafka')) return '🦫';
+  if (n.includes('rabbitmq')) return '🐇';
+  if (n.includes('minio')) return '📦';
+  if (n.includes('clickhouse')) return '📈';
+  if (n.includes('mongo')) return '🍃';
+  if (n.includes('db') || n.includes('sqlite') || n.includes('sql')) return '🗄️';
+  if (n.includes('dns')) return '🌐';
+  if (n.includes('mygov')) return '🏛️';
+  if (n.includes('stripe')) return '💳';
+  if (n.includes('openai')) return '🤖';
+  return '⚙️';
+};
+
+function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (span: Span) => void }) {
+  const [hoveredNode, setHoveredNode] = useState<TopologyNode | null>(null);
+  const [hoveredEdge, setHoveredEdge] = useState<TopologyEdge | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  const { nodes, edges } = useMemo(() => {
+    const nodeMap = new Map<string, TopologyNode>();
+    const edgeMap = new Map<string, TopologyEdge>();
+    const spanMap = new Map(spans.map(s => [s.spanId, s]));
+
+    spans.forEach(span => {
+      const svcId = `svc:${span.serviceName}`;
+      const isErr = isSpanError(span);
+
+      if (!nodeMap.has(svcId)) {
+        nodeMap.set(svcId, { id: svcId, name: span.serviceName, type: 'service', errorCount: 0, durationMs: 0, callCount: 0, spanIds: [], x: 0, y: 0 });
+      }
+      const svcNode = nodeMap.get(svcId)!;
+      if (isErr) svcNode.errorCount++;
+      svcNode.durationMs += span.durationMs;
+      svcNode.callCount++;
+      svcNode.spanIds.push(span.spanId);
+
+      const dest = getSpanDestination(span);
+      if (dest.type && dest.type !== 'service') {
+        const destId = `${dest.type}:${dest.name}`;
+        if (!nodeMap.has(destId)) {
+          nodeMap.set(destId, { id: destId, name: dest.name, type: dest.type === 'infra' ? 'infra' : '3rdparty', errorCount: 0, durationMs: 0, callCount: 0, spanIds: [], x: 0, y: 0 });
+        }
+        const destNode = nodeMap.get(destId)!;
+        if (isErr) destNode.errorCount++;
+        destNode.durationMs += span.durationMs;
+        destNode.callCount++;
+        destNode.spanIds.push(span.spanId);
+
+        const eId = `${svcId}->${destId}`;
+        if (!edgeMap.has(eId)) {
+          edgeMap.set(eId, { id: eId, source: svcId, target: destId, callCount: 0, avgDurationMs: 0, hasError: false });
+        }
+        const edge = edgeMap.get(eId)!;
+        edge.callCount++;
+        edge.avgDurationMs += span.durationMs;
+        if (isErr) edge.hasError = true;
+      }
+
+      if (span.parentSpanId) {
+        const parent = spanMap.get(span.parentSpanId);
+        if (parent && parent.serviceName !== span.serviceName) {
+          const pId = `svc:${parent.serviceName}`;
+          const cId = svcId;
+          const eId = `${pId}->${cId}`;
+          if (!edgeMap.has(eId)) {
+            edgeMap.set(eId, { id: eId, source: pId, target: cId, callCount: 0, avgDurationMs: 0, hasError: false });
+          }
+          const edge = edgeMap.get(eId)!;
+          edge.callCount++;
+          edge.avgDurationMs += span.durationMs;
+          if (isErr) edge.hasError = true;
+        }
+      }
+    });
+
+    nodeMap.forEach(n => { if (n.callCount > 0) n.durationMs = n.durationMs / n.callCount; });
+    edgeMap.forEach(e => { if (e.callCount > 0) e.avgDurationMs = e.avgDurationMs / e.callCount; });
+
+    return { nodes: Array.from(nodeMap.values()), edges: Array.from(edgeMap.values()) };
+  }, [spans]);
+
+  // Layout: hierarchical left-to-right
+  useMemo(() => {
+    const levels: Record<string, number> = {};
+    nodes.forEach(n => { levels[n.id] = 0; });
+
+    for (let iter = 0; iter < 10; iter++) {
+      let changed = false;
+      edges.forEach(e => {
+        const srcLvl = levels[e.source] ?? 0;
+        if ((levels[e.target] ?? 0) <= srcLvl) {
+          levels[e.target] = srcLvl + 1;
+          changed = true;
+        }
+      });
+      if (!changed) break;
+    }
+
+    const levelGroups: Record<number, TopologyNode[]> = {};
+    nodes.forEach(n => {
+      const lvl = levels[n.id] || 0;
+      if (!levelGroups[lvl]) levelGroups[lvl] = [];
+      levelGroups[lvl].push(n);
+    });
+
+    const maxLvl = Math.max(...Object.values(levels), 0);
+    const svgW = 840, svgH = 380, pL = 100, pR = 100, pT = 50, pB = 50;
+    const lw = maxLvl > 0 ? (svgW - pL - pR) / maxLvl : 0;
+
+    nodes.forEach(n => {
+      const lvl = levels[n.id] || 0;
+      const grp = levelGroups[lvl];
+      const idx = grp.indexOf(n);
+      n.x = maxLvl > 0 ? pL + lvl * lw : svgW / 2;
+      n.y = pT + ((idx + 0.5) / grp.length) * (svgH - pT - pB);
+    });
+  }, [nodes, edges]);
+
+  const handleNodeClick = (node: TopologyNode) => {
+    if (node.spanIds.length > 0) {
+      const matchSpans = spans.filter(s => node.spanIds.includes(s.spanId));
+      const errSpan = matchSpans.find(s => isSpanError(s));
+      onSelectSpan(errSpan || matchSpans[0]);
+    }
+  };
+
+  if (nodes.length === 0) {
+    return <div className="empty-state"><div className="empty-state-title">No topology data available</div></div>;
+  }
+
+  return (
+    <div style={{ position: 'relative', width: '100%', background: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--border-primary)', overflow: 'hidden', minHeight: '420px' }}>
+      <svg viewBox="0 0 840 380" style={{ width: '100%', height: '100%', display: 'block', minHeight: '380px' }}>
+        <defs>
+          <marker id="topo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 2 L 10 5 L 0 8 z" fill="var(--text-muted)" opacity="0.6" />
+          </marker>
+          <marker id="topo-arrow-err" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 2 L 10 5 L 0 8 z" fill="#f43f5e" />
+          </marker>
+          <filter id="glow-err">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+
+        {/* Edges */}
+        {edges.map(edge => {
+          const src = nodes.find(n => n.id === edge.source);
+          const tgt = nodes.find(n => n.id === edge.target);
+          if (!src || !tgt) return null;
+
+          const x1 = src.x + 70, y1 = src.y;
+          const x2 = tgt.x - 70, y2 = tgt.y;
+          const mx = (x1 + x2) / 2;
+          const pathD = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+          const isHov = hoveredEdge?.id === edge.id;
+
+          return (
+            <g key={edge.id}
+              onMouseEnter={(e) => { setHoveredEdge(edge); setMousePos({ x: e.clientX, y: e.clientY }); }}
+              onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
+              onMouseLeave={() => setHoveredEdge(null)}
+            >
+              <path d={pathD} stroke="transparent" strokeWidth="14" fill="none" style={{ cursor: 'pointer' }} />
+              <path
+                d={pathD}
+                stroke={edge.hasError ? '#f43f5e' : isHov ? '#818cf8' : 'rgba(148, 163, 184, 0.25)'}
+                strokeWidth={isHov || edge.hasError ? 2.5 : 1.5}
+                fill="none"
+                style={{ transition: 'stroke 0.2s, stroke-width 0.2s' }}
+                markerEnd={edge.hasError ? 'url(#topo-arrow-err)' : 'url(#topo-arrow)'}
+              />
+              <circle r="3" fill={edge.hasError ? '#f43f5e' : '#818cf8'} opacity="0.8">
+                <animateMotion dur="3s" repeatCount="indefinite" path={pathD} />
+              </circle>
+              <foreignObject x={mx - 36} y={(y1 + y2) / 2 - 10} width="72" height="20" style={{ pointerEvents: 'none' }}>
+                <div style={{ background: 'rgba(15, 23, 42, 0.88)', border: '1px solid rgba(148, 163, 184, 0.15)', borderRadius: '4px', fontSize: '8.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', textAlign: 'center', lineHeight: '18px' }}>
+                  x{edge.callCount} · {formatDuration(edge.avgDurationMs)}
+                </div>
+              </foreignObject>
+            </g>
+          );
+        })}
+
+        {/* Nodes */}
+        {nodes.map(node => {
+          const hasErr = node.errorCount > 0;
+          const isHov = hoveredNode?.id === node.id;
+          const borderCol = hasErr ? '#f43f5e' : isHov ? '#818cf8' : 'rgba(148, 163, 184, 0.25)';
+
+          return (
+            <g key={node.id} transform={`translate(${node.x}, ${node.y})`}
+              style={{ cursor: 'pointer' }}
+              onClick={() => handleNodeClick(node)}
+              onMouseEnter={(e) => { setHoveredNode(node); setMousePos({ x: e.clientX, y: e.clientY }); }}
+              onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
+              onMouseLeave={() => setHoveredNode(null)}
+            >
+              <rect x="-70" y="-24" width="140" height="48" rx="10" ry="10"
+                fill="var(--bg-primary, #0f172a)"
+                stroke={borderCol}
+                strokeWidth={isHov || hasErr ? 2 : 1.2}
+                filter={hasErr ? 'url(#glow-err)' : undefined}
+                style={{ transition: 'all 0.2s' }}
+              />
+              {/* Icon */}
+              <text x="-56" y="5" style={{ fontSize: '15px', userSelect: 'none' }}>
+                {node.type === 'service' ? '⚙️' : getTopoEmoji(node.name)}
+              </text>
+              {/* Name */}
+              <text x="-34" y="-5" style={{ fontSize: '10.5px', fontWeight: 700, fill: 'var(--text-primary)', fontFamily: 'var(--font-sans)' }}>
+                {node.name.length > 14 ? `${node.name.slice(0, 12)}…` : node.name}
+              </text>
+              {/* Duration */}
+              <text x="-34" y="12" style={{ fontSize: '9.5px', fontWeight: 500, fill: hasErr ? '#f43f5e' : 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                {formatDuration(node.durationMs)} · x{node.callCount}
+              </text>
+              {/* Error badge */}
+              {hasErr && (
+                <g transform="translate(60, -18)">
+                  <circle r="8" fill="#f43f5e" />
+                  <text x="0" y="3.5" textAnchor="middle" style={{ fill: '#fff', fontSize: '9px', fontWeight: 700 }}>!</text>
+                </g>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Hover Tooltips */}
+      {hoveredNode && createPortal(
+        <div style={{ position: 'fixed', left: `${mousePos.x + 14}px`, top: `${mousePos.y + 14}px`, background: 'rgba(15, 15, 35, 0.95)', backdropFilter: 'blur(8px)', border: '1px solid var(--border-primary)', borderRadius: '8px', padding: '10px 14px', fontSize: '11.5px', zIndex: 100000, pointerEvents: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', minWidth: '180px' }}>
+          <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>{hoveredNode.type === 'service' ? '⚙️' : getTopoEmoji(hoveredNode.name)}</span>
+            {hoveredNode.name}
+          </div>
+          <div style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            <div>Type: <span style={{ textTransform: 'capitalize', color: 'var(--text-primary)' }}>{hoveredNode.type}</span></div>
+            <div>Spans: <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{hoveredNode.callCount}</span></div>
+            <div>Avg Duration: <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{formatDuration(hoveredNode.durationMs)}</span></div>
+          </div>
+          {hoveredNode.errorCount > 0 && (
+            <div style={{ color: '#f43f5e', fontWeight: 700, marginTop: '6px', borderTop: '1px solid rgba(244, 63, 94, 0.2)', paddingTop: '6px' }}>
+              ⚠ {hoveredNode.errorCount} error(s) detected here
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+
+      {hoveredEdge && createPortal(
+        <div style={{ position: 'fixed', left: `${mousePos.x + 14}px`, top: `${mousePos.y + 14}px`, background: 'rgba(15, 15, 35, 0.95)', backdropFilter: 'blur(8px)', border: '1px solid var(--border-primary)', borderRadius: '8px', padding: '10px 14px', fontSize: '11.5px', zIndex: 100000, pointerEvents: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', minWidth: '160px' }}>
+          <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>Connection</div>
+          <div style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            <div>Calls: <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{hoveredEdge.callCount}</span></div>
+            <div>Avg Latency: <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{formatDuration(hoveredEdge.avgDurationMs)}</span></div>
+          </div>
+          {hoveredEdge.hasError && (
+            <div style={{ color: '#f43f5e', fontWeight: 700, marginTop: '4px' }}>⚠ Errors on this path</div>
+          )}
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -1683,7 +2011,7 @@ export default function TraceDetail() {
   const { traceId } = useParams<{ traceId: string }>();
   const [trace, setTrace] = useState<Trace | null>(null);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'waterfall' | 'flame'>('waterfall');
+  const [viewMode, setViewMode] = useState<'waterfall' | 'flame' | 'topology'>('waterfall');
   const [selectedSpan, setSelectedSpan] = useState<Span | null>(null);
   const navigate = useNavigate();
 
@@ -1922,6 +2250,12 @@ export default function TraceDetail() {
                 >
                   Flame Graph
                 </button>
+                <button
+                  className={`view-toggle-btn ${viewMode === 'topology' ? 'active' : ''}`}
+                  onClick={() => setViewMode('topology')}
+                >
+                  Trace Topology
+                </button>
               </div>
             </div>
             
@@ -1934,7 +2268,7 @@ export default function TraceDetail() {
                   onSelectSpan={(span) => setSelectedSpan(span)}
                   selectedSpanId={selectedSpan?.spanId}
                 />
-              ) : (
+              ) : viewMode === 'flame' ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <FlameGraph
                     spans={trace.spans || []}
@@ -1945,6 +2279,18 @@ export default function TraceDetail() {
                   {!selectedSpan && (
                     <div className="selected-span-placeholder">
                       Click a span bar in the flame graph above to view its execution details and full telemetry attributes.
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <TraceTopology
+                    spans={trace.spans || []}
+                    onSelectSpan={(span) => setSelectedSpan(span)}
+                  />
+                  {!selectedSpan && (
+                    <div className="selected-span-placeholder">
+                      Click a service node to view span details and trace through the call chain.
                     </div>
                   )}
                 </div>
