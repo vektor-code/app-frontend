@@ -65,6 +65,7 @@ export interface ServiceStats {
   p99Ms: number;
   lastSeen: string;
   isInfrastructure?: boolean;
+  language?: string;
 }
 
 export interface NamespaceStats {

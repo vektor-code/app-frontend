@@ -799,6 +799,7 @@ interface TopologyNode {
   spanIds: string[];
   x: number;
   y: number;
+  iconKey?: string;
 }
 
 interface TopologyEdge {
@@ -829,9 +830,48 @@ const TOPO_ICONS: Record<string, string> = {
   frontend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg',
   backend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg',
   clickhouse: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/clickhouse/clickhouse-original.svg',
+  // Technology language backends
+  go: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg',
+  php: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/php/php-original.svg',
+  java: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/java/java-original.svg',
+  node: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nodejs/nodejs-original.svg',
+  python: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/python/python-original.svg',
+  dotnet: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/dotnetcore/dotnetcore-original.svg',
+  ruby: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/ruby/ruby-original.svg',
+  rust: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/rust/rust-original.svg',
 };
 
-const getTopoIconKey = (name: string): string => {
+const getServiceLanguage = (serviceName: string, serviceSpans: Span[]): string => {
+  const sName = serviceName.toLowerCase();
+  if (sName.includes('php')) return 'php';
+  if (sName.includes('java') || sName.includes('spring') || sName.includes('boot')) return 'java';
+  if (sName.includes('go') || sName.includes('golang') || sName.includes('gopkg')) return 'go';
+  if (sName.includes('node') || sName.includes('express') || sName.includes('nestjs') || sName.includes('javascript') || sName.includes('typescript')) return 'node';
+  if (sName.includes('python') || sName.includes('django') || sName.includes('flask') || sName.includes('fastapi')) return 'python';
+  if (sName.includes('dotnet') || sName.includes('csharp') || sName.includes('aspnet')) return 'dotnet';
+  if (sName.includes('ruby') || sName.includes('rails')) return 'ruby';
+  if (sName.includes('rust')) return 'rust';
+
+  for (const span of serviceSpans) {
+    if (span.serviceName === serviceName && span.attributes) {
+      const lang = span.attributes['telemetry.sdk.language'] || span.attributes['process.runtime.name'];
+      if (lang) {
+        const l = lang.toLowerCase();
+        if (l.includes('php')) return 'php';
+        if (l.includes('java') || l.includes('jvm') || l.includes('kotlin') || l.includes('scala')) return 'java';
+        if (l.includes('go')) return 'go';
+        if (l.includes('node') || l.includes('javascript') || l.includes('typescript') || l.includes('js')) return 'node';
+        if (l.includes('python')) return 'python';
+        if (l.includes('dotnet') || l.includes('c#') || l.includes('csharp')) return 'dotnet';
+        if (l.includes('ruby')) return 'ruby';
+        if (l.includes('rust')) return 'rust';
+      }
+    }
+  }
+  return 'go';
+};
+
+const getTopoIconKey = (name: string, spans: Span[] = []): string => {
   const n = name.toLowerCase();
   if (n.includes('frontend') || n.includes('ui') || n.includes('client')) return 'frontend';
   if (n.includes('postgres')) return 'postgres';
@@ -850,8 +890,8 @@ const getTopoIconKey = (name: string): string => {
   if (n.includes('vm')) return 'vm';
   if (n.includes('bridge') || n.includes('gov.az')) return 'bridge';
   
-  if (n.includes('api') || n.includes('ingestor') || n.includes('agent') || n.includes('backend') || n.includes('service')) {
-    return 'backend';
+  if (n.includes('api') || n.includes('ingestor') || n.includes('agent') || n.includes('backend') || n.includes('service') || spans.length > 0) {
+    return getServiceLanguage(name, spans);
   }
   return '';
 };
@@ -882,7 +922,18 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
       const isErr = isSpanError(span);
 
       if (!nodeMap.has(svcId)) {
-        nodeMap.set(svcId, { id: svcId, name: span.serviceName, type: 'service', errorCount: 0, durationMs: 0, callCount: 0, spanIds: [], x: 0, y: 0 });
+        nodeMap.set(svcId, { 
+          id: svcId, 
+          name: span.serviceName, 
+          type: 'service', 
+          errorCount: 0, 
+          durationMs: 0, 
+          callCount: 0, 
+          spanIds: [], 
+          x: 0, 
+          y: 0, 
+          iconKey: getTopoIconKey(span.serviceName, spans)
+        });
       }
       const svcNode = nodeMap.get(svcId)!;
       if (isErr) svcNode.errorCount++;
@@ -1193,7 +1244,7 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
                 />
                 {/* Icon */}
                 {(() => {
-                  const iconKey = getTopoIconKey(node.name);
+                  const iconKey = node.iconKey || getTopoIconKey(node.name, spans);
                   const iconUrl = iconKey ? TOPO_ICONS[iconKey] : '';
                   return iconUrl ? (
                     <image href={iconUrl} x="-58" y="-12" width="24" height="24" />
@@ -1204,11 +1255,11 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
                   );
                 })()}
                 {/* Name */}
-                <text x={getTopoIconKey(node.name) ? "-26" : "-34"} y="-5" style={{ fontSize: '10.5px', fontWeight: 700, fill: 'var(--text-primary)', fontFamily: 'var(--font-sans)', pointerEvents: 'none' }}>
+                <text x={node.iconKey || getTopoIconKey(node.name, spans) ? "-26" : "-34"} y="-5" style={{ fontSize: '10.5px', fontWeight: 700, fill: 'var(--text-primary)', fontFamily: 'var(--font-sans)', pointerEvents: 'none' }}>
                   {node.name.length > 14 ? `${node.name.slice(0, 12)}…` : node.name}
                 </text>
                 {/* Duration */}
-                <text x={getTopoIconKey(node.name) ? "-26" : "-34"} y="12" style={{ fontSize: '9.5px', fontWeight: 500, fill: hasErr ? '#f43f5e' : 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', pointerEvents: 'none' }}>
+                <text x={node.iconKey || getTopoIconKey(node.name, spans) ? "-26" : "-34"} y="12" style={{ fontSize: '9.5px', fontWeight: 500, fill: hasErr ? '#f43f5e' : 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', pointerEvents: 'none' }}>
                   {formatDuration(node.durationMs)} · x{node.callCount}
                 </text>
                 {/* Error badge */}
@@ -1229,7 +1280,7 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
         <div style={{ position: 'fixed', left: `${mousePos.x + 14}px`, top: `${mousePos.y + 14}px`, background: 'rgba(15, 15, 35, 0.95)', backdropFilter: 'blur(8px)', border: '1px solid var(--border-primary)', borderRadius: '8px', padding: '10px 14px', fontSize: '11.5px', zIndex: 100000, pointerEvents: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', minWidth: '180px' }}>
           <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             {(() => {
-              const iconKey = getTopoIconKey(hoveredNode.name);
+              const iconKey = hoveredNode.iconKey || getTopoIconKey(hoveredNode.name, spans);
               const iconUrl = iconKey ? TOPO_ICONS[iconKey] : '';
               return iconUrl ? (
                 <img src={iconUrl} alt={hoveredNode.name} style={{ width: '16px', height: '16px', display: 'inline-block' }} />

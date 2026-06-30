@@ -713,6 +713,15 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       frontend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg',
       backend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg',
       clickhouse: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/clickhouse/clickhouse-original.svg',
+      // Language backends
+      go: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg',
+      php: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/php/php-original.svg',
+      java: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/java/java-original.svg',
+      node: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nodejs/nodejs-original.svg',
+      python: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/python/python-original.svg',
+      dotnet: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/dotnetcore/dotnetcore-original.svg',
+      ruby: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/ruby/ruby-original.svg',
+      rust: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/rust/rust-original.svg',
     };
 
     Object.entries(urls).forEach(([key, url]) => {
@@ -1922,8 +1931,46 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           const iconY = ry + (h - iconSize) / 2;
 
           let imgKey = '';
-          if (isFrontend) imgKey = 'frontend';
-          else if (isBackend && !isInternet) imgKey = 'backend';
+          if (isFrontend) {
+            imgKey = 'frontend';
+          } else if (isBackend && !isInternet) {
+            // First check if the backend dynamically detected the language
+            if (node.language) {
+              const lang = node.language.toLowerCase();
+              if (lang.includes('go') || lang.includes('golang')) imgKey = 'go';
+              else if (lang.includes('php')) imgKey = 'php';
+              else if (lang.includes('java') || lang.includes('jvm')) imgKey = 'java';
+              else if (lang.includes('node') || lang.includes('javascript') || lang.includes('typescript') || lang.includes('js')) imgKey = 'node';
+              else if (lang.includes('python')) imgKey = 'python';
+              else if (lang.includes('dotnet') || lang.includes('c#') || lang.includes('csharp')) imgKey = 'dotnet';
+              else if (lang.includes('ruby')) imgKey = 'ruby';
+              else if (lang.includes('rust')) imgKey = 'rust';
+            }
+            
+            // Fallback to name-based heuristics if language is not yet detected/populated
+            if (!imgKey) {
+              const sName = node.serviceName.toLowerCase();
+              if (sName.includes('php') || sName.includes('iam') || sName.includes('gendoc')) {
+                imgKey = 'php';
+              } else if (sName.includes('java') || sName.includes('spring') || sName.includes('boot') || sName.includes('dictionary') || sName.includes('project') || sName.includes('asanpay') || sName.includes('protocol')) {
+                imgKey = 'java';
+              } else if (sName.includes('go') || sName.includes('golang') || sName.includes('gopkg')) {
+                imgKey = 'go';
+              } else if (sName.includes('node') || sName.includes('express') || sName.includes('nestjs') || sName.includes('javascript') || sName.includes('typescript') || sName.includes('external')) {
+                imgKey = 'node';
+              } else if (sName.includes('python') || sName.includes('django') || sName.includes('flask') || sName.includes('fastapi') || sName.includes('adapter')) {
+                imgKey = 'python';
+              } else if (sName.includes('dotnet') || sName.includes('csharp') || sName.includes('aspnet')) {
+                imgKey = 'dotnet';
+              } else if (sName.includes('ruby') || sName.includes('rails')) {
+                imgKey = 'ruby';
+              } else if (sName.includes('rust')) {
+                imgKey = 'rust';
+              } else {
+                imgKey = 'backend';
+              }
+            }
+          }
 
           const img = imgKey ? iconImagesRef.current?.get(imgKey) : null;
           if (img && img.complete && img.naturalWidth !== 0) {
