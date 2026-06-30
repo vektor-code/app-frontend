@@ -810,35 +810,67 @@ interface TopologyEdge {
   hasError: boolean;
 }
 
-const getTopoEmoji = (name: string): string => {
+const TOPO_ICONS: Record<string, string> = {
+  redis: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/redis/redis-original.svg',
+  kafka: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/apachekafka/apachekafka-original.svg',
+  rabbitmq: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/rabbitmq/rabbitmq-original.svg',
+  vault: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/vault/vault-original.svg',
+  elasticsearch: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/elasticsearch/elasticsearch-original.svg',
+  minio: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/minio/minio-original.svg',
+  postgres: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/postgresql/postgresql-original.svg',
+  mysql: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mysql/mysql-original.svg',
+  mongodb: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mongodb/mongodb-original.svg',
+  liquibase: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/liquibase/liquibase-original.svg',
+  nginx: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nginx/nginx-original.svg',
+  kong: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/kong.svg',
+  mygov: '/mygov-id.svg',
+  vm: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linux.svg',
+  bridge: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linkerd.svg',
+  frontend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg',
+  backend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg',
+  clickhouse: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/clickhouse/clickhouse-original.svg',
+};
+
+const getTopoIconKey = (name: string): string => {
   const n = name.toLowerCase();
-  // Frontend services
-  if (n.includes('frontend') || n.includes('ui') || n.includes('client')) return '🖥️';
-  // Backend microservices
-  if (n.includes('api')) return '🔌';
-  if (n.includes('ingestor')) return '📥';
-  if (n.includes('agent')) return '🕵️';
-  // Infrastructure / Databases / 3rd Party
-  if (n.includes('postgres')) return '🐘';
-  if (n.includes('mysql')) return '🐬';
-  if (n.includes('redis')) return '⚡';
-  if (n.includes('kafka')) return '🦫';
-  if (n.includes('rabbitmq')) return '🐇';
-  if (n.includes('minio')) return '📦';
-  if (n.includes('clickhouse')) return '📈';
-  if (n.includes('mongo')) return '🍃';
-  if (n.includes('db') || n.includes('sqlite') || n.includes('sql')) return '🗄️';
-  if (n.includes('dns')) return '🌐';
-  if (n.includes('mygov')) return '🏛️';
-  if (n.includes('stripe')) return '💳';
-  if (n.includes('openai')) return '🤖';
-  return '⚙️';
+  if (n.includes('frontend') || n.includes('ui') || n.includes('client')) return 'frontend';
+  if (n.includes('postgres')) return 'postgres';
+  if (n.includes('mysql')) return 'mysql';
+  if (n.includes('redis')) return 'redis';
+  if (n.includes('kafka')) return 'kafka';
+  if (n.includes('rabbitmq') || n.includes('message_bus')) return 'rabbitmq';
+  if (n.includes('minio')) return 'minio';
+  if (n.includes('clickhouse')) return 'clickhouse';
+  if (n.includes('mongo')) return 'mongodb';
+  if (n.includes('vault')) return 'vault';
+  if (n.includes('elastic')) return 'elasticsearch';
+  if (n.includes('nginx')) return 'nginx';
+  if (n.includes('kong')) return 'kong';
+  if (n.includes('mygov')) return 'mygov';
+  if (n.includes('vm')) return 'vm';
+  if (n.includes('bridge') || n.includes('gov.az')) return 'bridge';
+  
+  if (n.includes('api') || n.includes('ingestor') || n.includes('agent') || n.includes('backend') || n.includes('service')) {
+    return 'backend';
+  }
+  return '';
 };
 
 function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (span: Span) => void }) {
   const [hoveredNode, setHoveredNode] = useState<TopologyNode | null>(null);
   const [hoveredEdge, setHoveredEdge] = useState<TopologyEdge | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  // Zoom/Pan State
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+
+  // Drag Node State
+  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>({});
 
   const { nodes, edges } = useMemo(() => {
     const nodeMap = new Map<string, TopologyNode>();
@@ -858,26 +890,30 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
       svcNode.callCount++;
       svcNode.spanIds.push(span.spanId);
 
-      const dest = getSpanDestination(span);
-      if (dest.type && dest.type !== 'service') {
-        const destId = `${dest.type}:${dest.name}`;
-        if (!nodeMap.has(destId)) {
-          nodeMap.set(destId, { id: destId, name: dest.name, type: dest.type === 'infra' ? 'infra' : '3rdparty', errorCount: 0, durationMs: 0, callCount: 0, spanIds: [], x: 0, y: 0 });
-        }
-        const destNode = nodeMap.get(destId)!;
-        if (isErr) destNode.errorCount++;
-        destNode.durationMs += span.durationMs;
-        destNode.callCount++;
-        destNode.spanIds.push(span.spanId);
+      // Only create infra/3rdparty destination edges from outbound spans (CLIENT, INTERNAL, PRODUCER)
+      // SERVER spans receive calls; they don't make outbound calls to infra
+      if (span.kind !== 'SERVER') {
+        const dest = getSpanDestination(span);
+        if (dest.type && dest.type !== 'service') {
+          const destId = `${dest.type}:${dest.name}`;
+          if (!nodeMap.has(destId)) {
+            nodeMap.set(destId, { id: destId, name: dest.name, type: dest.type === 'infra' ? 'infra' : '3rdparty', errorCount: 0, durationMs: 0, callCount: 0, spanIds: [], x: 0, y: 0 });
+          }
+          const destNode = nodeMap.get(destId)!;
+          if (isErr) destNode.errorCount++;
+          destNode.durationMs += span.durationMs;
+          destNode.callCount++;
+          destNode.spanIds.push(span.spanId);
 
-        const eId = `${svcId}->${destId}`;
-        if (!edgeMap.has(eId)) {
-          edgeMap.set(eId, { id: eId, source: svcId, target: destId, callCount: 0, avgDurationMs: 0, hasError: false });
+          const eId = `${svcId}->${destId}`;
+          if (!edgeMap.has(eId)) {
+            edgeMap.set(eId, { id: eId, source: svcId, target: destId, callCount: 0, avgDurationMs: 0, hasError: false });
+          }
+          const edge = edgeMap.get(eId)!;
+          edge.callCount++;
+          edge.avgDurationMs += span.durationMs;
+          if (isErr) edge.hasError = true;
         }
-        const edge = edgeMap.get(eId)!;
-        edge.callCount++;
-        edge.avgDurationMs += span.durationMs;
-        if (isErr) edge.hasError = true;
       }
 
       if (span.parentSpanId) {
@@ -904,7 +940,7 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
   }, [spans]);
 
   // Layout: hierarchical left-to-right
-  useMemo(() => {
+  const layoutPositions = useMemo(() => {
     const levels: Record<string, number> = {};
     nodes.forEach(n => { levels[n.id] = 0; });
 
@@ -931,14 +967,83 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
     const svgW = 840, svgH = 380, pL = 100, pR = 100, pT = 50, pB = 50;
     const lw = maxLvl > 0 ? (svgW - pL - pR) / maxLvl : 0;
 
+    const positions: Record<string, { x: number; y: number }> = {};
     nodes.forEach(n => {
       const lvl = levels[n.id] || 0;
       const grp = levelGroups[lvl];
       const idx = grp.indexOf(n);
-      n.x = maxLvl > 0 ? pL + lvl * lw : svgW / 2;
-      n.y = pT + ((idx + 0.5) / grp.length) * (svgH - pT - pB);
+      const x = maxLvl > 0 ? pL + lvl * lw : svgW / 2;
+      const y = pT + ((idx + 0.5) / grp.length) * (svgH - pT - pB);
+      positions[n.id] = { x, y };
     });
+    return positions;
   }, [nodes, edges]);
+
+  // Combine layout and manually dragged positions
+  const finalNodes = useMemo(() => {
+    return nodes.map(n => {
+      const customPos = nodePositions[n.id];
+      const layoutPos = layoutPositions[n.id] || { x: 420, y: 190 };
+      return {
+        ...n,
+        x: customPos ? customPos.x : layoutPos.x,
+        y: customPos ? customPos.y : layoutPos.y
+      };
+    });
+  }, [nodes, layoutPositions, nodePositions]);
+
+  const handleMouseDownNode = (e: React.MouseEvent, nodeId: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setDraggingNodeId(nodeId);
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (draggingNodeId) {
+      const dx = (e.clientX - dragStart.x) / zoom;
+      const dy = (e.clientY - dragStart.y) / zoom;
+      
+      setNodePositions(prev => {
+        const currentPos = prev[draggingNodeId] || layoutPositions[draggingNodeId] || { x: 420, y: 190 };
+        return {
+          ...prev,
+          [draggingNodeId]: {
+            x: currentPos.x + dx,
+            y: currentPos.y + dy
+          }
+        };
+      });
+      setDragStart({ x: e.clientX, y: e.clientY });
+    } else if (isPanning) {
+      const dx = e.clientX - panStart.x;
+      const dy = e.clientY - panStart.y;
+      setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+      setPanStart({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setDraggingNodeId(null);
+    setIsPanning(false);
+  };
+
+  const handleMouseDownBg = (e: React.MouseEvent) => {
+    if (e.button !== 0) return; // Only left click
+    setIsPanning(true);
+    setPanStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    const zoomFactor = 1.05;
+    let newZoom = zoom;
+    if (e.deltaY < 0) {
+      newZoom = Math.min(zoom * zoomFactor, 3);
+    } else {
+      newZoom = Math.max(zoom / zoomFactor, 0.4);
+    }
+    setZoom(newZoom);
+  };
 
   const handleNodeClick = (node: TopologyNode) => {
     if (node.spanIds.length > 0) {
@@ -953,7 +1058,63 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
   }
 
   return (
-    <div style={{ position: 'relative', width: '100%', background: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--border-primary)', overflow: 'hidden', minHeight: '420px' }}>
+    <div 
+      style={{ 
+        position: 'relative', 
+        width: '100%', 
+        background: 'var(--bg-secondary)', 
+        borderRadius: '12px', 
+        border: '1px solid var(--border-primary)', 
+        overflow: 'hidden', 
+        minHeight: '420px',
+        cursor: isPanning ? 'grabbing' : 'grab'
+      }}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      onMouseDown={handleMouseDownBg}
+      onWheel={handleWheel}
+    >
+      {/* Zoom / Pan Premium floating controls overlay */}
+      <div 
+        style={{ 
+          position: 'absolute', 
+          top: '12px', 
+          right: '12px', 
+          display: 'flex', 
+          gap: '6px', 
+          zIndex: 10,
+          background: 'rgba(15, 23, 42, 0.6)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid var(--border-primary)',
+          borderRadius: '8px',
+          padding: '4px'
+        }}
+        onMouseDown={e => e.stopPropagation()} // Prevent pan start when clicking buttons
+      >
+        <button 
+          onClick={() => setZoom(z => Math.min(z * 1.15, 3))}
+          style={{ width: '28px', height: '28px', border: 'none', background: 'transparent', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: '6px', transition: 'all 0.2s' }}
+          title="Zoom In"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <button 
+          onClick={() => setZoom(z => Math.max(z / 1.15, 0.4))}
+          style={{ width: '28px', height: '28px', border: 'none', background: 'transparent', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: '6px', transition: 'all 0.2s' }}
+          title="Zoom Out"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <button 
+          onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setNodePositions({}); }}
+          style={{ padding: '0 8px', height: '28px', border: 'none', background: 'transparent', color: 'var(--text-secondary)', fontSize: '11px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: '6px', transition: 'all 0.2s' }}
+          title="Reset layout and zoom"
+        >
+          Reset
+        </button>
+      </div>
+
       <svg viewBox="0 0 840 380" style={{ width: '100%', height: '100%', display: 'block', minHeight: '380px' }}>
         <defs>
           <marker id="topo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -968,95 +1129,114 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
           </filter>
         </defs>
 
-        {/* Edges */}
-        {edges.map(edge => {
-          const src = nodes.find(n => n.id === edge.source);
-          const tgt = nodes.find(n => n.id === edge.target);
-          if (!src || !tgt) return null;
+        <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+          {/* Edges */}
+          {edges.map(edge => {
+            const src = finalNodes.find(n => n.id === edge.source);
+            const tgt = finalNodes.find(n => n.id === edge.target);
+            if (!src || !tgt) return null;
 
-          const x1 = src.x + 70, y1 = src.y;
-          const x2 = tgt.x - 70, y2 = tgt.y;
-          const mx = (x1 + x2) / 2;
-          const pathD = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
-          const isHov = hoveredEdge?.id === edge.id;
+            const x1 = src.x + 70, y1 = src.y;
+            const x2 = tgt.x - 70, y2 = tgt.y;
+            const mx = (x1 + x2) / 2;
+            const pathD = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+            const isHov = hoveredEdge?.id === edge.id;
 
-          return (
-            <g key={edge.id}
-              onMouseEnter={(e) => { setHoveredEdge(edge); setMousePos({ x: e.clientX, y: e.clientY }); }}
-              onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
-              onMouseLeave={() => setHoveredEdge(null)}
-            >
-              <path d={pathD} stroke="transparent" strokeWidth="14" fill="none" style={{ cursor: 'pointer' }} />
-              <path
-                d={pathD}
-                stroke={edge.hasError ? '#f43f5e' : isHov ? '#818cf8' : 'rgba(148, 163, 184, 0.25)'}
-                strokeWidth={isHov || edge.hasError ? 2.5 : 1.5}
-                fill="none"
-                style={{ transition: 'stroke 0.2s, stroke-width 0.2s' }}
-                markerEnd={edge.hasError ? 'url(#topo-arrow-err)' : 'url(#topo-arrow)'}
-              />
-              <circle r="3" fill={edge.hasError ? '#f43f5e' : '#818cf8'} opacity="0.8">
-                <animateMotion dur="3s" repeatCount="indefinite" path={pathD} />
-              </circle>
-              <foreignObject x={mx - 36} y={(y1 + y2) / 2 - 10} width="72" height="20" style={{ pointerEvents: 'none' }}>
-                <div style={{ background: 'rgba(15, 23, 42, 0.88)', border: '1px solid rgba(148, 163, 184, 0.15)', borderRadius: '4px', fontSize: '8.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', textAlign: 'center', lineHeight: '18px' }}>
-                  x{edge.callCount} · {formatDuration(edge.avgDurationMs)}
-                </div>
-              </foreignObject>
-            </g>
-          );
-        })}
+            return (
+              <g key={edge.id}
+                onMouseEnter={(e) => { setHoveredEdge(edge); setMousePos({ x: e.clientX, y: e.clientY }); }}
+                onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
+                onMouseLeave={() => setHoveredEdge(null)}
+              >
+                <path d={pathD} stroke="transparent" strokeWidth="14" fill="none" style={{ cursor: 'pointer' }} />
+                <path
+                  d={pathD}
+                  stroke={edge.hasError ? '#f43f5e' : isHov ? '#818cf8' : 'rgba(148, 163, 184, 0.25)'}
+                  strokeWidth={isHov || edge.hasError ? 2.5 : 1.5}
+                  fill="none"
+                  style={{ transition: 'stroke 0.2s, stroke-width 0.2s' }}
+                  markerEnd={edge.hasError ? 'url(#topo-arrow-err)' : 'url(#topo-arrow)'}
+                />
+                <circle r="3" fill={edge.hasError ? '#f43f5e' : '#818cf8'} opacity="0.8">
+                  <animateMotion dur="3s" repeatCount="indefinite" path={pathD} />
+                </circle>
+                <foreignObject x={mx - 36} y={(y1 + y2) / 2 - 10} width="72" height="20" style={{ pointerEvents: 'none' }}>
+                  <div style={{ background: 'rgba(15, 23, 42, 0.88)', border: '1px solid rgba(148, 163, 184, 0.15)', borderRadius: '4px', fontSize: '8.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', textAlign: 'center', lineHeight: '18px' }}>
+                    x{edge.callCount} · {formatDuration(edge.avgDurationMs)}
+                  </div>
+                </foreignObject>
+              </g>
+            );
+          })}
 
-        {/* Nodes */}
-        {nodes.map(node => {
-          const hasErr = node.errorCount > 0;
-          const isHov = hoveredNode?.id === node.id;
-          const borderCol = hasErr ? '#f43f5e' : isHov ? '#818cf8' : 'rgba(148, 163, 184, 0.25)';
+          {/* Nodes */}
+          {finalNodes.map(node => {
+            const hasErr = node.errorCount > 0;
+            const isHov = hoveredNode?.id === node.id;
+            const borderCol = hasErr ? '#f43f5e' : isHov ? '#818cf8' : 'rgba(148, 163, 184, 0.25)';
 
-          return (
-            <g key={node.id} transform={`translate(${node.x}, ${node.y})`}
-              style={{ cursor: 'pointer' }}
-              onClick={() => handleNodeClick(node)}
-              onMouseEnter={(e) => { setHoveredNode(node); setMousePos({ x: e.clientX, y: e.clientY }); }}
-              onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
-              onMouseLeave={() => setHoveredNode(null)}
-            >
-              <rect x="-70" y="-24" width="140" height="48" rx="10" ry="10"
-                fill="var(--bg-primary, #0f172a)"
-                stroke={borderCol}
-                strokeWidth={isHov || hasErr ? 2 : 1.2}
-                filter={hasErr ? 'url(#glow-err)' : undefined}
-                style={{ transition: 'all 0.2s' }}
-              />
-              {/* Icon */}
-              <text x="-56" y="5" style={{ fontSize: '15px', userSelect: 'none' }}>
-                {getTopoEmoji(node.name)}
-              </text>
-              {/* Name */}
-              <text x="-34" y="-5" style={{ fontSize: '10.5px', fontWeight: 700, fill: 'var(--text-primary)', fontFamily: 'var(--font-sans)' }}>
-                {node.name.length > 14 ? `${node.name.slice(0, 12)}…` : node.name}
-              </text>
-              {/* Duration */}
-              <text x="-34" y="12" style={{ fontSize: '9.5px', fontWeight: 500, fill: hasErr ? '#f43f5e' : 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
-                {formatDuration(node.durationMs)} · x{node.callCount}
-              </text>
-              {/* Error badge */}
-              {hasErr && (
-                <g transform="translate(60, -18)">
-                  <circle r="8" fill="#f43f5e" />
-                  <text x="0" y="3.5" textAnchor="middle" style={{ fill: '#fff', fontSize: '9px', fontWeight: 700 }}>!</text>
-                </g>
-              )}
-            </g>
-          );
-        })}
+            return (
+              <g key={node.id} transform={`translate(${node.x}, ${node.y})`}
+                style={{ cursor: 'grab' }}
+                onClick={() => handleNodeClick(node)}
+                onMouseDown={(e) => handleMouseDownNode(e, node.id)}
+                onMouseEnter={(e) => { setHoveredNode(node); setMousePos({ x: e.clientX, y: e.clientY }); }}
+                onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
+                onMouseLeave={() => setHoveredNode(null)}
+              >
+                <rect x="-70" y="-24" width="140" height="48" rx="10" ry="10"
+                  fill="var(--bg-primary, #0f172a)"
+                  stroke={borderCol}
+                  strokeWidth={isHov || hasErr ? 2 : 1.2}
+                  filter={hasErr ? 'url(#glow-err)' : undefined}
+                  style={{ transition: 'stroke 0.2s, stroke-width 0.2s, fill 0.2s' }}
+                />
+                {/* Icon */}
+                {(() => {
+                  const iconKey = getTopoIconKey(node.name);
+                  const iconUrl = iconKey ? TOPO_ICONS[iconKey] : '';
+                  return iconUrl ? (
+                    <image href={iconUrl} x="-58" y="-12" width="24" height="24" />
+                  ) : (
+                    <text x="-56" y="5" style={{ fontSize: '15px', userSelect: 'none' }}>
+                      ⚙️
+                    </text>
+                  );
+                })()}
+                {/* Name */}
+                <text x={getTopoIconKey(node.name) ? "-26" : "-34"} y="-5" style={{ fontSize: '10.5px', fontWeight: 700, fill: 'var(--text-primary)', fontFamily: 'var(--font-sans)', pointerEvents: 'none' }}>
+                  {node.name.length > 14 ? `${node.name.slice(0, 12)}…` : node.name}
+                </text>
+                {/* Duration */}
+                <text x={getTopoIconKey(node.name) ? "-26" : "-34"} y="12" style={{ fontSize: '9.5px', fontWeight: 500, fill: hasErr ? '#f43f5e' : 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', pointerEvents: 'none' }}>
+                  {formatDuration(node.durationMs)} · x{node.callCount}
+                </text>
+                {/* Error badge */}
+                {hasErr && (
+                  <g transform="translate(60, -18)" style={{ pointerEvents: 'none' }}>
+                    <circle r="8" fill="#f43f5e" />
+                    <text x="0" y="3.5" textAnchor="middle" style={{ fill: '#fff', fontSize: '9px', fontWeight: 700 }}>!</text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
+        </g>
       </svg>
 
       {/* Hover Tooltips */}
       {hoveredNode && createPortal(
         <div style={{ position: 'fixed', left: `${mousePos.x + 14}px`, top: `${mousePos.y + 14}px`, background: 'rgba(15, 15, 35, 0.95)', backdropFilter: 'blur(8px)', border: '1px solid var(--border-primary)', borderRadius: '8px', padding: '10px 14px', fontSize: '11.5px', zIndex: 100000, pointerEvents: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', minWidth: '180px' }}>
           <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span>{hoveredNode.type === 'service' ? '⚙️' : getTopoEmoji(hoveredNode.name)}</span>
+            {(() => {
+              const iconKey = getTopoIconKey(hoveredNode.name);
+              const iconUrl = iconKey ? TOPO_ICONS[iconKey] : '';
+              return iconUrl ? (
+                <img src={iconUrl} alt={hoveredNode.name} style={{ width: '16px', height: '16px', display: 'inline-block' }} />
+              ) : (
+                <span>⚙️</span>
+              );
+            })()}
             {hoveredNode.name}
           </div>
           <div style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>

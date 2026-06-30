@@ -710,6 +710,9 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       mygov: '/mygov-id.svg',
       vm: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linux.svg',
       bridge: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linkerd.svg',
+      frontend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg',
+      backend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg',
+      clickhouse: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/clickhouse/clickhouse-original.svg',
     };
 
     Object.entries(urls).forEach(([key, url]) => {
@@ -1910,7 +1913,26 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           ctx.fill();
         } else {
           // Standard/internet node
-          const textX = rx + 12;
+          const isInternet = node.serviceName === 'Internet';
+          const isFrontend = node.serviceName.toLowerCase().includes('frontend') || node.serviceName.toLowerCase().includes('ui') || node.serviceName.toLowerCase().includes('client');
+          const isBackend = !isInternet && !isFrontend;
+
+          const iconSize = 20;
+          const iconX = rx + 12;
+          const iconY = ry + (h - iconSize) / 2;
+
+          let imgKey = '';
+          if (isFrontend) imgKey = 'frontend';
+          else if (isBackend && !isInternet) imgKey = 'backend';
+
+          const img = imgKey ? iconImagesRef.current?.get(imgKey) : null;
+          if (img && img.complete && img.naturalWidth !== 0) {
+            ctx.save();
+            ctx.drawImage(img, iconX, iconY, iconSize, iconSize);
+            ctx.restore();
+          }
+
+          const textX = img ? rx + 38 : rx + 12;
           const centerY = ry + h / 2;
 
           // Draw Service Name Text
@@ -1919,7 +1941,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           ctx.textBaseline = 'middle';
           ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
           let displayName = node.serviceName;
-          const maxLen = Math.floor(w / 8.5);
+          const maxLen = Math.floor((w - (img ? 38 : 12)) / 8.5);
           if (displayName.length > maxLen) {
             displayName = displayName.slice(0, Math.max(8, maxLen - 3)) + '...';
           }
