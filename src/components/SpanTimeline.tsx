@@ -501,7 +501,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
                     alignItems: 'center',
                     flexShrink: 0
                   }} title={span.error || "Span failed"}>
-                    ⚠ error
+                    Error
                   </span>
                 )}
 
@@ -538,7 +538,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
                 {span.serviceName}
                 {dest.type && (
                   <>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '8px' }}>➔</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '8px' }}>-&gt;</span>
                     <span className="destination-badge" style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -638,7 +638,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
   return (
     <div className="waterfall-visualizer">
       {/* 1. Interactive Control & Filter Panel */}
-      <div className="waterfall-controls">
+      <div className="waterfall-controls trace-waterfall-controls">
         <div className="search-box-wrapper">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="search-icon" style={{ top: '8px', left: '8px' }}>
             <circle cx="11" cy="11" r="8" />
@@ -653,7 +653,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
             style={{ width: '100%', paddingLeft: '28px', fontSize: '11px', height: '28px' }}
           />
         </div>
-        <div className="filter-tabs" style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', padding: '2px', borderRadius: '6px' }}>
+        <div className="filter-tabs trace-waterfall-filter-tabs" style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', padding: '2px', borderRadius: '6px' }}>
           <button 
             className={`tab-btn ${filterType === 'all' ? 'active' : ''}`}
             onClick={() => setFilterType('all')}
@@ -676,12 +676,11 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
             Critical ({criticalPathSet.size})
           </button>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '8px', cursor: 'pointer', userSelect: 'none' }}>
+          <label className="trace-waterfall-toggle">
             <input 
               type="checkbox" 
               checked={hideInternalDb} 
               onChange={(e) => setHideInternalDb(e.target.checked)}
-              style={{ accentColor: 'var(--accent-indigo)', width: '12px', height: '12px' }}
             />
             Hide DB/Internal
           </label>
@@ -911,7 +910,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
 }
 
 function formatDuration(ms: number): string {
-  if (ms < 1) return `${(ms * 1000).toFixed(0)}µs`;
+  if (ms < 1) return `${(ms * 1000).toFixed(0)}us`;
   if (ms < 1000) return `${ms.toFixed(1)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
 }

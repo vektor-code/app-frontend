@@ -33,9 +33,110 @@ function getSvcColor(name: string): string {
 
 // Convert numbers of ms into readable formats
 function formatDuration(ms: number): string {
-  if (ms < 1) return `${(ms * 1000).toFixed(0)}µs`;
+  if (ms < 1) return `${(ms * 1000).toFixed(0)}us`;
   if (ms < 1000) return `${ms.toFixed(1)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
+}
+
+type TraceViewMode = 'waterfall' | 'flame' | 'topology';
+type TraceTone = 'healthy' | 'warning' | 'critical' | 'neutral' | 'info';
+type TraceDetailIconName =
+  | 'activity'
+  | 'alert'
+  | 'arrow'
+  | 'back'
+  | 'check'
+  | 'close'
+  | 'copy'
+  | 'database'
+  | 'flame'
+  | 'focus'
+  | 'graph'
+  | 'latency'
+  | 'minus'
+  | 'network'
+  | 'plus'
+  | 'reset'
+  | 'search'
+  | 'server'
+  | 'tags'
+  | 'topology'
+  | 'waterfall';
+
+interface TraceServiceSummary {
+  serviceName: string;
+  namespace: string;
+  spanCount: number;
+  errorCount: number;
+  durationMs: number;
+  avgDurationMs: number;
+}
+
+function getTraceServiceSummary(spans: Span[]): TraceServiceSummary[] {
+  const map = new Map<string, TraceServiceSummary>();
+  spans.forEach(span => {
+    const key = `${span.namespace || 'default'}/${span.serviceName}`;
+    const item = map.get(key) || {
+      serviceName: span.serviceName,
+      namespace: span.namespace || 'default',
+      spanCount: 0,
+      errorCount: 0,
+      durationMs: 0,
+      avgDurationMs: 0,
+    };
+    item.spanCount += 1;
+    item.durationMs += span.durationMs;
+    if (isSpanError(span)) item.errorCount += 1;
+    map.set(key, item);
+  });
+  return Array.from(map.values())
+    .map(item => ({ ...item, avgDurationMs: item.spanCount > 0 ? item.durationMs / item.spanCount : 0 }))
+    .sort((a, b) => b.durationMs - a.durationMs);
+}
+
+function getCriticalSpans(spans: Span[], limit = 5) {
+  return [...spans]
+    .sort((a, b) => {
+      const errorDelta = Number(isSpanError(b)) - Number(isSpanError(a));
+      if (errorDelta !== 0) return errorDelta;
+      return b.durationMs - a.durationMs;
+    })
+    .slice(0, limit);
+}
+
+function getSpanKindSummary(spans: Span[]) {
+  return spans.reduce<Record<string, number>>((acc, span) => {
+    acc[span.kind] = (acc[span.kind] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function formatTraceNumber(value: number) {
+  if (!Number.isFinite(value)) return '0';
+  return new Intl.NumberFormat(undefined, { notation: value >= 10000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value);
+}
+
+function formatTracePercent(value: number) {
+  if (!Number.isFinite(value)) return '0.0%';
+  return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
+}
+
+function formatTraceDate(value: string) {
+  const time = new Date(value);
+  if (Number.isNaN(time.getTime())) return value;
+  return time.toLocaleString();
+}
+
+function getTraceHealthTone(trace: Trace): TraceTone {
+  if (trace.hasError) return 'critical';
+  if (trace.durationMs > 1500) return 'warning';
+  return 'healthy';
+}
+
+function getSpanTone(span: Span): TraceTone {
+  if (isSpanError(span)) return 'critical';
+  if (span.durationMs > 1000) return 'warning';
+  return 'neutral';
 }
 
 interface SpanNode {
@@ -699,42 +800,29 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
   }
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: '100%', background: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--border-primary)', overflow: 'hidden' }}>
-      
-      {/* Search & Control Header bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--border-primary)', gap: '12px', flexWrap: 'wrap' }}>
-        
-        {/* Search input field */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '320px' }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }}>
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
+    <div ref={containerRef} className="trace-flame-panel">
+      <div className="trace-flame-toolbar">
+        <label className="trace-flame-search">
+          <TraceDetailIcon name="search" />
           <input
             type="text"
             placeholder="Search & highlight spans..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="filter-select"
-            style={{ width: '100%', fontSize: '11px', padding: '5px 8px 5px 28px', height: '28px' }}
           />
           {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              style={{ position: 'absolute', right: '8px', border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px' }}
-            >
-              ✕
+            <button onClick={() => setSearchQuery('')} type="button">
+              <TraceDetailIcon name="close" />
             </button>
           )}
-        </div>
+        </label>
 
-        {/* Floating Interactive Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <button className="control-btn-header" onClick={zoomIn} title="Zoom In (Wheel scroll)">＋</button>
-          <button className="control-btn-header" onClick={zoomOut} title="Zoom Out (Wheel scroll)">－</button>
-          <button className="control-btn-header" onClick={resetZoom} title="Reset View (Fit)">⛶</button>
-          <button className="control-btn-header" onClick={toggleOrientation} title="Toggle Flame/Icicle (Upside Down)">⇅</button>
-          <div className="control-divider-header" />
-          <span className="control-status-header">Zoom: {(1 / (viewEnd - viewStart)).toFixed(1)}x</span>
+        <div className="trace-flame-controls">
+          <button onClick={zoomIn} title="Zoom In"><TraceDetailIcon name="plus" /></button>
+          <button onClick={zoomOut} title="Zoom Out"><TraceDetailIcon name="minus" /></button>
+          <button onClick={resetZoom} title="Reset View"><TraceDetailIcon name="reset" /></button>
+          <button onClick={toggleOrientation} title="Toggle Flame/Icicle"><TraceDetailIcon name="flame" /></button>
+          <span>Zoom {(1 / (viewEnd - viewStart)).toFixed(1)}x</span>
         </div>
       </div>
 
@@ -1233,58 +1321,35 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
 
   return (
     <div 
-      style={{ 
-        position: 'relative', 
-        width: '100%', 
-        background: '#090d16', 
-        borderRadius: '12px', 
-        border: '1px solid rgba(99, 102, 241, 0.15)', 
-        overflow: 'hidden', 
-        minHeight: '420px',
-        cursor: isPanning ? 'grabbing' : 'grab'
-      }}
+      className="trace-topology-panel"
+      style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       onMouseDown={handleMouseDownBg}
       onWheel={handleWheel}
     >
-      {/* Zoom / Pan Premium floating controls overlay */}
       <div 
-        style={{ 
-          position: 'absolute', 
-          top: '12px', 
-          right: '12px', 
-          display: 'flex', 
-          gap: '6px', 
-          zIndex: 10,
-          background: 'rgba(15, 23, 42, 0.75)',
-          backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(99, 102, 241, 0.2)',
-          borderRadius: '8px',
-          padding: '4px'
-        }}
+        className="trace-topology-controls"
         onMouseDown={e => e.stopPropagation()} // Prevent pan start when clicking buttons
       >
         <button 
           onClick={() => setZoom(z => Math.min(z * 1.15, 3))}
-          style={{ width: '28px', height: '28px', border: 'none', background: 'transparent', color: '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: '6px', transition: 'all 0.2s' }}
           title="Zoom In"
         >
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <TraceDetailIcon name="plus" />
         </button>
         <button 
           onClick={() => setZoom(z => Math.max(z / 1.15, 0.4))}
-          style={{ width: '28px', height: '28px', border: 'none', background: 'transparent', color: '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: '6px', transition: 'all 0.2s' }}
           title="Zoom Out"
         >
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <TraceDetailIcon name="minus" />
         </button>
         <button 
           onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setNodePositions({}); }}
-          style={{ padding: '0 8px', height: '28px', border: 'none', background: 'transparent', color: '#94a3b8', fontSize: '11px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: '6px', transition: 'all 0.2s' }}
           title="Reset layout and zoom"
         >
+          <TraceDetailIcon name="reset" />
           Reset
         </button>
       </div>
@@ -1426,8 +1491,8 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
                       <img src={iconUrl} alt={node.name} style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
                     </foreignObject>
                   ) : (
-                    <text x="-56" y="5" style={{ fontSize: '15px', userSelect: 'none' }}>
-                      ⚙️
+                    <text x="-56" y="5" style={{ fontSize: '13px', fontWeight: 800, fill: '#94a3b8', userSelect: 'none' }}>
+                      S
                     </text>
                   );
                 })()}
@@ -1462,7 +1527,7 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
               return iconUrl ? (
                 <img src={iconUrl} alt={hoveredNode.name} style={{ width: '16px', height: '16px', display: 'inline-block' }} />
               ) : (
-                <span>⚙️</span>
+                <span className="trace-topology-tooltip-icon">S</span>
               );
             })()}
             {hoveredNode.name}
@@ -1474,7 +1539,7 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
           </div>
           {hoveredNode.errorCount > 0 && (
             <div style={{ color: '#f43f5e', fontWeight: 700, marginTop: '6px', borderTop: '1px solid rgba(244, 63, 94, 0.2)', paddingTop: '6px' }}>
-              ⚠ {hoveredNode.errorCount} error(s) detected here
+              {hoveredNode.errorCount} error(s) detected here
             </div>
           )}
         </div>,
@@ -1489,7 +1554,7 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
             <div>Avg Latency: <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{formatDuration(hoveredEdge.avgDurationMs)}</span></div>
           </div>
           {hoveredEdge.hasError && (
-            <div style={{ color: '#f43f5e', fontWeight: 700, marginTop: '4px' }}>⚠ Errors on this path</div>
+            <div style={{ color: '#f43f5e', fontWeight: 700, marginTop: '4px' }}>Errors on this path</div>
           )}
         </div>,
         document.body
@@ -1683,6 +1748,157 @@ function NotCaptured({ label }: { label: string }) {
       </svg>
       <span>{label}</span>
     </div>
+  );
+}
+
+function TraceDetailIcon({ name }: { name: TraceDetailIconName }) {
+  const common = {
+    width: 18,
+    height: 18,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+
+  switch (name) {
+    case 'activity':
+      return <svg {...common}><path d="M3 12h4l3-8 4 16 3-8h4" /></svg>;
+    case 'alert':
+      return <svg {...common}><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.3 3.6 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z" /></svg>;
+    case 'arrow':
+      return <svg {...common}><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>;
+    case 'back':
+      return <svg {...common}><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></svg>;
+    case 'check':
+      return <svg {...common}><path d="m20 6-11 11-5-5" /></svg>;
+    case 'close':
+      return <svg {...common}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>;
+    case 'copy':
+      return <svg {...common}><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>;
+    case 'database':
+      return <svg {...common}><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 10c0 1.7 3.6 3 8 3s8-1.3 8-3" /></svg>;
+    case 'flame':
+      return <svg {...common}><path d="M12 22c4 0 7-2.7 7-6.7 0-2.6-1.4-4.6-3.4-6.8-.6 2-1.8 3.1-3.1 3.8.4-3.5-1.1-6.1-4-8.3.2 4.5-3.5 6.1-3.5 10.9C5 19 8 22 12 22Z" /></svg>;
+    case 'focus':
+      return <svg {...common}><path d="M4 8V5a1 1 0 0 1 1-1h3" /><path d="M16 4h3a1 1 0 0 1 1 1v3" /><path d="M20 16v3a1 1 0 0 1-1 1h-3" /><path d="M8 20H5a1 1 0 0 1-1-1v-3" /><circle cx="12" cy="12" r="3" /></svg>;
+    case 'graph':
+      return <svg {...common}><path d="M4 19V5" /><path d="M4 19h16" /><path d="M8 15v-4" /><path d="M12 15V8" /><path d="M16 15v-6" /></svg>;
+    case 'latency':
+      return <svg {...common}><path d="M9 2h6" /><path d="M12 6v5l3 2" /><circle cx="12" cy="14" r="8" /></svg>;
+    case 'minus':
+      return <svg {...common}><path d="M5 12h14" /></svg>;
+    case 'network':
+      return <svg {...common}><circle cx="6" cy="6" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="12" cy="18" r="3" /><path d="m8.4 8.2 2.4 6.1" /><path d="m15.6 8.2-2.4 6.1" /><path d="M9 6h6" /></svg>;
+    case 'plus':
+      return <svg {...common}><path d="M12 5v14" /><path d="M5 12h14" /></svg>;
+    case 'reset':
+      return <svg {...common}><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v6h6" /></svg>;
+    case 'search':
+      return <svg {...common}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>;
+    case 'server':
+      return <svg {...common}><rect x="3" y="4" width="18" height="6" rx="2" /><rect x="3" y="14" width="18" height="6" rx="2" /><path d="M7 7h.01" /><path d="M7 17h.01" /></svg>;
+    case 'tags':
+      return <svg {...common}><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z" /><path d="M7.5 7.5h.01" /></svg>;
+    case 'topology':
+      return <svg {...common}><path d="M12 3v5" /><path d="M12 16v5" /><rect x="8" y="8" width="8" height="8" rx="2" /><path d="M3 12h5" /><path d="M16 12h5" /></svg>;
+    case 'waterfall':
+      return <svg {...common}><path d="M4 6h6" /><path d="M4 12h12" /><path d="M4 18h16" /></svg>;
+    default:
+      return <svg {...common}><path d="M4 12h16" /></svg>;
+  }
+}
+
+function TraceMetricCard({
+  icon,
+  label,
+  value,
+  detail,
+  tone = 'neutral',
+}: {
+  icon: TraceDetailIconName;
+  label: string;
+  value: string;
+  detail: string;
+  tone?: TraceTone;
+}) {
+  return (
+    <div className={`trace-detail-metric-card ${tone}`}>
+      <div className="trace-detail-metric-icon">
+        <TraceDetailIcon name={icon} />
+      </div>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <em>{detail}</em>
+      </div>
+    </div>
+  );
+}
+
+function TraceViewButton({
+  active,
+  icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: TraceDetailIconName;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button className={`trace-detail-view-button ${active ? 'active' : ''}`} onClick={onClick}>
+      <TraceDetailIcon name={icon} />
+      {label}
+    </button>
+  );
+}
+
+function TraceServiceCard({
+  item,
+  totalDuration,
+}: {
+  item: TraceServiceSummary;
+  totalDuration: number;
+}) {
+  const color = getSvcColor(item.serviceName);
+  const share = totalDuration > 0 ? (item.durationMs / totalDuration) * 100 : 0;
+  return (
+    <div className={`trace-service-card ${item.errorCount > 0 ? 'critical' : ''}`}>
+      <div className="trace-service-card-top">
+        <span style={{ background: color }} />
+        <div>
+          <strong title={item.serviceName}>{item.serviceName}</strong>
+          <em>{item.namespace}</em>
+        </div>
+        <b>{formatTracePercent(share)}</b>
+      </div>
+      <div className="trace-service-card-bar">
+        <i style={{ width: `${Math.max(3, share)}%`, background: color }} />
+      </div>
+      <div className="trace-service-card-meta">
+        <span>{formatTraceNumber(item.spanCount)} spans</span>
+        <span>{formatDuration(item.avgDurationMs)} avg</span>
+        <span>{formatTraceNumber(item.errorCount)} errors</span>
+      </div>
+    </div>
+  );
+}
+
+function TraceSpanChip({ span, onClick }: { span: Span; onClick: () => void }) {
+  const tone = getSpanTone(span);
+  return (
+    <button className={`trace-span-chip ${tone}`} onClick={onClick}>
+      <div>
+        <strong title={span.name}>{span.name}</strong>
+        <span>{span.serviceName}</span>
+      </div>
+      <em>{formatDuration(span.durationMs)}</em>
+    </button>
   );
 }
 
@@ -2386,7 +2602,7 @@ export default function TraceDetail() {
   const { traceId } = useParams<{ traceId: string }>();
   const [trace, setTrace] = useState<Trace | null>(null);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'waterfall' | 'flame' | 'topology'>('waterfall');
+  const [viewMode, setViewMode] = useState<TraceViewMode>('waterfall');
   const [selectedSpan, setSelectedSpan] = useState<Span | null>(null);
   const navigate = useNavigate();
 
@@ -2527,102 +2743,136 @@ export default function TraceDetail() {
     return Array.from(destMap.values());
   }, [trace]);
 
+  const serviceSummary = useMemo(() => {
+    return trace?.spans ? getTraceServiceSummary(trace.spans) : [];
+  }, [trace]);
+
+  const criticalSpans = useMemo(() => {
+    return trace?.spans ? getCriticalSpans(trace.spans) : [];
+  }, [trace]);
+
+  const spanKindSummary = useMemo(() => {
+    return trace?.spans ? getSpanKindSummary(trace.spans) : {};
+  }, [trace]);
+
+  const rootOperation = trace?.rootSpan?.name || trace?.spans?.[0]?.name || 'Trace';
+  const erroredServiceCount = serviceSummary.filter(item => item.errorCount > 0).length;
+  const dominantService = serviceSummary[0];
+  const traceTone = trace ? getTraceHealthTone(trace) : 'neutral';
+
   if (loading) return <div className="empty-state"><div className="empty-state-title">{t('Loading trace...')}</div></div>;
-  if (!trace) return <div className="empty-state"><div className="empty-state-icon">❌</div><div className="empty-state-title">{t('Trace not found')}</div></div>;
+  if (!trace) return <div className="empty-state"><div className="empty-state-title">{t('Trace not found')}</div></div>;
 
   const startMs = new Date(trace.startTime).getTime();
 
   return (
-    <div className="animate-fade-in trace-detail">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)}>← {t('Back to Explorer')}</button>
-        <h1 className="page-title" style={{ marginBottom: 0 }}>{t('Trace Details')}</h1>
-      </div>
+    <div className="trace-detail-page animate-fade-in">
+      <section className={`trace-detail-hero ${traceTone}`}>
+        <div className="trace-detail-hero-main">
+          <button className="trace-detail-back-button" onClick={() => navigate(-1)}>
+            <TraceDetailIcon name="back" />
+            {t('Back to Explorer')}
+          </button>
+          <span className="trace-detail-eyebrow">
+            <TraceDetailIcon name="network" />
+            {t('Trace detail')}
+          </span>
+          <h1 title={rootOperation}>{rootOperation}</h1>
+          <div className="trace-detail-id-row">
+            <code title={trace.traceId}>{trace.traceId}</code>
+            <button onClick={handleCopyTraceId} title={copiedTraceId ? t('Copied!') : t('Copy Full Trace ID')}>
+              <TraceDetailIcon name={copiedTraceId ? 'check' : 'copy'} />
+            </button>
+          </div>
+        </div>
+        <div className="trace-detail-hero-side">
+          <span className={`trace-detail-status ${trace.hasError ? 'critical' : 'healthy'}`}>
+            <i />
+            {trace.hasError ? 'ERROR' : 'OK'}
+          </span>
+          <strong>{formatDuration(trace.durationMs)}</strong>
+          <em>{formatTraceDate(trace.startTime)}</em>
+        </div>
+      </section>
 
       <div className="trace-detail-layout">
-        {/* Main Content Pane */}
         <div className="trace-detail-main-content">
-          {/* Metadata Overview Panel */}
-          <div className="trace-meta">
-            <div className="trace-meta-item">
-              <span className="trace-meta-label">{t('Trace ID')}</span>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                <span className="trace-meta-value mono" style={{ color: 'var(--accent-indigo-light)', fontSize: '11.5px' }} title={trace.traceId}>
-                  {trace.traceId.slice(0, 16)}...
-                </span>
-                <button 
-                  className="attr-copy-btn" 
-                  onClick={handleCopyTraceId}
-                  title={copiedTraceId ? t("Copied!") : t("Copy Full Trace ID")}
-                  style={{ padding: '2px', height: '20px', width: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  {copiedTraceId ? (
-                    <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
-                  ) : (
-                    <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                    </svg>
-                  )}
-                </button>
+          <section className="trace-detail-metric-grid">
+            <TraceMetricCard
+              icon="server"
+              label={t('Root Service')}
+              value={trace.serviceName}
+              detail={dominantService ? `${dominantService.namespace} / ${formatTraceNumber(dominantService.spanCount)} spans` : (trace.namespace || 'default')}
+              tone="info"
+            />
+            <TraceMetricCard
+              icon="waterfall"
+              label={t('Spans')}
+              value={formatTraceNumber(trace.spanCount)}
+              detail={`${formatTraceNumber(serviceSummary.length)} ${t('services')}`}
+              tone="neutral"
+            />
+            <TraceMetricCard
+              icon="latency"
+              label={t('Duration')}
+              value={formatDuration(trace.durationMs)}
+              detail={`${formatTraceNumber(criticalSpans.length)} ${t('slow/error spans')}`}
+              tone={trace.durationMs > 1500 ? 'warning' : 'healthy'}
+            />
+            <TraceMetricCard
+              icon="alert"
+              label={t('Errors')}
+              value={formatTraceNumber(errorSpans.length)}
+              detail={`${formatTraceNumber(erroredServiceCount)} ${t('affected services')}`}
+              tone={trace.hasError ? 'critical' : 'healthy'}
+            />
+          </section>
+
+          <section className="trace-detail-context-grid">
+            <div className="trace-detail-context-panel">
+              <div className="trace-detail-panel-title">
+                <span>{t('Namespace Path')}</span>
+                <strong>{formatTraceNumber(traceNamespaces.length || 1)}</strong>
               </div>
-            </div>
-            <div className="trace-meta-item">
-              <span className="trace-meta-label">{t('Root Service')}</span>
-              <span className="trace-meta-value" style={{ fontWeight: 600, marginTop: '2px' }}>{trace.serviceName}</span>
-            </div>
-            <div className="trace-meta-item">
-              <span className="trace-meta-label">{traceNamespaces.length > 1 ? `${t('Namespaces')} (${traceNamespaces.length})` : t('Namespace')}</span>
-              <div style={{ marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+              <div className="trace-detail-namespace-flow">
                 {(traceNamespaces.length > 0 ? traceNamespaces : [trace.namespace]).map((ns, idx) => (
                   <React.Fragment key={ns}>
-                    {idx > 0 && <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>→</span>}
-                    <span className="badge badge-ns">{ns}</span>
+                    {idx > 0 && <em>{'->'}</em>}
+                    <span>{ns}</span>
                   </React.Fragment>
                 ))}
               </div>
             </div>
-            <div className="trace-meta-item">
-              <span className="trace-meta-label">{t('Duration')}</span>
-              <span className="trace-meta-value" style={{ color: 'var(--accent-cyan)', fontWeight: 600, marginTop: '2px' }}>{trace.durationMs.toFixed(2)}ms</span>
-            </div>
-            <div className="trace-meta-item">
-              <span className="trace-meta-label">{t('Spans')}</span>
-              <span className="trace-meta-value" style={{ fontWeight: 600, marginTop: '2px' }}>{trace.spanCount}</span>
-            </div>
-            <div className="trace-meta-item">
-              <span className="trace-meta-label">{t('Status')}</span>
-              <div style={{ marginTop: '2px' }}>
-                <span className={`badge ${trace.hasError ? 'badge-error' : 'badge-ok'}`}>
-                  {trace.hasError ? 'ERROR' : 'OK'}
-                </span>
+
+            <div className="trace-detail-context-panel">
+              <div className="trace-detail-panel-title">
+                <span>{t('Span Kinds')}</span>
+                <strong>{Object.keys(spanKindSummary).length}</strong>
+              </div>
+              <div className="trace-detail-kind-list">
+                {Object.entries(spanKindSummary).map(([kind, count]) => (
+                  <span key={kind}>{kind.toLowerCase()} <b>{count}</b></span>
+                ))}
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* Flow completeness notice — visible gaps in the causal chain */}
           {brokenLinkSpans.length > 0 && (
-            <div style={{ marginTop: '12px', display: 'flex', alignItems: 'flex-start', gap: '10px', background: 'rgba(245, 158, 11, 0.07)', border: '1px solid rgba(245, 158, 11, 0.3)', borderLeft: '3px solid var(--accent-amber, #f59e0b)', borderRadius: '10px', padding: '10px 14px' }}>
-              <svg viewBox="0 0 24 24" width="15" height="15" stroke="var(--accent-amber, #f59e0b)" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: '2px' }}>
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-              <div style={{ fontSize: '12px', lineHeight: 1.55, color: 'var(--text-primary)' }}>
-                <strong style={{ color: 'var(--accent-amber, #f59e0b)' }}>Incomplete flow:</strong>{' '}
+            <div className="trace-detail-alert warning">
+              <TraceDetailIcon name="alert" />
+              <span>
+                <strong>{t('Incomplete flow')}:</strong>{' '}
                 {brokenLinkSpans.length} span{brokenLinkSpans.length > 1 ? 's' : ''} reference{brokenLinkSpans.length > 1 ? '' : 's'} a parent span that was not captured
                 ({[...new Set(brokenLinkSpans.map(s => `${s.namespace || 'default'}/${s.serviceName}`))].slice(0, 3).join(', ')}).
-                A hop was not recorded — uninstrumented gateway, disabled namespace, or sampling.
-              </div>
+              </span>
             </div>
           )}
 
           {/* Detected Problems Panel — the error, explained, front and center */}
           {errorSpans.length > 0 && (
-            <div className="problems-panel">
+            <div className="trace-detail-problems-panel">
               <div className="problems-panel-header">
-                <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                  <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
+                <TraceDetailIcon name="alert" />
                 <span>{t('Trace Error Summary')} ({errorSpans.length})</span>
               </div>
               {errorSpans.map(({ span, explanation }) => (
@@ -2639,7 +2889,7 @@ export default function TraceDetail() {
                     </span>
                     {explanation.target && (
                       <>
-                        <span className="problem-arrow">→</span>
+                        <span className="problem-arrow">{'->'}</span>
                         <span className="problem-target" title={explanation.target}>{explanation.target}</span>
                       </>
                     )}
@@ -2652,80 +2902,108 @@ export default function TraceDetail() {
             </div>
           )}
 
-          {/* Trace Connections / Destinations Row */}
-          {uniqueDestinations.length > 0 && (
-            <div className="tags-container" style={{ marginTop: '12px', borderLeft: '3px solid var(--accent-indigo)' }}>
-              <div className="tags-title" style={{ color: 'var(--accent-indigo-light)' }}>{t('Trace Connections & Destinations')} ({uniqueDestinations.length})</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {uniqueDestinations.map(d => (
-                  <div key={d.name} className="tag-pill" style={{ borderColor: 'rgba(99, 102, 241, 0.2)' }} title={`${d.count} call(s) to ${d.name}`}>
-                    <span className="tag-key" style={{ 
-                      background: d.type === '3rdparty' ? 'rgba(245, 158, 11, 0.1)' : d.type === 'infra' ? 'rgba(14, 165, 233, 0.1)' : 'rgba(99, 102, 241, 0.08)',
-                      color: d.type === '3rdparty' ? 'var(--accent-amber)' : d.type === 'infra' ? 'var(--accent-cyan)' : 'var(--accent-indigo-light)',
-                      borderRight: '1px solid var(--border-primary)',
-                      fontSize: '10px',
-                      textTransform: d.type === 'infra' ? 'lowercase' : 'capitalize'
-                    }}>
-                      {d.type === '3rdparty' ? t('3rd party') : d.type}
-                    </span>
-                    <span className="tag-val" style={{ fontSize: '11px', color: 'var(--text-primary)' }}>
-                      {d.name}
-                      <span style={{ marginLeft: '4px', fontSize: '9px', opacity: 0.6, fontWeight: 'normal' }}>
-                        x{d.count}
-                      </span>
-                    </span>
-                  </div>
+          <section className="trace-detail-insights-grid">
+            <div className="trace-detail-insight-panel">
+              <div className="trace-detail-panel-title">
+                <span>{t('Service Contribution')}</span>
+                <strong>{formatTraceNumber(serviceSummary.length)}</strong>
+              </div>
+              <div className="trace-service-card-list">
+                {serviceSummary.slice(0, 6).map(item => (
+                  <TraceServiceCard key={`${item.namespace}/${item.serviceName}`} item={item} totalDuration={trace.durationMs} />
                 ))}
               </div>
             </div>
-          )}
 
-          {/* Metadata Tags Row */}
-          {uniqueTags.length > 0 && (
-            <div className="tags-container">
-              <div className="tags-title">Trace Metadata Tags ({uniqueTags.length})</div>
-              <div className="tags-list">
-                {uniqueTags.map(([k, v]) => (
-                  <div key={k} className="tag-pill" title={`${k}: ${v}`}>
-                    <span className="tag-key">{k}</span>
-                    <span className="tag-val">{v}</span>
-                  </div>
+            <div className="trace-detail-insight-panel">
+              <div className="trace-detail-panel-title">
+                <span>{t('Critical Spans')}</span>
+                <strong>{formatTraceNumber(criticalSpans.length)}</strong>
+              </div>
+              <div className="trace-span-chip-list">
+                {criticalSpans.map(span => (
+                  <TraceSpanChip key={span.spanId} span={span} onClick={() => setSelectedSpan(span)} />
                 ))}
               </div>
             </div>
+          </section>
+
+          {(uniqueDestinations.length > 0 || uniqueTags.length > 0) && (
+            <section className="trace-detail-tags-grid">
+              {uniqueDestinations.length > 0 && (
+                <div className="trace-detail-tag-panel">
+                  <div className="trace-detail-panel-title">
+                    <span>{t('Connections & Destinations')}</span>
+                    <strong>{formatTraceNumber(uniqueDestinations.length)}</strong>
+                  </div>
+                  <div className="trace-detail-chip-cloud">
+                    {uniqueDestinations.map(d => (
+                      <div key={`${d.type}:${d.name}`} className={`trace-detail-chip ${d.type === '3rdparty' ? 'external' : d.type || 'neutral'}`} title={`${d.count} call(s) to ${d.name}`}>
+                        <span>{d.type === '3rdparty' ? t('3rd party') : d.type}</span>
+                        <strong>{d.name}</strong>
+                        <em>x{d.count}</em>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {uniqueTags.length > 0 && (
+                <div className="trace-detail-tag-panel">
+                  <div className="trace-detail-panel-title">
+                    <span>{t('Trace Metadata Tags')}</span>
+                    <strong>{formatTraceNumber(uniqueTags.length)}</strong>
+                  </div>
+                  <div className="trace-detail-chip-cloud">
+                    {uniqueTags.map(([k, v]) => (
+                      <div key={k} className="trace-detail-chip" title={`${k}: ${v}`}>
+                        <span>{k}</span>
+                        <strong>{v}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
           )}
 
-          {/* Main Visualization Card */}
-          <div className="card">
-            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <section className="trace-detail-visualization-panel">
+            <div className="trace-detail-visualization-header">
               <div>
-                <div className="card-title">Trace Visualization</div>
-                <span className="text-sm text-muted">{trace.spanCount} spans total</span>
+                <span>{t('Trace Visualization')}</span>
+                <h2>
+                  {viewMode === 'waterfall'
+                    ? t('Waterfall View')
+                    : viewMode === 'flame'
+                      ? t('Flame Graph')
+                      : t('Trace Topology')}
+                </h2>
+                <p>{formatTraceNumber(trace.spanCount)} {t('spans total')} / {formatDuration(trace.durationMs)}</p>
               </div>
 
-              <div className="view-toggle-buttons">
-                <button
-                  className={`view-toggle-btn ${viewMode === 'waterfall' ? 'active' : ''}`}
+              <div className="trace-detail-view-toggle">
+                <TraceViewButton
+                  active={viewMode === 'waterfall'}
+                  icon="waterfall"
+                  label={t('Waterfall')}
                   onClick={() => setViewMode('waterfall')}
-                >
-                  Waterfall View
-                </button>
-                <button
-                  className={`view-toggle-btn ${viewMode === 'flame' ? 'active' : ''}`}
+                />
+                <TraceViewButton
+                  active={viewMode === 'flame'}
+                  icon="flame"
+                  label={t('Flame')}
                   onClick={() => setViewMode('flame')}
-                >
-                  Flame Graph
-                </button>
-                <button
-                  className={`view-toggle-btn ${viewMode === 'topology' ? 'active' : ''}`}
+                />
+                <TraceViewButton
+                  active={viewMode === 'topology'}
+                  icon="topology"
+                  label={t('Topology')}
                   onClick={() => setViewMode('topology')}
-                >
-                  Trace Topology
-                </button>
+                />
               </div>
             </div>
             
-            <div className="card-body">
+            <div className="trace-detail-visualization-body">
               {viewMode === 'waterfall' ? (
                 <SpanTimeline
                   spans={trace.spans || []}
@@ -2735,7 +3013,7 @@ export default function TraceDetail() {
                   selectedSpanId={selectedSpan?.spanId}
                 />
               ) : viewMode === 'flame' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div className="trace-detail-view-stack">
                   <FlameGraph
                     spans={trace.spans || []}
                     traceStartTime={startMs}
@@ -2749,7 +3027,7 @@ export default function TraceDetail() {
                   )}
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div className="trace-detail-view-stack">
                   <TraceTopology
                     spans={trace.spans || []}
                     onSelectSpan={(span) => setSelectedSpan(span)}
@@ -2762,7 +3040,7 @@ export default function TraceDetail() {
                 </div>
               )}
             </div>
-          </div>
+          </section>
         </div>
 
         {/* Dynamic Details Sidebar Pane */}
