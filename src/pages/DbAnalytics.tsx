@@ -4,7 +4,7 @@ import type { DatabaseQueryMetric } from '../entities';
 import { useTranslation } from '../utils/i18n';
 import TechIcon from '../components/TechIcon';
 import LanguageIcon from '../components/LanguageIcon';
-import { useColumnResize } from '../utils/useColumnResize';
+import { LoadingState } from '../components/DataState';
 
 interface DbAnalyticsProps {
   namespace: string;
@@ -144,19 +144,6 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
   const [serviceLanguages, setServiceLanguages] = useState<Record<string, string>>({});
   const [expandedQuery, setExpandedQuery] = useState<string | null>(null);
 
-  // Resizable columns — drag steals width from the neighbour, keeping the
-  // table within its border.
-  const { widths: colWidths, startResize } = useColumnResize({
-    system: 130,
-    query: 300,
-    service: 170,
-    calls: 70,
-    avgLatency: 95,
-    slowdown: 110,
-    maxLatency: 95,
-    errorRate: 85,
-  });
-
   const loadMetrics = useCallback(async () => {
     try {
       setLoading(true);
@@ -224,6 +211,17 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
     ? Math.max(...filteredMetrics.map(m => m.avgDurationMs))
     : 1;
 
+  const colWidths = {
+    system: '11%',
+    query: '29%',
+    service: '17%',
+    calls: '7%',
+    avgLatency: '10%',
+    slowdown: '10%',
+    maxLatency: '8%',
+    errorRate: '8%',
+  } as const;
+
   const getSystemBadgeClass = (system: string) => {
     const sys = system.toLowerCase();
     if (sys.includes('postgre') || sys.includes('pg')) return 'badge-system-pg';
@@ -254,11 +252,20 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
   ];
 
   return (
-    <div className="animate-fade-in">
-      <h1 className="page-title">{t('Query Performance')}</h1>
-      <p className="page-subtitle">
-        {t('Analyze query performance, database engines, and call metrics across all clusters')}
-      </p>
+    <div className="db-analytics-page animate-fade-in">
+      <section className="db-page-hero">
+        <div>
+          <span className="db-page-kicker">{t('Database telemetry')}</span>
+          <h1 className="page-title">{t('Query Performance')}</h1>
+          <p className="page-subtitle">
+            {t('Analyze query performance, database engines, and call metrics across all clusters')}
+          </p>
+        </div>
+        <div className="db-page-scope">
+          <span>{namespace ? t('Namespace') : t('Scope')}</span>
+          <strong>{namespace || t('All namespaces')}</strong>
+        </div>
+      </section>
 
       {/* Grid of Key Metrics */}
       <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '24px' }}>
@@ -440,46 +447,38 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
       </div>
 
       {/* Query Performance Table */}
-      <div className="card">
+      <div className="card db-query-panel">
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="card-title">{t("Queries & Operations")}</div>
           <span className="text-sm text-muted">{filteredMetrics.length} {t("query patterns active")}</span>
         </div>
-        <div className="table-wrapper" style={{ overflowX: 'auto' }}>
+        <div className="table-wrapper db-table-wrapper" style={{ overflowX: 'hidden' }}>
           <table className="db-table" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
             <thead>
               <tr>
-                <th style={{ width: colWidths.system, position: 'relative' }}>
+                <th style={{ width: colWidths.system }}>
                   {t("System")}
-                  <div className="resize-handle" onMouseDown={e => startResize(e, 'system')} />
                 </th>
-                <th style={{ width: colWidths.query, position: 'relative' }}>
+                <th style={{ width: colWidths.query }}>
                   {t("Normalized Query")}
-                  <div className="resize-handle" onMouseDown={e => startResize(e, 'query')} />
                 </th>
-                <th style={{ width: colWidths.service, position: 'relative' }}>
+                <th style={{ width: colWidths.service }}>
                   {t("Service")}
-                  <div className="resize-handle" onMouseDown={e => startResize(e, 'service')} />
                 </th>
-                <th style={{ width: colWidths.calls, textAlign: 'right', position: 'relative' }}>
+                <th style={{ width: colWidths.calls, textAlign: 'right' }}>
                   {t("Calls")}
-                  <div className="resize-handle" onMouseDown={e => startResize(e, 'calls')} />
                 </th>
-                <th style={{ width: colWidths.avgLatency, textAlign: 'right', position: 'relative' }}>
+                <th style={{ width: colWidths.avgLatency, textAlign: 'right' }}>
                   {t("Avg Latency")}
-                  <div className="resize-handle" onMouseDown={e => startResize(e, 'avgLatency')} />
                 </th>
-                <th style={{ width: colWidths.slowdown, position: 'relative' }}>
+                <th style={{ width: colWidths.slowdown }}>
                   {t("Slowdown")}
-                  <div className="resize-handle" onMouseDown={e => startResize(e, 'slowdown')} />
                 </th>
-                <th style={{ width: colWidths.maxLatency, textAlign: 'right', position: 'relative' }}>
+                <th style={{ width: colWidths.maxLatency, textAlign: 'right' }}>
                   {t("Max Latency")}
-                  <div className="resize-handle" onMouseDown={e => startResize(e, 'maxLatency')} />
                 </th>
-                <th style={{ width: colWidths.errorRate, textAlign: 'right', position: 'relative' }}>
+                <th style={{ width: colWidths.errorRate, textAlign: 'right' }}>
                   {t("Error Rate")}
-                  <div className="resize-handle" onMouseDown={e => startResize(e, 'errorRate')} />
                 </th>
               </tr>
             </thead>
@@ -639,6 +638,13 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                   </React.Fragment>
                 );
               })}
+              {filteredMetrics.length === 0 && loading && (
+                <tr>
+                  <td colSpan={8} className="db-loading-cell">
+                    <LoadingState height={220} label={t('Loading database telemetry...')} />
+                  </td>
+                </tr>
+              )}
               {filteredMetrics.length === 0 && !loading && (
                 <tr>
                   <td colSpan={8}>
@@ -664,6 +670,115 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
       </div>
 
       <style>{`
+        .db-page-hero {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 18px;
+          margin-bottom: 20px;
+          padding-bottom: 18px;
+          border-bottom: 1px solid var(--border-primary);
+        }
+        .db-page-hero .page-title {
+          margin: 5px 0 0;
+        }
+        .db-page-hero .page-subtitle {
+          max-width: 720px;
+          margin-bottom: 0;
+        }
+        .db-page-kicker {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          color: var(--accent-indigo);
+          font-size: 11px;
+          font-weight: 850;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+        .db-page-kicker::before {
+          content: "";
+          width: 7px;
+          height: 7px;
+          border-radius: 999px;
+          background: var(--accent-emerald);
+          box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
+        }
+        .db-page-scope {
+          min-width: 190px;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          align-items: flex-end;
+          padding: 10px 12px;
+          border: 1px solid var(--border-primary);
+          border-radius: 8px;
+          background: var(--bg-secondary);
+          box-shadow: var(--shadow-sm);
+        }
+        .db-page-scope span {
+          color: var(--text-tertiary);
+          font-size: 10px;
+          font-weight: 850;
+          letter-spacing: 0.07em;
+          text-transform: uppercase;
+        }
+        .db-page-scope strong {
+          max-width: 210px;
+          color: var(--text-primary);
+          font-size: 13px;
+          font-weight: 800;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .db-query-panel {
+          overflow: hidden;
+          border-radius: 10px;
+          box-shadow: var(--shadow-sm);
+        }
+        .db-table-wrapper {
+          box-shadow: none;
+          border-left: none;
+          border-right: none;
+          border-bottom: none;
+          border-radius: 0;
+        }
+        .db-table thead th {
+          padding: 12px 14px;
+          border-bottom-width: 1px;
+          background: color-mix(in srgb, var(--bg-secondary) 88%, var(--bg-tertiary) 12%);
+          color: var(--text-tertiary);
+          font-size: 10px;
+          font-weight: 850;
+          letter-spacing: 0.08em;
+        }
+        .db-table tbody tr.hover-row {
+          border-bottom: 1px solid var(--border-primary);
+          box-shadow: none;
+        }
+        .db-table tbody tr.hover-row:hover {
+          background: color-mix(in srgb, var(--accent-indigo) 5%, var(--bg-secondary) 95%) !important;
+          box-shadow: inset 3px 0 0 var(--accent-indigo);
+        }
+        .db-table tbody tr.hover-row td {
+          padding: 13px 14px;
+        }
+        .db-table code {
+          display: inline-block;
+          max-width: 100%;
+          padding: 4px 7px;
+          border-radius: 6px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-primary);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .db-loading-cell {
+          padding: 0 !important;
+          cursor: default;
+        }
         .badge-system-pg {
           background: rgba(43, 108, 176, 0.15) !important;
           color: #3182ce !important;
@@ -715,6 +830,13 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
 
         /* Responsive: filter bar stacking */
         @media (max-width: 768px) {
+          .db-page-hero {
+            flex-direction: column !important;
+          }
+          .db-page-scope {
+            width: 100%;
+            align-items: flex-start;
+          }
           .db-filter-bar {
             flex-direction: column !important;
           }

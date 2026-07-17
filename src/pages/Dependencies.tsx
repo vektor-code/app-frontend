@@ -862,7 +862,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
             {filteredItems.map(item => {
               const health = getHealthMeta(item.errorRate, item.isActive);
               const impactPct = maxValues.maxThroughput > 0 ? (item.requestCount / maxValues.maxThroughput) * 100 : 0;
-              const latencyPct = maxValues.maxLatency > 0 ? (item.avgDurationMs / maxValues.maxLatency) * 100 : 0;
               const tpmVal = item.isActive ? item.requestCount / 60 : 0;
               const topConsumer = item.consumers[0];
               const rowTone = !item.isActive
@@ -910,9 +909,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                     <div>
                       <strong>{formatDependencyLatency(item.avgDurationMs)}</strong>
                       <span>{t('avg')}</span>
-                    </div>
-                    <div className="dependency-mini-bar">
-                      <i style={{ width: `${Math.max(3, Math.min(100, latencyPct))}%` }} />
                     </div>
                   </div>
 

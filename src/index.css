@@ -2832,7 +2832,7 @@ body.dark-theme .flowing-line {
   display: grid;
   grid-template-columns: minmax(300px, 0.74fr) minmax(560px, 1.9fr);
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
   margin-bottom: 14px;
 }
 
@@ -2848,6 +2848,9 @@ body.dark-theme .flowing-line {
 
 .apm-health-panel {
   padding: 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
 }
 
 .apm-panel-topline {
@@ -2887,6 +2890,7 @@ body.dark-theme .flowing-line {
   gap: 14px;
   align-items: center;
   margin-top: 8px;
+  flex: 1;
 }
 
 .apm-health-gauge {
@@ -3007,8 +3011,9 @@ body.dark-theme .flowing-line {
 .apm-signal-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(220px, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  align-self: start;
+  align-self: stretch;
 }
 
 .apm-signal-card {
@@ -3017,7 +3022,7 @@ body.dark-theme .flowing-line {
   grid-template-columns: 40px 1fr auto;
   gap: 12px;
   align-items: center;
-  min-height: 112px;
+  min-height: 0;
   padding: 14px 16px;
   overflow: hidden;
 }
@@ -3045,6 +3050,19 @@ body.dark-theme .flowing-line {
   justify-content: center;
   color: var(--accent-blue);
   background: rgba(37, 99, 235, 0.08);
+}
+
+.apm-real-icon {
+  width: 22px;
+  height: 22px;
+  display: block;
+  object-fit: contain;
+}
+
+.apm-panel-topline .apm-real-icon {
+  width: 24px;
+  height: 24px;
+  opacity: 0.9;
 }
 
 .apm-signal-card.healthy .apm-signal-icon {
@@ -6255,6 +6273,19 @@ body.dark-theme .apm-chart-overlay {
   min-width: 0;
 }
 
+.dependency-cell.health {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.dependency-cell.health .health-badge {
+  width: auto;
+  min-width: 82px;
+  max-width: max-content;
+  justify-content: flex-start;
+}
+
 .dependency-cell.metric {
   display: grid;
   grid-template-columns: 68px minmax(0, 1fr);
@@ -6262,7 +6293,7 @@ body.dark-theme .apm-chart-overlay {
   gap: 9px;
 }
 
-.dependency-cell.metric > div:not(.dependency-mini-bar) {
+.dependency-cell.metric > div {
   min-width: 0;
 }
 
@@ -6295,16 +6326,13 @@ body.dark-theme .apm-chart-overlay {
   overflow: visible;
 }
 
-.dependency-mini-bar,
 .dependency-impact-bar {
-  grid-column: 1 / -1;
   height: 4px;
   border-radius: 999px;
   background: var(--bg-tertiary);
   overflow: hidden;
 }
 
-.dependency-mini-bar i,
 .dependency-impact-bar i {
   display: block;
   height: 100%;

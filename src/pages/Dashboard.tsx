@@ -46,6 +46,14 @@ const tailLatencyColor = '#d97706';
 const dbColor = '#7c3aed';
 const dbLatencyColor = '#059669';
 
+const DASHBOARD_ICON_ASSETS: Partial<Record<IconName, string>> = {
+  shield: '/dashboard-icons/opentelemetry.svg',
+  traffic: '/dashboard-icons/opentelemetry.svg',
+  latency: '/dashboard-icons/grafana.svg',
+  apdex: '/dashboard-icons/prometheus.svg',
+  database: '/dashboard-icons/postgresql.svg',
+};
+
 export default function Dashboard({ namespaces, selectedNamespace, onSelectNamespace }: DashboardProps) {
   const { t } = useTranslation();
   const [dbMetrics, setDbMetrics] = useState<DatabaseQueryMetric[]>([]);
@@ -932,6 +940,11 @@ function ChartTooltip({ leftPercent, children }: { leftPercent: number; children
 }
 
 function DashboardIcon({ name }: { name: IconName }) {
+  const asset = DASHBOARD_ICON_ASSETS[name];
+  if (asset) {
+    return <img src={asset} alt="" className="apm-real-icon" aria-hidden="true" loading="lazy" />;
+  }
+
   const common = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
 
   switch (name) {
