@@ -5,6 +5,74 @@ import type { ClusterApplication, ClusterInventoryItem } from '../entities';
 import AdminUsers from './AdminUsers';
 import { useTranslation } from '../utils/i18n';
 
+type AdminIconName =
+  | 'alerts'
+  | 'archive'
+  | 'cluster'
+  | 'database'
+  | 'infrastructure'
+  | 'namespace'
+  | 'plug'
+  | 'settings'
+  | 'shield'
+  | 'users';
+
+function AdminIcon({ name }: { name: AdminIconName }) {
+  const common = {
+    width: 18,
+    height: 18,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+
+  switch (name) {
+    case 'alerts':
+      return <svg {...common}><path d="M10.3 3.6 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>;
+    case 'archive':
+      return <svg {...common}><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v10h14V9" /><path d="M10 13h4" /></svg>;
+    case 'cluster':
+      return <svg {...common}><path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3Z" /><path d="m4.5 8 7.5 4.2L19.5 8" /><path d="M12 21v-8.8" /></svg>;
+    case 'database':
+      return <svg {...common}><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 10c0 1.7 3.6 3 8 3s8-1.3 8-3" /></svg>;
+    case 'infrastructure':
+      return <svg {...common}><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /><path d="M8 7v10" /><path d="M16 7v10" /></svg>;
+    case 'namespace':
+      return <svg {...common}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>;
+    case 'plug':
+      return <svg {...common}><path d="M12 22v-5" /><path d="M9 8V2" /><path d="M15 8V2" /><path d="M6 8h12v4a6 6 0 0 1-12 0Z" /></svg>;
+    case 'settings':
+      return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.06V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.06-.4H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.06V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 .6 1 1.7 1.7 0 0 0 1.06.4H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z" /></svg>;
+    case 'shield':
+      return <svg {...common}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-5" /></svg>;
+    case 'users':
+      return <svg {...common}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
+  }
+}
+
+function AdminSwitch({
+  checked,
+  disabled,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: () => void;
+  label?: string;
+}) {
+  return (
+    <label className={`admin-switch ${disabled ? 'disabled' : ''}`}>
+      {label && <span>{label}</span>}
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={onChange} />
+      <i />
+    </label>
+  );
+}
+
 // Credential input with a show/hide toggle so real values are inspectable.
 function SecretInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [show, setShow] = useState(false);
@@ -373,9 +441,40 @@ export default function Admin() {
     }
   };
 
+  const handleToggleTelegramEnabled = (nextEnabled: boolean) => {
+    setTelegramEnabled(nextEnabled);
+    localStorage.setItem('telegram_enabled', nextEnabled ? 'true' : 'false');
+    setActionSuccessMessage(`Telegram integration ${nextEnabled ? 'enabled' : 'disabled'}.`);
+    setTimeout(() => setActionSuccessMessage(null), 3000);
+  };
+
   const handleTestTelegram = () => {
     alert(`Telegram connection test message dispatched!\nBot Token: ${telegramToken.slice(0, 6)}... \nChat ID: ${telegramChatId}`);
   };
+
+  const adminTabs: {
+    key: typeof activeTab;
+    label: string;
+    icon: AdminIconName;
+    count?: number | string;
+  }[] = [
+    { key: 'namespaces', label: t('Namespace Manager'), icon: 'namespace', count: nsData.enabled.length + nsData.disabled.length },
+    { key: 'infrastructure', label: t('Infrastructure'), icon: 'infrastructure' },
+    { key: 'clusters', label: t('Clusters'), icon: 'cluster', count: clusterInventory.length },
+    { key: 'instrumentations', label: t('Auto-Instrumentation'), icon: 'settings', count: instrumentations.length },
+    { key: 'retention', label: t('Storage'), icon: 'archive', count: retentionHours === 0 ? t('Forever') : `${retentionHours}h` },
+    { key: 'users', label: t('Users'), icon: 'users' },
+    { key: 'integrations', label: t('Integrations'), icon: 'plug', count: telegramEnabled ? t('On') : t('Off') },
+  ];
+
+  const configuredInfraCount = [
+    infraConfig?.kafka?.brokers,
+    infraConfig?.clickhouse?.host,
+    infraConfig?.minio?.endpoint,
+    infraConfig?.ldap?.enabled === 'true',
+    infraConfig?.prometheus?.url,
+    infraConfig?.elasticsearch?.url,
+  ].filter(Boolean).length;
 
   if (loading && !infraConfig) {
     return (
@@ -395,9 +494,44 @@ export default function Admin() {
   }
 
   return (
-    <div className="animate-fade-in" style={{ paddingBottom: '40px', position: 'relative' }}>
-      <h1 className="page-title">{t('Admin Dashboard')}</h1>
-      <p className="page-subtitle">{t('Configure namespaces, examine system topology components, and monitor Kubernetes clusters.')}</p>
+    <div className="admin-page animate-fade-in">
+      <section className="admin-hero">
+        <div>
+          <span className="admin-eyebrow">
+            <AdminIcon name="shield" />
+            {t('Control plane')}
+          </span>
+          <h1>{t('Admin')}</h1>
+          <p>{t('Manage ingestion, infrastructure, clusters, storage, access, and alert integrations.')}</p>
+        </div>
+        <button type="button" className="admin-refresh-btn" onClick={fetchData} disabled={loading}>
+          <AdminIcon name="settings" />
+          {loading ? t('Refreshing') : t('Refresh')}
+        </button>
+      </section>
+
+      <section className="admin-summary-grid">
+        <div className="admin-summary-card emerald">
+          <span>{t('Active Namespaces')}</span>
+          <strong>{nsData.enabled.length}</strong>
+          <em>{nsData.disabled.length} {t('disabled')}</em>
+        </div>
+        <div className="admin-summary-card indigo">
+          <span>{t('Clusters')}</span>
+          <strong>{clusterInventory.length}</strong>
+          <em>{clusterInventory.filter(c => c.status === 'Active').length} {t('active')}</em>
+        </div>
+        <div className="admin-summary-card cyan">
+          <span>{t('Infrastructure')}</span>
+          <strong>{configuredInfraCount}</strong>
+          <em>{t('configured')}</em>
+        </div>
+        <div className={`admin-summary-card ${telegramEnabled ? 'emerald' : 'neutral'}`}>
+          <span>{t('Notifications')}</span>
+          <strong>{telegramEnabled ? t('On') : t('Off')}</strong>
+          <em>{t('Telegram')}</em>
+        </div>
+      </section>
 
       {error && (
         <div style={{
@@ -454,17 +588,8 @@ export default function Admin() {
         </div>
       )}
 
-      {/* Dynamic Tab Buttons Redesign */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '28px', borderBottom: '1px solid var(--border-primary)', paddingBottom: '8px', flexWrap: 'wrap' }}>
-        {[
-          { key: 'namespaces', label: t('Namespace Manager') },
-          { key: 'infrastructure', label: t('Infrastructure Configs') },
-          { key: 'clusters', label: t('Cluster Inventory') },
-          { key: 'instrumentations', label: t('Auto-Instrumentation') },
-          { key: 'retention', label: t('Storage & Retention') },
-          { key: 'users', label: t('Users & Access') },
-          { key: 'integrations', label: t('Integrations') }
-        ].map((tab) => (
+      <div className="admin-tab-rail">
+        {adminTabs.map((tab) => (
           <button
             key={tab.key}
             type="button"
@@ -472,26 +597,11 @@ export default function Admin() {
               setActiveTab(tab.key as any);
               setIsEditingClusters(false);
             }}
-            style={{
-              background: activeTab === tab.key ? 'var(--gradient-primary)' : 'transparent',
-              color: activeTab === tab.key ? '#ffffff' : 'var(--text-secondary)',
-              border: 'none',
-              borderRadius: '20px',
-              padding: '8px 18px',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: activeTab === tab.key ? 'var(--shadow-md), var(--shadow-glow)' : 'none',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => {
-              if (activeTab !== tab.key) e.currentTarget.style.background = 'var(--bg-hover)';
-            }}
-            onMouseLeave={(e) => {
-              if (activeTab !== tab.key) e.currentTarget.style.background = 'transparent';
-            }}
+            className={activeTab === tab.key ? 'active' : ''}
           >
-            {tab.label}
+            <AdminIcon name={tab.icon} />
+            <span>{tab.label}</span>
+            {tab.count !== undefined && <em>{tab.count}</em>}
           </button>
         ))}
       </div>
@@ -499,118 +609,94 @@ export default function Admin() {
       {/* Tab Contents */}
       {activeTab === 'namespaces' && (
         <div>
-          <div style={{ marginBottom: '20px' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>Ingestion Control</h2>
-            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Toggle tracing ingestion status dynamically. Disabled namespaces completely drop telemetry events at the collector.</span>
+          <div className="admin-section-heading">
+            <div>
+              <span>{t('Ingestion Control')}</span>
+              <h2>{t('Namespace Manager')}</h2>
+            </div>
+            <p>{t('Enable tracing per namespace and manage workload instrumentation from one place.')}</p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+          <div className="admin-namespace-grid">
             {(nsData.enabled || []).map((ns) => (
               <div
-                className="card animate-fade-in"
+                className="admin-namespace-card active animate-fade-in"
                 key={ns}
-                style={{
-                  position: 'relative',
-                  border: '1px solid var(--border-primary)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  minHeight: '145px',
-                }}
               >
                 {togglingNs === ns && (
-                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(10, 14, 23, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5, borderRadius: 'var(--radius-lg)' }}>
-                    <div style={{ width: '20px', height: '20px', border: '2px solid transparent', borderTopColor: '#ffffff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                  <div className="admin-card-busy">
+                    <div />
                   </div>
                 )}
-                <div style={{ padding: '16px 20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                    <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', wordBreak: 'break-all' }}>{ns}</span>
-                    <span className="badge badge-ns" style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-emerald)', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '2px 8px', borderRadius: '12px', fontSize: '10px' }}>
-                      Active
-                    </span>
+                <div className="admin-namespace-body">
+                  <div className="admin-namespace-title">
+                    <strong>{ns}</strong>
+                    <span className="admin-status-pill active">{t('Active')}</span>
                   </div>
-                  <div style={{ marginTop: '12px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                    <span className="text-muted" style={{ fontWeight: 600 }}>Collector:</span> <code className="mono" style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>collector.{ns}.svc</code>
+                  <div className="admin-namespace-meta">
+                    <span>{t('Collector')}</span>
+                    <code>collector.{ns}.svc</code>
                   </div>
                 </div>
 
-                <div style={{ borderTop: '1px solid var(--border-primary)', padding: '12px 18px', background: 'var(--bg-tertiary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottomLeftRadius: 'var(--radius-lg)', borderBottomRightRadius: 'var(--radius-lg)' }}>
+                <div className="admin-namespace-actions">
                   <button
                     type="button"
-                    className="btn btn-ghost"
-                    style={{ color: 'var(--accent-indigo)', fontSize: '12px', fontWeight: 600, padding: 0 }}
+                    className="admin-link-btn"
                     onClick={() => handleManageApplications(ns)}
                   >
-                    Manage Workloads
+                    {t('Workloads')}
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{ color: 'var(--accent-rose)', fontSize: '12px', fontWeight: 600, padding: 0 }}
-                    onClick={() => handleToggleNamespace(ns, true)}
-                  >
-                    Deactivate Ingestion
-                  </button>
+                  <AdminSwitch
+                    checked
+                    disabled={togglingNs === ns}
+                    onChange={() => handleToggleNamespace(ns, true)}
+                  />
                 </div>
               </div>
             ))}
 
             {(nsData.disabled || []).map((ns) => (
               <div
-                className="card animate-fade-in"
+                className="admin-namespace-card inactive animate-fade-in"
                 key={ns}
-                style={{
-                  position: 'relative',
-                  border: '1px solid var(--border-primary)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  minHeight: '145px',
-                  opacity: 0.75,
-                }}
               >
                 {togglingNs === ns && (
-                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(10, 14, 23, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5, borderRadius: 'var(--radius-lg)' }}>
-                    <div style={{ width: '20px', height: '20px', border: '2px solid transparent', borderTopColor: '#ffffff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                  <div className="admin-card-busy">
+                    <div />
                   </div>
                 )}
-                <div style={{ padding: '16px 20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                    <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-muted)', wordBreak: 'break-all' }}>{ns}</span>
-                    <span className="badge" style={{ background: 'rgba(244, 63, 94, 0.1)', color: 'var(--accent-rose)', border: '1px solid rgba(244, 63, 94, 0.2)', padding: '2px 8px', borderRadius: '12px', fontSize: '10px' }}>
-                      Inactive
-                    </span>
+                <div className="admin-namespace-body">
+                  <div className="admin-namespace-title">
+                    <strong>{ns}</strong>
+                    <span className="admin-status-pill inactive">{t('Inactive')}</span>
                   </div>
-                  <div style={{ marginTop: '12px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                    <span className="text-muted" style={{ fontWeight: 600 }}>Instrumentation:</span> <code className="mono" style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>{ns}-instrumentation</code>
+                  <div className="admin-namespace-meta">
+                    <span>{t('Instrumentation')}</span>
+                    <code>{ns}-instrumentation</code>
                   </div>
                 </div>
 
-                <div style={{ borderTop: '1px solid var(--border-primary)', padding: '12px 18px', background: 'var(--bg-tertiary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottomLeftRadius: 'var(--radius-lg)', borderBottomRightRadius: 'var(--radius-lg)' }}>
+                <div className="admin-namespace-actions">
                   <button
                     type="button"
-                    className="btn btn-ghost"
-                    style={{ color: 'var(--accent-indigo)', fontSize: '12px', fontWeight: 600, padding: 0 }}
+                    className="admin-link-btn"
                     onClick={() => handleManageApplications(ns)}
                   >
-                    Manage Workloads
+                    {t('Workloads')}
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{ color: 'var(--accent-emerald)', fontSize: '12px', fontWeight: 600, padding: 0 }}
-                    onClick={() => handleToggleNamespace(ns, false)}
-                  >
-                    Enable Ingestion
-                  </button>
+                  <AdminSwitch
+                    checked={false}
+                    disabled={togglingNs === ns}
+                    onChange={() => handleToggleNamespace(ns, false)}
+                  />
                 </div>
               </div>
             ))}
 
             {nsData.enabled.length === 0 && nsData.disabled.length === 0 && (
-              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', background: 'var(--bg-secondary)', border: '1px dashed var(--border-primary)', borderRadius: '16px', color: 'var(--text-secondary)' }}>
-                No active tracking namespaces registered.
+              <div className="admin-empty-card">
+                {t('No tracking namespaces registered.')}
               </div>
             )}
           </div>
@@ -703,16 +789,11 @@ export default function Admin() {
                           {togglingApp === app.name ? (
                             <div style={{ width: '16px', height: '16px', border: '2px solid transparent', borderTopColor: 'var(--accent-indigo)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
                           ) : null}
-                          <label className="switch-label">
-                            <input
-                              type="checkbox"
-                              className="switch-input"
-                              checked={app.instrumented}
-                              disabled={togglingApp === app.name}
-                              onChange={() => handleToggleApp(app)}
-                            />
-                            <span className="switch-slider" />
-                          </label>
+                          <AdminSwitch
+                            checked={app.instrumented}
+                            disabled={togglingApp === app.name}
+                            onChange={() => handleToggleApp(app)}
+                          />
                         </div>
                       </div>
                     ));
@@ -733,17 +814,17 @@ export default function Admin() {
 
       {activeTab === 'infrastructure' && infraConfig && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeIn 0.2s' }}>
-          <div>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>Infrastructure & Data Services</h2>
-            <p className="text-muted" style={{ fontSize: '13px', marginTop: '6px', maxWidth: '640px' }}>
-              Configure global data pipeline ingestion queues, analytics stores, object storage backends, and directory services.
-            </p>
+          <div className="admin-section-heading">
+            <div>
+              <span>{t('Platform services')}</span>
+              <h2>{t('Infrastructure')}</h2>
+            </div>
+            <p>{t('Connection settings for ingestion, storage, search, metrics, and directory services.')}</p>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-            {/* Apache Kafka Card (Real Apache Kafka Icon representation) */}
             <div
-              className="card hover-table-row"
+              className="admin-resource-card"
               onClick={() => {
                 setEditableInfra(JSON.parse(JSON.stringify(infraConfig)));
                 setOpenInfraModal('kafka');
@@ -782,9 +863,8 @@ export default function Admin() {
               </div>
             </div>
 
-            {/* ClickHouse Card (Real ClickHouse columns logo) */}
             <div
-              className="card hover-table-row"
+              className="admin-resource-card"
               onClick={() => {
                 setEditableInfra(JSON.parse(JSON.stringify(infraConfig)));
                 setOpenInfraModal('clickhouse');
@@ -823,9 +903,8 @@ export default function Admin() {
               </div>
             </div>
 
-            {/* MinIO Storage Card (Real MinIO Layered Storage icon) */}
             <div
-              className="card hover-table-row"
+              className="admin-resource-card"
               onClick={() => {
                 setEditableInfra(JSON.parse(JSON.stringify(infraConfig)));
                 setOpenInfraModal('minio');
@@ -864,9 +943,8 @@ export default function Admin() {
               </div>
             </div>
 
-            {/* LDAP Card */}
             <div
-              className="card hover-table-row"
+              className="admin-resource-card"
               onClick={() => {
                 setEditableInfra(JSON.parse(JSON.stringify(infraConfig)));
                 setOpenInfraModal('ldap');
@@ -907,9 +985,8 @@ export default function Admin() {
               </div>
             </div>
 
-            {/* Prometheus Card (Real Prometheus Flame Icon) */}
             <div
-              className="card hover-table-row"
+              className="admin-resource-card"
               onClick={() => {
                 setEditableInfra(JSON.parse(JSON.stringify(infraConfig)));
                 setOpenInfraModal('prometheus');
@@ -945,9 +1022,8 @@ export default function Admin() {
               </div>
             </div>
 
-            {/* Elasticsearch Card (Real Elasticsearch Logo representation) */}
             <div
-              className="card hover-table-row"
+              className="admin-resource-card"
               onClick={() => {
                 setEditableInfra(JSON.parse(JSON.stringify(infraConfig)));
                 setOpenInfraModal('elasticsearch');
@@ -984,7 +1060,6 @@ export default function Admin() {
             </div>
           </div>
 
-          {/* Config Modals Overlay (Stunning Premium Dialog layout) */}
           {openInfraModal && editableInfra && createPortal(
             <div style={{ position: 'fixed', inset: 0, background: 'rgba(10, 14, 23, 0.75)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, animation: 'fadeIn 0.2s' }}>
               <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '16px', width: '560px', maxWidth: '90%', padding: '32px', boxShadow: 'var(--shadow-lg), var(--shadow-glow)', display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -1070,12 +1145,21 @@ export default function Admin() {
 
                   {openInfraModal === 'ldap' && (
                     <>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Authentication Status</label>
-                        <select className="form-select" value={editableInfra.ldap?.enabled || 'false'} onChange={(e) => setEditableInfra({ ...editableInfra, ldap: { ...editableInfra.ldap, enabled: e.target.value } })}>
-                          <option value="true">ENABLED</option>
-                          <option value="false">DISABLED</option>
-                        </select>
+                      <div className="admin-setting-row">
+                        <div>
+                          <strong>{t('LDAP authentication')}</strong>
+                          <span>{t('Use directory login and group-based access.')}</span>
+                        </div>
+                        <AdminSwitch
+                          checked={editableInfra.ldap?.enabled === 'true'}
+                          onChange={() => setEditableInfra({
+                            ...editableInfra,
+                            ldap: {
+                              ...editableInfra.ldap,
+                              enabled: editableInfra.ldap?.enabled === 'true' ? 'false' : 'true',
+                            }
+                          })}
+                        />
                       </div>
                       {editableInfra.ldap?.enabled === 'true' && (
                         <>
@@ -1144,7 +1228,6 @@ export default function Admin() {
                     </>
                   )}
 
-                  {/* Redesigned Premium Telegram Configurations Modal */}
                   {openInfraModal === 'telegram' && (
                     <>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1199,15 +1282,10 @@ export default function Admin() {
                           <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', display: 'block' }}>Enable Telegram Channel</span>
                           <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Activate forwarding when alert rules are triggered</span>
                         </div>
-                        <label className="switch-label">
-                          <input
-                            type="checkbox"
-                            className="switch-input"
-                            checked={telegramEnabled}
-                            onChange={(e) => setTelegramEnabled(e.target.checked)}
-                          />
-                          <span className="switch-slider" />
-                        </label>
+                        <AdminSwitch
+                          checked={telegramEnabled}
+                          onChange={() => setTelegramEnabled(!telegramEnabled)}
+                        />
                       </div>
                     </>
                   )}
@@ -1247,12 +1325,11 @@ export default function Admin() {
 
       {activeTab === 'clusters' && (
         <div style={{ animation: 'fadeIn 0.2s', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="admin-section-heading action">
             <div>
-              <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>Cluster Inventory</h2>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                Register Kubernetes clusters and store credentials. Managed applications can be instrumented via Namespace Manager.
-              </span>
+              <span>{t('Kubernetes')}</span>
+              <h2>{t('Cluster Inventory')}</h2>
+              <p>{t('Register clusters, store credentials, and test connectivity.')}</p>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               {!isEditingClusters ? (
@@ -1291,7 +1368,7 @@ export default function Admin() {
                 </tr>
               </thead>
               <tbody>
-                {clusterInventory.map((item, idx) => (
+                {(isEditingClusters ? editableClusters : clusterInventory).map((item, idx) => (
                   <tr key={item.id} className="hover-row" style={{ borderBottom: '1px solid var(--border-primary)', transition: 'background 0.2s' }}>
                     <td style={{ padding: '16px 20px' }}>
                       {!isEditingClusters ? (
@@ -1367,11 +1444,15 @@ export default function Admin() {
                           {item.status}
                         </span>
                       ) : (
-                        <select className="form-select" style={{ padding: '6px 10px', fontSize: '12px' }} value={item.status}
-                          onChange={(e) => { const n = [...editableClusters]; n[idx].status = e.target.value; setEditableClusters(n); }}>
-                          <option value="Active">Active</option>
-                          <option value="Inactive">Inactive</option>
-                        </select>
+                        <AdminSwitch
+                          checked={item.status === 'Active'}
+                          label={item.status === 'Active' ? t('Active') : t('Inactive')}
+                          onChange={() => {
+                            const n = [...editableClusters];
+                            n[idx].status = n[idx].status === 'Active' ? 'Inactive' : 'Active';
+                            setEditableClusters(n);
+                          }}
+                        />
                       )}
                     </td>
                     <td style={{ padding: '16px 20px', textAlign: 'right' }}>
@@ -1411,11 +1492,12 @@ export default function Admin() {
 
       {activeTab === 'instrumentations' && (
         <div>
-          <div style={{ marginBottom: '20px' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>Instrumentation CRDs</h2>
-            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-              OpenTelemetry Instrumentation resources on agent-managed clusters. These are created only for namespaces you explicitly enable in Ingestion Control.
-            </span>
+          <div className="admin-section-heading">
+            <div>
+              <span>{t('OpenTelemetry')}</span>
+              <h2>{t('Instrumentation CRDs')}</h2>
+            </div>
+            <p>{t('Resources created for namespaces enabled in ingestion control.')}</p>
           </div>
           
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
@@ -1458,11 +1540,12 @@ export default function Admin() {
 
       {activeTab === 'retention' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          <div>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>Storage & Retention</h2>
-            <p className="text-muted" style={{ fontSize: '13px', marginTop: '6px', maxWidth: '620px' }}>
-              Traces are kept in ClickHouse. Recent spans stay on the fast disk; older ones tier down to MinIO automatically and remain fully searchable. Retention sets how long spans are kept before deletion — <strong>0 = keep forever</strong>.
-            </p>
+          <div className="admin-section-heading">
+            <div>
+              <span>{t('Storage')}</span>
+              <h2>{t('Storage & Retention')}</h2>
+            </div>
+            <p>{t('Set trace expiry and manage storage cleanup. 0 keeps traces forever.')}</p>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
@@ -1517,17 +1600,17 @@ export default function Admin() {
 
       {activeTab === 'integrations' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeIn 0.2s' }}>
-          <div>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>Notification Integrations</h2>
-            <p className="text-muted" style={{ fontSize: '13px', marginTop: '6px', maxWidth: '560px' }}>
-              Configure alert forwarding integrations to notify your SRE team on third-party communication platforms.
-            </p>
+          <div className="admin-section-heading">
+            <div>
+              <span>{t('Alerts')}</span>
+              <h2>{t('Notification Integrations')}</h2>
+            </div>
+            <p>{t('Forward alert events to external notification channels.')}</p>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-            {/* Telegram Notification Card */}
             <div
-              className="card hover-table-row"
+              className="admin-resource-card"
               onClick={() => {
                 setOpenInfraModal('telegram');
               }}
@@ -1558,15 +1641,22 @@ export default function Admin() {
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
                 Dispatches system telemetry and error notifications to a chat group.
               </p>
-              <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-tertiary)' }}>
+              <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
                 <span>Chat ID: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{telegramChatId || 'Not set'}</strong></span>
-                <span style={{ color: 'var(--accent-indigo)', fontWeight: 600 }}>Configure &rarr;</span>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '10px' }} onClick={(event) => event.stopPropagation()}>
+                  <button type="button" className="admin-link-btn" onClick={() => setOpenInfraModal('telegram')}>
+                    {t('Configure')}
+                  </button>
+                  <AdminSwitch
+                    checked={telegramEnabled}
+                    onChange={() => handleToggleTelegramEnabled(!telegramEnabled)}
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Slack integration placeholder */}
             <div
-              className="card hover-table-row"
+              className="admin-resource-card"
               style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', opacity: 0.7, border: '1px dashed var(--border-secondary)' }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1586,9 +1676,8 @@ export default function Admin() {
               </p>
             </div>
 
-            {/* PagerDuty placeholder */}
             <div
-              className="card hover-table-row"
+              className="admin-resource-card"
               style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', opacity: 0.7, border: '1px dashed var(--border-secondary)' }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

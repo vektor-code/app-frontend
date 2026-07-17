@@ -4,12 +4,25 @@ import { api } from '../api/client';
 import type { PermissionTemplate, UserPermission } from '../entities';
 import { useTranslation } from '../utils/i18n';
 
-// Users & Access tab: SonarQube-style permission management for LDAP users.
-// Each user has a role (admin/viewer) and a set of visible namespaces.
-// Templates are reusable presets; the default template is applied to new
-// LDAP users on their first login.
-
 const ALL_NS = '*';
+
+function AccessSwitch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  label?: string;
+}) {
+  return (
+    <label className="admin-switch">
+      {label && <span>{label}</span>}
+      <input type="checkbox" checked={checked} onChange={onChange} />
+      <i />
+    </label>
+  );
+}
 
 function NamespacePicker({ selected, options, onChange }: {
   selected: string[];
@@ -188,14 +201,12 @@ export default function AdminUsers() {
         }}>{message.text}</div>
       )}
 
-      {/* ==== Permission Templates ==== */}
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+        <div className="admin-section-heading action">
           <div>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', margin: 0 }}>{t('Permission Templates')}</h2>
-            <p className="text-muted" style={{ fontSize: '13px', marginTop: '6px', maxWidth: '680px' }}>
-              {t('The ★ default template is applied to new users on first login.')}
-            </p>
+            <span>{t('Access presets')}</span>
+            <h2>{t('Permission Templates')}</h2>
+            <p>{t('The default template is applied to new users on first login.')}</p>
           </div>
           <button className="btn btn-primary btn-sm" onClick={() => setEditTemplate({ name: '', description: '', role: 'viewer', namespaces: [ALL_NS], isDefault: templates.length === 0 })}>
             + {t('New Template')}
@@ -233,12 +244,14 @@ export default function AdminUsers() {
         )}
       </div>
 
-      {/* ==== Users ==== */}
       <div>
-        <h2 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', margin: 0 }}>{t('Users')}</h2>
-        <p className="text-muted" style={{ fontSize: '13px', marginTop: '6px', maxWidth: '680px' }}>
-          {t('Users appear after first login. Namespace changes apply in seconds; role changes on next login.')}
-        </p>
+        <div className="admin-section-heading compact">
+          <div>
+            <span>{t('LDAP identities')}</span>
+            <h2>{t('Users')}</h2>
+            <p>{t('Users appear after first login. Namespace changes apply in seconds.')}</p>
+          </div>
+        </div>
 
         {users.length === 0 ? (
           <div className="card" style={{ padding: '20px', fontSize: '13px', color: 'var(--text-secondary)', marginTop: '10px' }}>
@@ -290,7 +303,6 @@ export default function AdminUsers() {
         )}
       </div>
 
-      {/* ==== Edit User Modal ==== */}
       {editUser && createPortal(
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(10, 14, 23, 0.75)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
           <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '16px', width: '620px', maxWidth: '92%', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '85vh', overflowY: 'auto' }}>
@@ -302,12 +314,15 @@ export default function AdminUsers() {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Role</label>
-                <select className="form-select" value={editUser.role} onChange={e => setEditUser({ ...editUser, role: e.target.value })}>
-                  <option value="viewer">Viewer (read-only, namespace-scoped)</option>
-                  <option value="admin">Admin (full access + settings)</option>
-                </select>
+              <div className="admin-setting-row" style={{ margin: 0 }}>
+                <div>
+                  <strong>{t('Admin access')}</strong>
+                  <span>{editUser.role === 'admin' ? t('Full access') : t('Namespace-scoped viewer')}</span>
+                </div>
+                <AccessSwitch
+                  checked={editUser.role === 'admin'}
+                  onChange={() => setEditUser({ ...editUser, role: editUser.role === 'admin' ? 'viewer' : 'admin' })}
+                />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Apply template</label>
@@ -341,7 +356,6 @@ export default function AdminUsers() {
         document.body
       )}
 
-      {/* ==== Edit Template Modal ==== */}
       {editTemplate && createPortal(
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(10, 14, 23, 0.75)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
           <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '16px', width: '620px', maxWidth: '92%', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '85vh', overflowY: 'auto' }}>
@@ -359,12 +373,15 @@ export default function AdminUsers() {
                   disabled={templates.some(t => t.name === editTemplate.name)}
                   onChange={e => setEditTemplate({ ...editTemplate, name: e.target.value })} />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Role</label>
-                <select className="form-select" value={editTemplate.role} onChange={e => setEditTemplate({ ...editTemplate, role: e.target.value })}>
-                  <option value="viewer">Viewer</option>
-                  <option value="admin">Admin</option>
-                </select>
+              <div className="admin-setting-row" style={{ margin: 0 }}>
+                <div>
+                  <strong>{t('Admin template')}</strong>
+                  <span>{editTemplate.role === 'admin' ? t('Full access') : t('Viewer access')}</span>
+                </div>
+                <AccessSwitch
+                  checked={editTemplate.role === 'admin'}
+                  onChange={() => setEditTemplate({ ...editTemplate, role: editTemplate.role === 'admin' ? 'viewer' : 'admin' })}
+                />
               </div>
             </div>
 
@@ -383,10 +400,16 @@ export default function AdminUsers() {
               />
             </div>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={editTemplate.isDefault} onChange={e => setEditTemplate({ ...editTemplate, isDefault: e.target.checked })} style={{ accentColor: 'var(--accent-indigo)' }} />
-              Default template — applied to new LDAP users on first login
-            </label>
+            <div className="admin-setting-row">
+              <div>
+                <strong>{t('Default template')}</strong>
+                <span>{t('Applied to new LDAP users on first login.')}</span>
+              </div>
+              <AccessSwitch
+                checked={editTemplate.isDefault}
+                onChange={() => setEditTemplate({ ...editTemplate, isDefault: !editTemplate.isDefault })}
+              />
+            </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border-primary)', paddingTop: '16px' }}>
               <button className="btn btn-ghost" onClick={() => setEditTemplate(null)}>Cancel</button>
