@@ -141,6 +141,67 @@ function StackPicker({
   );
 }
 
+type InfraChipState = 'ready' | 'missing' | 'neutral';
+type InfraCardConfig = {
+  key: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  logo: string;
+  status: string;
+  statusState: InfraChipState;
+  chips: readonly { label: string; state: InfraChipState }[];
+  wideLogo?: boolean;
+  logoTheme?: 'dark';
+};
+
+function InfraResourceCard({
+  title,
+  subtitle,
+  description,
+  logo,
+  status,
+  statusState,
+  chips,
+  onClick,
+  wideLogo,
+  logoTheme,
+}: {
+  title: string;
+  subtitle: string;
+  description: string;
+  logo: string;
+  status: string;
+  statusState: InfraChipState;
+  chips: readonly { label: string; state: InfraChipState }[];
+  onClick: () => void;
+  wideLogo?: boolean;
+  logoTheme?: 'dark';
+}) {
+  return (
+    <button type="button" className="admin-infra-card" onClick={onClick}>
+      <span className={`admin-infra-status ${statusState}`}>{status}</span>
+      <span className={`admin-infra-logo ${wideLogo ? 'wide' : ''} ${logoTheme || ''}`}>
+        <img src={logo} alt="" />
+      </span>
+      <span className="admin-infra-copy">
+        <strong>{title}</strong>
+        <em>{subtitle}</em>
+        <span>{description}</span>
+      </span>
+      <span className="admin-infra-chip-grid">
+        {chips.map(chip => (
+          <span key={chip.label} className={`admin-infra-chip ${chip.state}`}>
+            <i />
+            {chip.label}
+          </span>
+        ))}
+      </span>
+      <span className="admin-infra-action">Configure</span>
+    </button>
+  );
+}
+
 function SecretInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [show, setShow] = useState(false);
   return (
@@ -568,6 +629,101 @@ export default function Admin() {
     : retentionHours < 24
       ? `${retentionHours}h`
       : `${Math.round(retentionHours / 24)}d`;
+  const openInfraConfig = (key: string) => {
+    setEditableInfra(JSON.parse(JSON.stringify(infraConfig)));
+    setOpenInfraModal(key);
+  };
+  const infraCards: InfraCardConfig[] = infraConfig ? [
+    {
+      key: 'kafka',
+      title: 'Apache Kafka',
+      subtitle: t('Ingestion queue'),
+      description: t('Buffers spans before they are written to storage.'),
+      logo: '/logos/kafka.svg',
+      status: infraConfig.kafka?.brokers && infraConfig.kafka?.topic ? t('Configured') : t('Missing setup'),
+      statusState: infraConfig.kafka?.brokers && infraConfig.kafka?.topic ? 'ready' : 'missing',
+      chips: [
+        { label: t('Brokers'), state: infraConfig.kafka?.brokers ? 'ready' : 'missing' },
+        { label: t('Topic'), state: infraConfig.kafka?.topic ? 'ready' : 'missing' },
+        { label: t('Consumer group'), state: infraConfig.kafka?.group ? 'ready' : 'missing' },
+      ],
+    },
+    {
+      key: 'clickhouse',
+      title: 'ClickHouse',
+      subtitle: t('Trace analytics database'),
+      description: t('Stores spans and powers trace queries.'),
+      logo: '/logos/clickhouse.svg',
+      status: infraConfig.clickhouse?.host ? t('Configured') : t('Missing setup'),
+      statusState: infraConfig.clickhouse?.host ? 'ready' : 'missing',
+      wideLogo: true,
+      chips: [
+        { label: t('Host'), state: infraConfig.clickhouse?.host ? 'ready' : 'missing' },
+        { label: t('Database'), state: infraConfig.clickhouse?.database ? 'ready' : 'missing' },
+        { label: t('Credentials'), state: infraConfig.clickhouse?.username ? 'ready' : 'missing' },
+      ],
+    },
+    {
+      key: 'minio',
+      title: 'MinIO',
+      subtitle: t('Trace object storage'),
+      description: t('Stores trace payloads and long-term span artifacts.'),
+      logo: '/logos/minio.png',
+      logoTheme: 'dark',
+      status: infraConfig.minio?.endpoint && infraConfig.minio?.bucket ? t('Configured') : t('Missing setup'),
+      statusState: infraConfig.minio?.endpoint && infraConfig.minio?.bucket ? 'ready' : 'missing',
+      wideLogo: true,
+      chips: [
+        { label: t('Endpoint'), state: infraConfig.minio?.endpoint ? 'ready' : 'missing' },
+        { label: t('Bucket'), state: infraConfig.minio?.bucket ? 'ready' : 'missing' },
+        { label: infraConfig.minio?.useSSL === 'true' ? t('SSL on') : t('SSL off'), state: 'neutral' },
+      ],
+    },
+    {
+      key: 'ldap',
+      title: 'OpenLDAP',
+      subtitle: t('Directory access'),
+      description: t('Controls directory login and group-based access.'),
+      logo: '/logos/ldap.gif',
+      status: infraConfig.ldap?.enabled === 'true' ? t('Enabled') : t('Disabled'),
+      statusState: infraConfig.ldap?.enabled === 'true' ? 'ready' : 'neutral',
+      wideLogo: true,
+      chips: [
+        { label: t('Auth'), state: infraConfig.ldap?.enabled === 'true' ? 'ready' : 'neutral' },
+        { label: t('Server'), state: infraConfig.ldap?.url ? 'ready' : 'missing' },
+        { label: t('Bind user'), state: infraConfig.ldap?.bindDN ? 'ready' : 'missing' },
+      ],
+    },
+    {
+      key: 'prometheus',
+      title: 'Prometheus',
+      subtitle: t('Metrics source'),
+      description: t('Provides infrastructure and collector metrics.'),
+      logo: '/logos/prometheus.svg',
+      status: infraConfig.prometheus?.url ? t('Configured') : t('Missing setup'),
+      statusState: infraConfig.prometheus?.url ? 'ready' : 'missing',
+      chips: [
+        { label: t('API URL'), state: infraConfig.prometheus?.url ? 'ready' : 'missing' },
+        { label: t('Discovery'), state: infraConfig.prometheus?.discoveryMode ? 'ready' : 'neutral' },
+        { label: t('Scrape'), state: infraConfig.prometheus?.scrapeInterval ? 'ready' : 'neutral' },
+      ],
+    },
+    {
+      key: 'elasticsearch',
+      title: 'Elasticsearch',
+      subtitle: t('Metadata search'),
+      description: t('Indexes trace attributes for fast filtering.'),
+      logo: '/logos/elasticsearch.svg',
+      status: infraConfig.elasticsearch?.url ? t('Configured') : t('Missing setup'),
+      statusState: infraConfig.elasticsearch?.url ? 'ready' : 'missing',
+      wideLogo: true,
+      chips: [
+        { label: t('Nodes'), state: infraConfig.elasticsearch?.url ? 'ready' : 'missing' },
+        { label: t('Index prefix'), state: infraConfig.elasticsearch?.indexPrefix ? 'ready' : 'missing' },
+        { label: infraConfig.elasticsearch?.tlsVerify === 'true' ? t('TLS verify') : t('TLS off'), state: 'neutral' },
+      ],
+    },
+  ] : [];
 
   if (loading && !infraConfig) {
     return (
@@ -915,252 +1071,22 @@ export default function Admin() {
             <p>{t('Connection settings for ingestion, storage, search, metrics, and directory services.')}</p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-            <div
-              className="admin-resource-card"
-              onClick={() => {
-                setEditableInfra(JSON.parse(JSON.stringify(infraConfig)));
-                setOpenInfraModal('kafka');
-              }}
-              style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', cursor: 'pointer', transition: 'transform 0.2s, border-color 0.2s', border: '1px solid var(--border-primary)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.borderColor = 'var(--accent-indigo)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.borderColor = 'var(--border-primary)';
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '48px', minWidth: '48px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <img src="/logos/kafka.svg" style={{ height: '30px', maxWidth: '48px', objectFit: 'contain' }} alt="Kafka" />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Apache Kafka</h3>
-                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Ingestion Queue</span>
-                  </div>
-                </div>
-                <span className={`badge ${infraConfig.kafka?.brokers && infraConfig.kafka?.topic ? 'badge-success' : 'badge-neutral'}`}>
-                  {infraConfig.kafka?.brokers && infraConfig.kafka?.topic ? 'Configured' : 'Not set'}
-                </span>
-              </div>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Span intake queue and consumer group.
-              </p>
-              <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                <span style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-                  <span>Brokers: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{infraConfig.kafka?.brokers || 'None'}</strong></span>
-                  <span>Topic: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{infraConfig.kafka?.topic || 'None'}</strong> · Group: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{infraConfig.kafka?.group || 'None'}</strong></span>
-                </span>
-                <span style={{ color: 'var(--accent-indigo)', fontWeight: 600 }}>Configure &rarr;</span>
-              </div>
-            </div>
-
-            <div
-              className="admin-resource-card"
-              onClick={() => {
-                setEditableInfra(JSON.parse(JSON.stringify(infraConfig)));
-                setOpenInfraModal('clickhouse');
-              }}
-              style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', cursor: 'pointer', transition: 'transform 0.2s, border-color 0.2s', border: '1px solid var(--border-primary)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.borderColor = 'var(--accent-indigo)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.borderColor = 'var(--border-primary)';
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '48px', minWidth: '48px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <img src="/logos/clickhouse.svg" style={{ height: '30px', maxWidth: '48px', objectFit: 'contain' }} alt="ClickHouse" />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>ClickHouse</h3>
-                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>OLAP Database</span>
-                  </div>
-                </div>
-                <span className={`badge ${infraConfig.clickhouse?.host ? 'badge-success' : 'badge-neutral'}`}>
-                  {infraConfig.clickhouse?.host ? 'Active' : 'Not set'}
-                </span>
-              </div>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Trace analytics database.
-              </p>
-              <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                <span style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-                  <span>Host: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{infraConfig.clickhouse?.host ? `${infraConfig.clickhouse.host}${infraConfig.clickhouse.port ? ':' + infraConfig.clickhouse.port : ''}` : 'None'}</strong></span>
-                  <span>User: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{infraConfig.clickhouse?.username || 'None'}</strong> · DB: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{infraConfig.clickhouse?.database || 'kubetrace'}</strong></span>
-                </span>
-                <span style={{ color: 'var(--accent-indigo)', fontWeight: 600 }}>Configure &rarr;</span>
-              </div>
-            </div>
-
-            <div
-              className="admin-resource-card"
-              onClick={() => {
-                setEditableInfra(JSON.parse(JSON.stringify(infraConfig)));
-                setOpenInfraModal('minio');
-              }}
-              style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', cursor: 'pointer', transition: 'transform 0.2s, border-color 0.2s', border: '1px solid var(--border-primary)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.borderColor = 'var(--accent-indigo)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.borderColor = 'var(--border-primary)';
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '48px', minWidth: '48px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <img src="/logos/minio.svg" style={{ height: '30px', maxWidth: '48px', objectFit: 'contain' }} alt="MinIO" />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>MinIO</h3>
-                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Trace Object Storage</span>
-                  </div>
-                </div>
-                <span className={`badge ${infraConfig.minio?.endpoint && infraConfig.minio?.bucket ? 'badge-success' : 'badge-neutral'}`}>
-                  {infraConfig.minio?.endpoint && infraConfig.minio?.bucket ? 'Connected' : 'Not set'}
-                </span>
-              </div>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Object storage for trace payloads.
-              </p>
-              <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                <span style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-                  <span>Endpoint: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{infraConfig.minio?.endpoint || 'None'}</strong></span>
-                  <span>Bucket: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{infraConfig.minio?.bucket || 'None'}</strong> · Access Key: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{infraConfig.minio?.accessKey || 'None'}</strong></span>
-                </span>
-                <span style={{ color: 'var(--accent-indigo)', fontWeight: 600 }}>Configure &rarr;</span>
-              </div>
-            </div>
-
-            <div
-              className="admin-resource-card"
-              onClick={() => {
-                setEditableInfra(JSON.parse(JSON.stringify(infraConfig)));
-                setOpenInfraModal('ldap');
-              }}
-              style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', cursor: 'pointer', transition: 'transform 0.2s, border-color 0.2s', border: '1px solid var(--border-primary)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.borderColor = 'var(--accent-indigo)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.borderColor = 'var(--border-primary)';
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '48px', minWidth: '48px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <img src="/logos/ldap.svg" style={{ height: '30px', maxWidth: '48px', objectFit: 'contain' }} alt="LDAP" />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>LDAP</h3>
-                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Directory Services</span>
-                  </div>
-                </div>
-                <span className={`badge ${infraConfig.ldap?.enabled === 'true' ? 'badge-success' : 'badge-neutral'}`}>
-                  {infraConfig.ldap?.enabled === 'true' ? 'Enabled' : 'Disabled'}
-                </span>
-              </div>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Directory login and group access.
-              </p>
-              <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                <span style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-                  <span>Server: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{infraConfig.ldap?.url || 'None'}</strong></span>
-                  <span>Bind DN: <strong className="mono" style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }} title={infraConfig.ldap?.bindDN}>{infraConfig.ldap?.bindDN ? infraConfig.ldap.bindDN.slice(0, 34) + (infraConfig.ldap.bindDN.length > 34 ? '…' : '') : 'None'}</strong></span>
-                </span>
-                <span style={{ color: 'var(--accent-indigo)', fontWeight: 600 }}>Configure &rarr;</span>
-              </div>
-            </div>
-
-            <div
-              className="admin-resource-card"
-              onClick={() => {
-                setEditableInfra(JSON.parse(JSON.stringify(infraConfig)));
-                setOpenInfraModal('prometheus');
-              }}
-              style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', cursor: 'pointer', transition: 'transform 0.2s, border-color 0.2s', border: '1px solid var(--border-primary)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.borderColor = 'var(--accent-indigo)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.borderColor = 'var(--border-primary)';
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '48px', minWidth: '48px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <img src="/logos/prometheus.svg" style={{ height: '30px', maxWidth: '48px', objectFit: 'contain' }} alt="Prometheus" />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Prometheus</h3>
-                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Metrics Exporter</span>
-                  </div>
-                </div>
-                <span className={`badge ${infraConfig.prometheus?.url ? 'badge-success' : 'badge-neutral'}`}>
-                  {infraConfig.prometheus?.url ? 'Configured' : 'Not set'}
-                </span>
-              </div>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Metrics scrape endpoint.
-              </p>
-              <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                <span>Scrape: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{infraConfig.prometheus?.scrapeInterval || '30s'}</strong></span>
-                <span style={{ color: 'var(--accent-indigo)', fontWeight: 600 }}>Configure &rarr;</span>
-              </div>
-            </div>
-
-            <div
-              className="admin-resource-card"
-              onClick={() => {
-                setEditableInfra(JSON.parse(JSON.stringify(infraConfig)));
-                setOpenInfraModal('elasticsearch');
-              }}
-              style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', cursor: 'pointer', transition: 'transform 0.2s, border-color 0.2s', border: '1px solid var(--border-primary)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.borderColor = 'var(--accent-indigo)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.borderColor = 'var(--border-primary)';
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '48px', minWidth: '48px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <img src="/logos/elasticsearch.svg" style={{ height: '30px', maxWidth: '48px', objectFit: 'contain' }} alt="Elasticsearch" />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Elasticsearch</h3>
-                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Metadata Indexer</span>
-                  </div>
-                </div>
-                <span className={`badge ${infraConfig.elasticsearch?.url ? 'badge-success' : 'badge-neutral'}`}>
-                  {infraConfig.elasticsearch?.url ? 'Indexed' : 'Not set'}
-                </span>
-              </div>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Trace metadata search index.
-              </p>
-              <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                <span>Prefix: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{infraConfig.elasticsearch?.indexPrefix || 'kubetrace'}</strong></span>
-                <span style={{ color: 'var(--accent-indigo)', fontWeight: 600 }}>Configure &rarr;</span>
-              </div>
-            </div>
+          <div className="admin-infra-grid">
+            {infraCards.map(resource => (
+              <InfraResourceCard
+                key={resource.key}
+                title={resource.title}
+                subtitle={resource.subtitle}
+                description={resource.description}
+                logo={resource.logo}
+                status={resource.status}
+                statusState={resource.statusState}
+                chips={resource.chips}
+                wideLogo={resource.wideLogo}
+                logoTheme={resource.logoTheme}
+                onClick={() => openInfraConfig(resource.key)}
+              />
+            ))}
           </div>
 
           {openInfraModal && editableInfra && createPortal(
@@ -1741,22 +1667,30 @@ export default function Admin() {
                   <span>{t('Trace payloads')}</span>
                   <strong>MinIO</strong>
                 </div>
-                <img src="/logos/minio.svg" alt="" />
+                <img src="/logos/minio.png" alt="" />
               </div>
-              <div className="admin-storage-facts">
-                <div>
-                  <span>{t('Endpoint')}</span>
-                  <code>{infraConfig?.minio?.endpoint || t('Not set')}</code>
-                </div>
-                <div>
-                  <span>{t('Bucket')}</span>
-                  <code>{infraConfig?.minio?.bucket || t('Not set')}</code>
-                </div>
-                <div>
-                  <span>{t('SSL')}</span>
-                  <code>{infraConfig?.minio?.useSSL === 'true' ? t('Enabled') : t('Disabled')}</code>
-                </div>
+              <p>{t('Object storage for trace payloads. Sensitive connection values stay inside Configure.')}</p>
+              <div className="admin-storage-status-list">
+                <span className={infraConfig?.minio?.endpoint ? 'ready' : 'missing'}>
+                  <i />{infraConfig?.minio?.endpoint ? t('Endpoint configured') : t('Endpoint missing')}
+                </span>
+                <span className={infraConfig?.minio?.bucket ? 'ready' : 'missing'}>
+                  <i />{infraConfig?.minio?.bucket ? t('Bucket configured') : t('Bucket missing')}
+                </span>
+                <span className="neutral">
+                  <i />{infraConfig?.minio?.useSSL === 'true' ? t('SSL enabled') : t('SSL disabled')}
+                </span>
               </div>
+              <button
+                type="button"
+                className="admin-storage-config-btn"
+                onClick={() => {
+                  setActiveTab('infrastructure');
+                  openInfraConfig('minio');
+                }}
+              >
+                {t('Configure storage')}
+              </button>
             </div>
 
             <div className="admin-storage-card danger">
