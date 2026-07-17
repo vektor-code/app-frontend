@@ -1,4 +1,5 @@
 import type { Span } from '../entities';
+import { normalizeHttpMethod } from './httpTelemetry';
 
 // Human-readable analysis of a failed span: what happened, where the call
 // went, why it likely failed, and the concrete evidence backing it.
@@ -138,7 +139,7 @@ function extractException(span: Span): { type: string; message: string; stack: s
 
 export function explainSpanError(span: Span): ErrorExplanation {
   const a = span.attributes || {};
-  const method = attr(span, 'http.request.method', 'http.method');
+  const method = normalizeHttpMethod(attr(span, 'http.request.method', 'http.method'));
   const urlFull = attr(span, 'url.full', 'http.url');
   const urlPath = attr(span, 'url.path', 'http.target', 'http.route');
   const host = attr(span, 'server.address', 'net.peer.name', 'http.host', 'peer.service');

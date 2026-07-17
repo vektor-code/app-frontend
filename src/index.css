@@ -6937,6 +6937,18 @@ body.dark-theme .apm-chart-overlay {
   padding: 6px 8px;
 }
 
+.trace-detail-chip.method {
+  grid-template-columns: auto auto;
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.22);
+}
+
+.trace-detail-chip.method strong {
+  color: var(--accent-indigo);
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .trace-detail-chip.infra span {
   color: var(--accent-cyan);
 }

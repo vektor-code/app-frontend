@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import type { Span } from '../entities';
 import { isSpanError } from '../utils/spanStatus';
+import { normalizeHttpMethod } from '../utils/httpTelemetry';
 
 export interface DestinationInfo {
   type: 'infra' | '3rdparty' | 'service' | null;
@@ -82,10 +83,10 @@ export function getSpanInlineSummary(span: Span): string | null {
   const attrs = span.attributes || {};
   
   // 1. HTTP calls
-  if (attrs['http.method']) {
-    const method = attrs['http.method'];
+  const httpMethod = normalizeHttpMethod(attrs['http.request.method'] || attrs['http.method']);
+  if (httpMethod) {
     const status = attrs['http.status_code'] || attrs['http.status'];
-    return status ? `${method} (${status})` : `${method}`;
+    return status ? `${httpMethod} (${status})` : `${httpMethod}`;
   }
   
   // 2. Database calls
@@ -210,7 +211,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
       const a = s.attributes || {};
       if (a['db.system'] || a['db.statement']) {
         dbTime += s.durationMs;
-      } else if (a['http.url'] || a['http.method']) {
+      } else if (a['http.url'] || a['http.method'] || a['http.request.method']) {
         httpTime += s.durationMs;
       } else if (a['rpc.system']) {
         rpcTime += s.durationMs;

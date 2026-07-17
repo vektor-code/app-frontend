@@ -7,6 +7,7 @@ import { useTranslation } from '../utils/i18n';
 import { createPortal } from 'react-dom';
 import SpanTimeline, { getSpanDestination } from '../components/SpanTimeline';
 import { explainSpanError } from '../utils/errorAnalysis';
+import { isHttpMethodAttribute, normalizeHttpMethod } from '../utils/httpTelemetry';
 
 const SERVICE_COLORS: Record<string, string> = {};
 const PALETTE = [
@@ -137,6 +138,41 @@ function getSpanTone(span: Span): TraceTone {
   if (isSpanError(span)) return 'critical';
   if (span.durationMs > 1000) return 'warning';
   return 'neutral';
+}
+
+function getSpanOperationLabel(span: Span) {
+  const attrs = span.attributes || {};
+  const method = normalizeHttpMethod(attrs['http.request.method'] || attrs['http.method']);
+  const path = attrs['http.route'] || attrs['url.path'] || attrs['http.target'] || attrs['url.full'] || attrs['http.url'];
+  if (method && path) return `${method} ${path}`;
+  if (method) return method;
+
+  const dbOperation = attrs['db.operation'] || attrs['db.operation.name'];
+  if (dbOperation) return String(dbOperation).toUpperCase();
+
+  const rpcMethod = attrs['rpc.method'];
+  if (rpcMethod) return String(rpcMethod);
+
+  return span.name;
+}
+
+function getErrorCategoryLabel(category: string) {
+  switch (category) {
+    case 'http':
+      return 'HTTP response';
+    case 'db':
+      return 'Database';
+    case 'messaging':
+      return 'Messaging';
+    case 'timeout':
+      return 'Timeout';
+    case 'connection':
+      return 'Connection';
+    case 'exception':
+      return 'Exception';
+    default:
+      return 'Application';
+  }
 }
 
 interface SpanNode {
@@ -1699,7 +1735,7 @@ function getSpanPayloadDetails(span: Span, _traceDuration: number): PayloadDetai
     };
   }
 
-  const httpMethod = attrs['http.request.method'] || attrs['http.method'] || span.kind;
+  const httpMethod = normalizeHttpMethod(attrs['http.request.method'] || attrs['http.method']);
   let httpUrl = attrs['url.full'] || attrs['http.url'] || '';
   if (!httpUrl) {
     const host = attrs['server.address'] || attrs['net.peer.name'] || attrs['http.host'] || '';
@@ -1736,10 +1772,10 @@ function getSpanPayloadDetails(span: Span, _traceDuration: number): PayloadDetai
 
   return {
     type: 'http',
-    title: `${httpMethod} Request to ${span.serviceName}`,
+    title: `${httpMethod || 'HTTP'} Request to ${span.serviceName}`,
     request: {
       url: httpUrl,
-      method: String(httpMethod),
+      method: httpMethod || 'HTTP',
       headers: reqHeaders,
       body: reqBody,
     },
@@ -2347,39 +2383,73 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                 </svg>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: '3px' }}>
-                <span className="failure-title">{explanation.title}</span>
+                <div className="failure-title-row">
+                  <span className="failure-title">{explanation.title}</span>
+                  <span className="failure-category">{t(getErrorCategoryLabel(explanation.category))}</span>
+                </div>
                 <span className="failure-msg" style={{ whiteSpace: 'normal', lineHeight: 1.5 }}>{explanation.what}</span>
               </div>
             </div>
 
+            <div className="failure-summary-grid">
+              <div>
+                <span>{t('Operation')}</span>
+                <strong title={getSpanOperationLabel(span)}>{getSpanOperationLabel(span)}</strong>
+              </div>
+              <div>
+                <span>{t('Service')}</span>
+                <strong>{span.serviceName}</strong>
+              </div>
+              <div>
+                <span>{t('Duration')}</span>
+                <strong>{formatDuration(span.durationMs)}</strong>
+              </div>
+              <div>
+                <span>{t('Target')}</span>
+                <strong title={explanation.target || dest.name || span.name}>{explanation.target || dest.name || t('not captured')}</strong>
+              </div>
+            </div>
 
-
-            {/* {t('Evidence')} — the concrete facts from the span */}
-            {explanation.evidence.length > 0 && (
-              <div className="attr-group-card">
-                <h4 className="attr-group-title">Evidence</h4>
-                <div className="attr-group-list">
-                  {explanation.evidence.map(([k, v]) => (
-                    <div key={k} className="attr-row" style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'baseline' }}>
-                      <span className="attr-row-label" style={{ flexShrink: 0 }}>{k}</span>
-                      <span
-                        style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-primary)', wordBreak: 'break-all', textAlign: 'right', cursor: 'pointer' }}
-                        title="Click to copy"
-                        onClick={() => handleCopy('ev-' + k, v)}
-                      >
-                        {copiedKey === 'ev-' + k ? '✓ copied' : v}
-                      </span>
+            {explanation.causes.length > 0 && (
+              <div className="attr-group-card failure-causes-card">
+                <h4 className="attr-group-title">{t('Likely causes')}</h4>
+                <div className="failure-cause-list">
+                  {explanation.causes.slice(0, 4).map((cause, idx) => (
+                    <div key={idx} className="failure-cause-item">
+                      <span>{idx + 1}</span>
+                      <p>{cause}</p>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* {t('Raw error message')} from instrumentation */}
+            {/* {t('Evidence')} — the concrete facts from the span */}
+            {explanation.evidence.length > 0 && (
+              <div className="attr-group-card">
+                <h4 className="attr-group-title">{t('Evidence from span')}</h4>
+                <div className="failure-evidence-list">
+                  {explanation.evidence.map(([k, v]) => (
+                    <button
+                      key={k}
+                      className="failure-evidence-row"
+                      title={t('Click to copy')}
+                      onClick={() => handleCopy('ev-' + k, v)}
+                    >
+                      <span>{k}</span>
+                      <strong>
+                        {copiedKey === 'ev-' + k ? t('copied') : v}
+                      </strong>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {explanation.rawMessage && explanation.rawMessage !== explanation.title && (
               <div className="attr-group-card">
-                <h4 className="attr-group-title">Raw error message</h4>
-                <pre style={{ margin: 0, padding: '8px 10px', background: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '11px', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--accent-rose, #f43f5e)' }}>
+                <h4 className="attr-group-title">{t('Raw error message')}</h4>
+                <pre className="failure-raw-message">
                   {explanation.rawMessage}
                 </pre>
               </div>
@@ -2394,7 +2464,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                     style={{ fontSize: '9px', padding: '2px 8px', height: '20px', border: '1px solid rgba(255,255,255,0.15)', color: '#94a3b8' }}
                     onClick={() => handleCopy('stacktrace', stackTrace)}
                   >
-                    {copiedKey === 'stacktrace' ? t('Copied ✓') : t('Copy Stack Trace')}
+                    {copiedKey === 'stacktrace' ? t('Copied') : t('Copy Stack Trace')}
                   </button>
                 </div>
                 <pre className="stacktrace-pre">
@@ -2708,7 +2778,7 @@ export default function TraceDetail() {
             k.startsWith('messaging.') || 
             k.startsWith('exception.type')
           ) {
-            map.set(k, String(v));
+            map.set(k, isHttpMethodAttribute(k) ? normalizeHttpMethod(v) : String(v));
           }
         });
       }
@@ -2893,38 +2963,68 @@ export default function TraceDetail() {
           )}
 
           {/* Detected Problems Panel — the error, explained, front and center */}
-          {errorSpans.length > 0 && (
-            <div className="trace-detail-problems-panel">
-              <div className="problems-panel-header">
-                <TraceDetailIcon name="alert" />
-                <span>{t('Trace Error Summary')} ({errorSpans.length})</span>
-              </div>
-              {errorSpans.map(({ span, explanation }) => (
-                <div
-                  key={span.spanId}
-                  className={`problem-card ${selectedSpan?.spanId === span.spanId ? 'selected' : ''}`}
-                  onClick={() => setSelectedSpan(span)}
-                  title="Click to open full failure details"
-                >
-                  <div className="problem-card-top">
-                    <span className="problem-service" style={{ color: getSvcColor(span.serviceName) }}>
-                      <span className="problem-service-dot" style={{ background: getSvcColor(span.serviceName) }} />
-                      {span.serviceName}
-                    </span>
-                    {explanation.target && (
-                      <>
-                        <span className="problem-arrow">{'->'}</span>
-                        <span className="problem-target" title={explanation.target}>{explanation.target}</span>
-                      </>
-                    )}
-                    <span className="problem-title-badge">{t(explanation.title)}</span>
+          {errorSpans.length > 0 && (() => {
+            const affectedServices = new Set(errorSpans.map(item => item.span.serviceName)).size;
+            const primaryError = errorSpans[0];
+            return (
+              <div className="trace-detail-problems-panel">
+                <div className="problems-panel-header">
+                  <div>
+                    <TraceDetailIcon name="alert" />
+                    <span>{t('Trace Error Summary')}</span>
                   </div>
-                  <div className="problem-what">{explanation.what}</div>
-
+                  <em>{formatTraceNumber(errorSpans.length)} {t('failed spans')} / {formatTraceNumber(affectedServices)} {t('services')}</em>
                 </div>
-              ))}
-            </div>
-          )}
+
+                <div className="problems-panel-lead">
+                  <strong>{primaryError.explanation.title}</strong>
+                  <span>{primaryError.explanation.what}</span>
+                </div>
+
+                {errorSpans.map(({ span, explanation }, index) => (
+                  <button
+                    key={span.spanId}
+                    className={`problem-card ${selectedSpan?.spanId === span.spanId ? 'selected' : ''}`}
+                    onClick={() => setSelectedSpan(span)}
+                    title={t('Open full failure details')}
+                  >
+                    <div className="problem-card-top">
+                      <span className="problem-severity">#{index + 1}</span>
+                      <span className="problem-service" style={{ color: getSvcColor(span.serviceName) }}>
+                        <span className="problem-service-dot" style={{ background: getSvcColor(span.serviceName) }} />
+                        {span.serviceName}
+                      </span>
+                      {explanation.target && (
+                        <>
+                          <span className="problem-arrow">{'->'}</span>
+                          <span className="problem-target" title={explanation.target}>{explanation.target}</span>
+                        </>
+                      )}
+                      <span className="problem-title-badge">{t(getErrorCategoryLabel(explanation.category))}</span>
+                    </div>
+
+                    <div className="problem-main">
+                      <strong>{explanation.title}</strong>
+                      <span>{explanation.what}</span>
+                    </div>
+
+                    <div className="problem-meta-grid">
+                      <span>{t('Operation')} <strong>{getSpanOperationLabel(span)}</strong></span>
+                      <span>{t('Duration')} <strong>{formatDuration(span.durationMs)}</strong></span>
+                      <span>{t('Kind')} <strong>{span.kind.toLowerCase()}</strong></span>
+                    </div>
+
+                    {explanation.causes[0] && (
+                      <div className="problem-cause">
+                        <span className="problem-cause-label">{t('Most likely cause')}</span>
+                        {explanation.causes[0]}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
 
           <section className="trace-detail-insights-grid">
             <div className="trace-detail-insight-panel">
@@ -2980,7 +3080,7 @@ export default function TraceDetail() {
                   </div>
                   <div className="trace-detail-chip-cloud">
                     {uniqueTags.map(([k, v]) => (
-                      <div key={k} className="trace-detail-chip" title={`${k}: ${v}`}>
+                      <div key={k} className={`trace-detail-chip ${isHttpMethodAttribute(k) ? 'method' : ''}`} title={`${k}: ${v}`}>
                         <span>{k}</span>
                         <strong>{v}</strong>
                       </div>
@@ -3517,12 +3617,46 @@ export default function TraceDetail() {
         .problems-panel-header {
           display: flex;
           align-items: center;
+          justify-content: space-between;
           gap: 8px;
           color: var(--accent-rose, #f43f5e);
           font-size: 12px;
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.5px;
+        }
+        .problems-panel-header > div {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .problems-panel-header em {
+          color: var(--text-secondary);
+          font-size: 10.5px;
+          font-style: normal;
+          font-weight: 800;
+          text-transform: none;
+          letter-spacing: 0;
+        }
+        .problems-panel-lead {
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+          margin: 10px 0;
+          border: 1px solid rgba(244, 63, 94, 0.18);
+          border-radius: 8px;
+          background: rgba(244, 63, 94, 0.05);
+          padding: 11px 12px;
+        }
+        .problems-panel-lead strong {
+          color: var(--text-primary);
+          font-size: 13px;
+          font-weight: 850;
+        }
+        .problems-panel-lead span {
+          color: var(--text-secondary);
+          font-size: 12px;
+          line-height: 1.5;
         }
         .problem-card {
           background: rgba(244, 63, 94, 0.05);
@@ -3534,6 +3668,9 @@ export default function TraceDetail() {
           display: flex;
           flex-direction: column;
           gap: 6px;
+          width: 100%;
+          color: inherit;
+          text-align: left;
         }
         .problem-card:hover, .problem-card.selected {
           border-color: rgba(244, 63, 94, 0.5);
@@ -3544,6 +3681,20 @@ export default function TraceDetail() {
           align-items: center;
           gap: 8px;
           flex-wrap: wrap;
+        }
+        .problem-severity {
+          min-width: 26px;
+          height: 22px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(244, 63, 94, 0.25);
+          border-radius: 999px;
+          background: rgba(244, 63, 94, 0.10);
+          color: var(--accent-rose);
+          font-family: var(--font-mono);
+          font-size: 10px;
+          font-weight: 850;
         }
         .problem-service {
           display: inline-flex;
@@ -3579,6 +3730,49 @@ export default function TraceDetail() {
           border-radius: 5px;
           white-space: nowrap;
         }
+        .problem-main {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .problem-main strong {
+          color: var(--text-primary);
+          font-size: 13px;
+          font-weight: 850;
+        }
+        .problem-main span {
+          color: var(--text-secondary);
+          font-size: 12px;
+          line-height: 1.5;
+        }
+        .problem-meta-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 7px;
+        }
+        .problem-meta-grid span {
+          min-width: 0;
+          border: 1px solid var(--border-primary);
+          border-radius: 6px;
+          background: var(--bg-tertiary);
+          color: var(--text-tertiary);
+          padding: 6px 7px;
+          font-size: 9.5px;
+          font-weight: 800;
+          text-transform: uppercase;
+        }
+        .problem-meta-grid strong {
+          display: block;
+          margin-top: 3px;
+          color: var(--text-primary);
+          font-family: var(--font-mono);
+          font-size: 10.5px;
+          font-weight: 850;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          text-transform: none;
+        }
         .problem-what {
           font-size: 12px;
           line-height: 1.5;
@@ -3608,6 +3802,12 @@ export default function TraceDetail() {
           gap: 12px;
           align-items: flex-start;
         }
+        .failure-title-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
         .failure-icon-wrapper {
           color: var(--accent-rose);
           flex-shrink: 0;
@@ -3620,12 +3820,128 @@ export default function TraceDetail() {
           color: var(--accent-rose);
           letter-spacing: 0.5px;
         }
+        .failure-category {
+          border: 1px solid rgba(244, 63, 94, 0.28);
+          border-radius: 999px;
+          background: rgba(244, 63, 94, 0.10);
+          color: var(--accent-rose);
+          padding: 2px 7px;
+          font-size: 9.5px;
+          font-weight: 850;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
         .failure-msg {
           font-size: 12.5px;
           color: var(--text-primary);
           font-weight: 600;
-          word-break: break-all;
+          word-break: normal;
           margin-top: 2px;
+        }
+        .failure-summary-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+        }
+        .failure-summary-grid div {
+          min-width: 0;
+          border: 1px solid var(--border-primary);
+          border-radius: 8px;
+          background: var(--bg-secondary);
+          padding: 10px;
+        }
+        .failure-summary-grid span {
+          display: block;
+          color: var(--text-tertiary);
+          font-size: 9.5px;
+          font-weight: 850;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+        .failure-summary-grid strong {
+          display: block;
+          margin-top: 5px;
+          color: var(--text-primary);
+          font-family: var(--font-mono);
+          font-size: 11px;
+          font-weight: 800;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .failure-cause-list,
+        .failure-evidence-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .failure-cause-item {
+          display: grid;
+          grid-template-columns: 22px minmax(0, 1fr);
+          gap: 8px;
+          align-items: flex-start;
+        }
+        .failure-cause-item span {
+          width: 22px;
+          height: 22px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 999px;
+          background: rgba(245, 158, 11, 0.14);
+          color: var(--accent-amber);
+          font-size: 10px;
+          font-weight: 850;
+        }
+        .failure-cause-item p {
+          margin: 0;
+          color: var(--text-secondary);
+          font-size: 12px;
+          line-height: 1.5;
+        }
+        .failure-evidence-row {
+          display: grid;
+          grid-template-columns: 120px minmax(0, 1fr);
+          gap: 10px;
+          align-items: baseline;
+          width: 100%;
+          border: 1px solid var(--border-primary);
+          border-radius: 7px;
+          background: var(--bg-tertiary);
+          color: inherit;
+          padding: 8px 9px;
+          text-align: left;
+          cursor: pointer;
+        }
+        .failure-evidence-row:hover {
+          border-color: var(--border-secondary);
+          background: var(--bg-hover);
+        }
+        .failure-evidence-row span {
+          color: var(--text-tertiary);
+          font-size: 10px;
+          font-weight: 850;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .failure-evidence-row strong {
+          color: var(--text-primary);
+          font-family: var(--font-mono);
+          font-size: 11px;
+          font-weight: 700;
+          word-break: break-word;
+        }
+        .failure-raw-message {
+          margin: 0;
+          border: 1px solid rgba(244, 63, 94, 0.16);
+          border-radius: 7px;
+          background: rgba(244, 63, 94, 0.06);
+          color: var(--accent-rose);
+          padding: 9px 10px;
+          font-family: var(--font-mono);
+          font-size: 11px;
+          white-space: pre-wrap;
+          word-break: break-word;
         }
         .stacktrace-container {
           display: flex;
@@ -3920,12 +4236,19 @@ export default function TraceDetail() {
         }
 
         .method-badge {
-          font-size: 9px;
+          min-width: 38px;
+          min-height: 22px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 9.5px;
           font-weight: 800;
-          padding: 2px 6px;
-          border-radius: 4px;
+          padding: 0 8px;
+          border-radius: 6px;
           text-transform: uppercase;
           border: 1px solid transparent;
+          letter-spacing: 0.04em;
+          white-space: nowrap;
         }
 
         .method-badge.get {
@@ -3938,6 +4261,27 @@ export default function TraceDetail() {
           background: rgba(34, 197, 94, 0.1);
           color: #22c55e;
           border-color: rgba(34, 197, 94, 0.2);
+        }
+
+        .method-badge.delete {
+          background: rgba(244, 63, 94, 0.12);
+          color: #f43f5e;
+          border-color: rgba(244, 63, 94, 0.26);
+        }
+
+        .method-badge.put,
+        .method-badge.patch {
+          background: rgba(245, 158, 11, 0.12);
+          color: #f59e0b;
+          border-color: rgba(245, 158, 11, 0.26);
+        }
+
+        .method-badge.head,
+        .method-badge.options,
+        .method-badge.http {
+          background: rgba(99, 102, 241, 0.10);
+          color: var(--accent-indigo);
+          border-color: rgba(99, 102, 241, 0.22);
         }
 
         .method-badge.query {
