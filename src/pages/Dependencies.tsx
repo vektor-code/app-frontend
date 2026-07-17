@@ -318,12 +318,15 @@ const getDependencyLogo = (name: string): string | null => {
 };
 
 type DependencyIconName =
+  | 'alert'
+  | 'clock'
   | 'database'
   | 'queue'
   | 'external'
   | 'server'
   | 'cache'
   | 'shield'
+  | 'traffic'
   | 'network'
   | 'box';
 
@@ -352,6 +355,10 @@ function DependencyIcon({ name }: { name: DependencyIconName }) {
   };
 
   switch (name) {
+    case 'alert':
+      return <svg {...common}><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.3 3.6 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z" /></svg>;
+    case 'clock':
+      return <svg {...common}><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2" /><path d="M9 2h6" /></svg>;
     case 'database':
       return <svg {...common}><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 10c0 1.7 3.6 3 8 3s8-1.3 8-3" /></svg>;
     case 'queue':
@@ -364,6 +371,8 @@ function DependencyIcon({ name }: { name: DependencyIconName }) {
       return <svg {...common}><path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3Z" /><path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7" /><path d="m8 13 3 3 5-6" /></svg>;
     case 'shield':
       return <svg {...common}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-5" /></svg>;
+    case 'traffic':
+      return <svg {...common}><path d="M4 18V8" /><path d="M10 18v-5" /><path d="M16 18V6" /><path d="m4 8 6 5 6-7 4 3" /><path d="M20 9V5h-4" /></svg>;
     case 'network':
       return <svg {...common}><circle cx="6" cy="6" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="12" cy="18" r="3" /><path d="m8.4 8.2 2.4 6.1" /><path d="m15.6 8.2-2.4 6.1" /><path d="M9 6h6" /></svg>;
     default:
@@ -765,7 +774,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
             {t('Dependency Visibility')}
           </span>
           <h1>{t('Dependencies')}</h1>
-          <p>{t('Databases, queues, caches, infrastructure, and third-party systems called by active services.')}</p>
+          <p>{t('Systems called by active services.')}</p>
         </div>
         <div className="dependencies-hero-actions">
           <span className="dependencies-scope-chip">
@@ -780,24 +789,36 @@ export default function Dependencies({ namespace }: DependenciesProps) {
 
       <section className="dependency-metric-grid">
         <div className="dependency-metric-card indigo">
-          <span>{t('Total Dependencies')}</span>
+          <div className="dependency-metric-top">
+            <span>{t('Total Dependencies')}</span>
+            <DependencyIcon name="network" />
+          </div>
           <strong>{formatDependencyNumber(summaryMetrics.count)}</strong>
           <em>{formatDependencyNumber(filteredItems.filter(item => item.isActive).length)} {t('active')}</em>
         </div>
         <div className="dependency-metric-card emerald">
-          <span>{t('Avg Connection Latency')}</span>
+          <div className="dependency-metric-top">
+            <span>{t('Avg Latency')}</span>
+            <DependencyIcon name="clock" />
+          </div>
           <strong>{formatDependencyLatency(summaryMetrics.avgLatency)}</strong>
-          <em>{t('weighted by calls')}</em>
+          <em>{t('weighted avg')}</em>
         </div>
         <div className="dependency-metric-card cyan">
-          <span>{t('Total Throughput')}</span>
+          <div className="dependency-metric-top">
+            <span>{t('Traffic')}</span>
+            <DependencyIcon name="traffic" />
+          </div>
           <strong>{formatDependencyNumber(summaryMetrics.calls)}</strong>
-          <em>{t('requests in scope')}</em>
+          <em>{t('calls')}</em>
         </div>
         <div className={`dependency-metric-card ${summaryMetrics.errorRate > 0 ? 'rose' : 'emerald'}`}>
-          <span>{t('System Error Rate')}</span>
+          <div className="dependency-metric-top">
+            <span>{t('Error Rate')}</span>
+            <DependencyIcon name={summaryMetrics.errorRate > 0 ? 'alert' : 'shield'} />
+          </div>
           <strong>{formatDependencyRate(summaryMetrics.errorRate)}</strong>
-          <em>{summaryMetrics.errorRate > 0 ? t('needs attention') : t('no dependency errors')}</em>
+          <em>{summaryMetrics.errorRate > 0 ? t('errors') : t('clean')}</em>
         </div>
       </section>
 
@@ -837,7 +858,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
             <span>{t('Dependency Metrics')}</span>
             <h2>{formatDependencyNumber(filteredItems.length)} {t('connection targets')}</h2>
           </div>
-          <p>{t('Real dependencies discovered from service-map edges and captured infrastructure spans.')}</p>
         </div>
 
         {loading && filteredItems.length === 0 ? (

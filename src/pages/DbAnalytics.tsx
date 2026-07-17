@@ -132,6 +132,58 @@ function CustomDropdown({
   );
 }
 
+type DbMetricTone = 'indigo' | 'emerald' | 'amber' | 'rose';
+type DbMetricIconName = 'database' | 'clock' | 'alert' | 'peak';
+
+function DbMetricIcon({ name }: { name: DbMetricIconName }) {
+  const common = {
+    width: 20,
+    height: 20,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+
+  switch (name) {
+    case 'database':
+      return <svg {...common}><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 10c0 1.7 3.6 3 8 3s8-1.3 8-3" /></svg>;
+    case 'clock':
+      return <svg {...common}><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2" /><path d="M9 2h6" /></svg>;
+    case 'alert':
+      return <svg {...common}><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.3 3.6 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z" /></svg>;
+    case 'peak':
+      return <svg {...common}><path d="M4 18V8" /><path d="M10 18v-5" /><path d="M16 18V6" /><path d="m4 8 6 5 6-7 4 3" /><path d="M20 9V5h-4" /></svg>;
+  }
+}
+
+function DbMetricCard({
+  label,
+  value,
+  detail,
+  icon,
+  tone,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon: DbMetricIconName;
+  tone: DbMetricTone;
+}) {
+  return (
+    <div className={`db-metric-card ${tone}`}>
+      <div className="db-metric-top">
+        <span>{label}</span>
+        <DbMetricIcon name={icon} />
+      </div>
+      <strong>{value}</strong>
+      <em>{detail}</em>
+    </div>
+  );
+}
+
 export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
   const { t } = useTranslation();
   const [metrics, setMetrics] = useState<DatabaseQueryMetric[]>([]);
@@ -258,7 +310,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           <span className="db-page-kicker">{t('Database telemetry')}</span>
           <h1 className="page-title">{t('Query Performance')}</h1>
           <p className="page-subtitle">
-            {t('Analyze query performance, database engines, and call metrics across all clusters')}
+            {t('Query volume, latency, and failures by service.')}
           </p>
         </div>
         <div className="db-page-scope">
@@ -267,122 +319,36 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
         </div>
       </section>
 
-      {/* Grid of Key Metrics */}
-      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '24px' }}>
-        {/* Card 1: Total DB Calls */}
-        <div className="card" style={{
-          position: 'relative',
-          padding: '24px 20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          borderLeft: '4px solid var(--accent-indigo)',
-          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(99, 102, 241, 0.03) 100%)',
-          overflow: 'hidden'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>{t('Total Calls')}</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-indigo)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
-                <path d="M3 5V19A9 3 0 0 0 21 19V5"></path>
-                <path d="M3 12A9 3 0 0 0 21 12"></path>
-              </svg>
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', lineHeight: 1 }}>
-              {totalCalls.toLocaleString()}
-            </div>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>{t('Aggregate trace operations')}</span>
-          </div>
-        </div>
-
-        {/* Card 2: Avg Response Time */}
-        <div className="card" style={{
-          position: 'relative',
-          padding: '24px 20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          borderLeft: '4px solid var(--accent-emerald)',
-          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(16, 185, 129, 0.03) 100%)',
-          overflow: 'hidden'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>{t('Avg Latency')}</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
-              </svg>
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', lineHeight: 1 }}>
-              {formatDuration(avgLatency)}
-            </div>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>{t('Weighted execution avg')}</span>
-          </div>
-        </div>
-
-        {/* Card 3: DB Error Rate */}
-        <div className="card" style={{
-          position: 'relative',
-          padding: '24px 20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          borderLeft: `4px solid ${errorRate > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)'}`,
-          background: `linear-gradient(135deg, var(--bg-secondary) 0%, ${errorRate > 0 ? 'rgba(244, 63, 94, 0.03)' : 'rgba(16, 185, 129, 0.03)'} 100%)`,
-          overflow: 'hidden'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>{t('Error Rate')}</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: errorRate > 0 ? 'rgba(244, 63, 94, 0.1)' : 'rgba(16, 185, 129, 0.1)', color: errorRate > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-                <line x1="12" y1="9" x2="12" y2="13"></line>
-                <line x1="12" y1="17" x2="12.01" y2="17"></line>
-              </svg>
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: errorRate > 0 ? 'var(--accent-rose)' : 'var(--text-primary)', lineHeight: 1 }}>
-              {errorRate.toFixed(2)}%
-            </div>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>{totalErrors} {t('failed statements')}</span>
-          </div>
-        </div>
-
-        {/* Card 4: Worst Latency */}
-        <div className="card" style={{
-          position: 'relative',
-          padding: '24px 20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          borderLeft: '4px solid var(--accent-amber)',
-          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(245, 158, 11, 0.03) 100%)',
-          overflow: 'hidden'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>{t('Peak Latency')}</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.1)', color: 'var(--accent-amber)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="12 2 2 22 22 22"></polygon>
-                <line x1="12" y1="9" x2="12" y2="17"></line>
-              </svg>
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: slowestQuery > 500 ? 'var(--accent-amber)' : 'var(--text-primary)', lineHeight: 1 }}>
-              {formatDuration(slowestQuery)}
-            </div>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>{t('Peak statement duration')}</span>
-          </div>
-        </div>
-      </div>
+      <section className="db-metric-grid">
+        <DbMetricCard
+          tone="indigo"
+          icon="database"
+          label={t('Total Calls')}
+          value={totalCalls.toLocaleString()}
+          detail={t('calls')}
+        />
+        <DbMetricCard
+          tone="emerald"
+          icon="clock"
+          label={t('Avg Latency')}
+          value={formatDuration(avgLatency)}
+          detail={t('weighted avg')}
+        />
+        <DbMetricCard
+          tone={errorRate > 0 ? 'rose' : 'emerald'}
+          icon="alert"
+          label={t('Error Rate')}
+          value={`${errorRate.toFixed(2)}%`}
+          detail={`${totalErrors} ${t('failures')}`}
+        />
+        <DbMetricCard
+          tone="amber"
+          icon="peak"
+          label={t('Peak Latency')}
+          value={formatDuration(slowestQuery)}
+          detail={t('max')}
+        />
+      </section>
 
       {/* Filter and Search Bar */}
       <div className="filter-bar db-filter-bar" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', marginBottom: '20px', background: 'var(--bg-secondary)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-primary)' }}>
@@ -670,6 +636,97 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
       </div>
 
       <style>{`
+        .db-metric-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+          margin-bottom: 16px;
+        }
+        .db-metric-card {
+          position: relative;
+          min-width: 0;
+          padding: 16px;
+          border: 1px solid var(--border-primary);
+          border-radius: 10px;
+          background: linear-gradient(135deg, var(--bg-secondary), color-mix(in srgb, var(--bg-tertiary) 32%, var(--bg-secondary)));
+          box-shadow: var(--shadow-sm);
+          overflow: hidden;
+          transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+        }
+        .db-metric-card::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 4px;
+          background: var(--accent-indigo);
+        }
+        .db-metric-card.emerald::before {
+          background: var(--accent-emerald);
+        }
+        .db-metric-card.amber::before {
+          background: var(--accent-amber);
+        }
+        .db-metric-card.rose::before {
+          background: var(--accent-rose);
+        }
+        .db-metric-card:hover {
+          border-color: var(--border-secondary);
+          box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+          transform: translateY(-1px);
+        }
+        .db-metric-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+        .db-metric-top span {
+          color: var(--text-tertiary);
+          font-size: 10px;
+          font-weight: 850;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+        .db-metric-top svg {
+          width: 24px;
+          height: 24px;
+          padding: 7px;
+          border-radius: 8px;
+          color: var(--accent-indigo);
+          background: rgba(99, 102, 241, 0.08);
+          box-sizing: content-box;
+          flex: 0 0 auto;
+        }
+        .db-metric-card.emerald .db-metric-top svg {
+          color: var(--accent-emerald);
+          background: rgba(16, 185, 129, 0.09);
+        }
+        .db-metric-card.amber .db-metric-top svg {
+          color: var(--accent-amber);
+          background: rgba(245, 158, 11, 0.10);
+        }
+        .db-metric-card.rose .db-metric-top svg {
+          color: var(--accent-rose);
+          background: rgba(244, 63, 94, 0.10);
+        }
+        .db-metric-card strong {
+          display: block;
+          margin-top: 12px;
+          color: var(--text-primary);
+          font-family: var(--font-mono);
+          font-size: 29px;
+          line-height: 1;
+          font-weight: 850;
+          white-space: nowrap;
+        }
+        .db-metric-card em {
+          display: block;
+          margin-top: 7px;
+          color: var(--text-secondary);
+          font-size: 11px;
+          font-style: normal;
+          font-weight: 700;
+        }
         .db-page-hero {
           display: flex;
           align-items: flex-start;
@@ -735,6 +792,9 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
         .db-query-panel {
           overflow: hidden;
           border-radius: 10px;
+          box-shadow: var(--shadow-sm);
+        }
+        .db-filter-bar {
           box-shadow: var(--shadow-sm);
         }
         .db-table-wrapper {
@@ -833,6 +893,9 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           .db-page-hero {
             flex-direction: column !important;
           }
+          .db-metric-grid {
+            grid-template-columns: 1fr 1fr;
+          }
           .db-page-scope {
             width: 100%;
             align-items: flex-start;
@@ -902,6 +965,11 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
             display: block;
             width: 100%;
             padding: 12px !important;
+          }
+        }
+        @media (max-width: 520px) {
+          .db-metric-grid {
+            grid-template-columns: 1fr;
           }
         }
 

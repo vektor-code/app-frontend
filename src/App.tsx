@@ -267,44 +267,30 @@ export default function App() {
       />
       <div className="app-main">
         <header className="app-header">
-          <div className="header-title">
-            {selectedNamespace ? (
-              <><span className="badge badge-ns">{selectedNamespace}</span> {t("Trace Overview")}</>
-            ) : (
-              t('All Namespaces')
-            )}
+          <div className="header-context">
+            <span className="header-kicker">{t('Telemetry scope')}</span>
+            <div className="header-title">
+              <span className="header-title-dot" />
+              <span>{selectedNamespace || t('All Namespaces')}</span>
+            </div>
           </div>
           <div className="header-actions">
-            {/* Cluster Selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px', position: 'relative' }}>
-              <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-tertiary)' }}>{t('Cluster:')}</span>
+            <div className="header-filter">
+              <span className="header-filter-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3Z" />
+                  <path d="m4.5 8 7.5 4.2L19.5 8" />
+                  <path d="M12 21v-8.8" />
+                </svg>
+              </span>
+              <span className="header-filter-label">{t('Cluster')}</span>
               <select
+                className="header-select"
                 value={selectedCluster}
                 onChange={(e) => {
                   handleClusterChange(e.target.value);
-                  // Reset selected namespace if it does not belong to the selected cluster
                   handleNamespaceChange('');
                 }}
-                style={{
-                  background: 'var(--bg-secondary)',
-                  color: 'var(--text-primary)',
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: '20px',
-                  padding: '6px 32px 6px 14px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  outline: 'none',
-                  appearance: 'none',
-                  backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 10px center',
-                  backgroundSize: '14px',
-                  transition: 'all 0.2s',
-                  boxShadow: 'var(--shadow-sm)',
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--border-secondary)'}
-                onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-primary)'}
               >
                 <option value="">{t('All Clusters')}</option>
                 {clusters.map((c: any) => (
@@ -313,32 +299,20 @@ export default function App() {
               </select>
             </div>
 
-            {/* Namespace Selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px', position: 'relative' }}>
-              <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-tertiary)' }}>{t('Namespace:')}</span>
+            <div className="header-filter">
+              <span className="header-filter-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                </svg>
+              </span>
+              <span className="header-filter-label">{t('Namespace')}</span>
               <select
+                className="header-select"
                 value={selectedNamespace}
                 onChange={(e) => handleNamespaceChange(e.target.value)}
-                style={{
-                  background: 'var(--bg-secondary)',
-                  color: 'var(--text-primary)',
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: '20px',
-                  padding: '6px 32px 6px 14px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  outline: 'none',
-                  appearance: 'none',
-                  backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 10px center',
-                  backgroundSize: '14px',
-                  transition: 'all 0.2s',
-                  boxShadow: 'var(--shadow-sm)',
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--border-secondary)'}
-                onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-primary)'}
               >
                 <option value="">{t('All Namespaces')}</option>
                 {namespaces
@@ -350,8 +324,6 @@ export default function App() {
                   ))}
               </select>
             </div>
-
-
 
             <button
               className="header-icon-btn"
