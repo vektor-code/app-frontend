@@ -1,8 +1,7 @@
 import React from 'react';
 import { useTranslation } from '../utils/i18n';
 
-// Shared premium loading / empty states so users always know whether data
-// is loading or genuinely absent — never mock data.
+// Shared loading / empty states so users always know whether data is still loading or absent.
 
 export function LoadingState({ label = 'Loading data…', height = 220 }: { label?: string; height?: number }) {
   const { t } = useTranslation();

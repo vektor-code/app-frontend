@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { DatabaseQueryMetric, NamespaceStats, TimeseriesData } from '../entities';
+import type { DatabaseQueryMetric, NamespaceStats, ServiceErrorSeries, ServiceStats, TimeseriesData } from '../entities';
 import { LoadingState, NoDataState } from '../components/DataState';
 import { useTranslation } from '../utils/i18n';
 
@@ -10,32 +10,63 @@ interface DashboardProps {
   onSelectNamespace: (ns: string) => void;
 }
 
+type ToneName = 'healthy' | 'warning' | 'critical' | 'neutral' | 'info';
+
+interface SignalMetric {
+  label: string;
+  value: string;
+  detail: string;
+  tone: ToneName;
+  icon: IconName;
+  trend?: number[];
+}
+
+type IconName =
+  | 'activity'
+  | 'apdex'
+  | 'database'
+  | 'errors'
+  | 'latency'
+  | 'namespace'
+  | 'pods'
+  | 'services'
+  | 'shield'
+  | 'traffic';
+
+const chartWidth = 720;
+const chartHeight = 250;
+const chartLeft = 54;
+const chartRight = 22;
+const chartTop = 22;
+const chartBottom = 38;
+const trafficColor = '#2563eb';
+const errorColor = '#e11d48';
+const latencyColor = '#0891b2';
+const tailLatencyColor = '#d97706';
+const dbColor = '#7c3aed';
+const dbLatencyColor = '#059669';
+
 export default function Dashboard({ namespaces, selectedNamespace, onSelectNamespace }: DashboardProps) {
   const { t } = useTranslation();
   const [dbMetrics, setDbMetrics] = useState<DatabaseQueryMetric[]>([]);
   const [timeseries, setTimeseries] = useState<TimeseriesData | null>(null);
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const [hoverLatencyIndex, setHoverLatencyIndex] = useState<number | null>(null);
-  const [hoverDbIndex, setHoverDbIndex] = useState<number | null>(null);
-  const [hoverHeatmapCell, setHoverHeatmapCell] = useState<{ svcIdx: number; timeIdx: number } | null>(null);
+  const [trafficHover, setTrafficHover] = useState<number | null>(null);
+  const [latencyHover, setLatencyHover] = useState<number | null>(null);
+  const [dbHover, setDbHover] = useState<number | null>(null);
+  const [heatmapHover, setHeatmapHover] = useState<{ svcIdx: number; timeIdx: number } | null>(null);
   const [heatmapTooltipPos, setHeatmapTooltipPos] = useState<{ x: number; y: number } | null>(null);
-  const heatmapContainerRef = React.useRef<HTMLDivElement>(null);
+  const heatmapRef = useRef<HTMLDivElement>(null);
 
-  // Load database metrics
   const loadDbMetrics = useCallback(async () => {
     try {
       const data = await api.getDatabaseMetrics(selectedNamespace || undefined);
       setDbMetrics(data.metrics || []);
     } catch (err) {
       console.error('load db metrics in dashboard:', err);
+      setDbMetrics([]);
     }
   }, [selectedNamespace]);
 
-  useEffect(() => {
-    loadDbMetrics();
-  }, [loadDbMetrics]);
-
-  // Load real time-series chart data (never mock) and refresh every 30s
   const loadTimeseries = useCallback(async () => {
     try {
       const data = await api.getTimeseries(selectedNamespace || undefined, 60);
@@ -47,1137 +78,1073 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
   }, [selectedNamespace]);
 
   useEffect(() => {
-    setTimeseries(null); // show loading when switching namespace
+    loadDbMetrics();
+  }, [loadDbMetrics]);
+
+  useEffect(() => {
+    setTimeseries(null);
     loadTimeseries();
     const interval = setInterval(loadTimeseries, 30000);
     return () => clearInterval(interval);
   }, [loadTimeseries]);
 
-  // Filter namespaces based on selection
-  const filteredNamespaces = selectedNamespace
-    ? namespaces.filter(ns => ns.namespace === selectedNamespace)
-    : namespaces;
+  const filteredNamespaces = useMemo(
+    () => (selectedNamespace ? namespaces.filter(ns => ns.namespace === selectedNamespace) : namespaces),
+    [namespaces, selectedNamespace]
+  );
 
-  // Compute stats aggregates
-  const totalTraces = filteredNamespaces.reduce((a, b) => a + b.traceCount, 0);
-  const totalErrors = filteredNamespaces.reduce((a, b) => a + b.errorCount, 0);
-  const totalPods = filteredNamespaces.reduce((a, b) => a + b.podCount, 0);
-  const activeServicesCount = filteredNamespaces.reduce((a, b) => a + (b.services?.length || 0), 0);
-  const namespacesCount = selectedNamespace ? 1 : namespaces.length;
+  const services = useMemo(
+    () => filteredNamespaces.flatMap(ns => ns.services || []).filter(service => !service.isInfrastructure),
+    [filteredNamespaces]
+  );
 
-  const errRate = totalTraces > 0 ? (totalErrors / totalTraces) * 100 : 0;
-  // health score starts at 100, drops by errRate * 3.5. Clamp between 45 and 100
-  const healthScore = Math.max(45, Math.min(100, 100 - errRate * 3.5));
-
-  // Apdex Score calculation
-  const apdexScore = totalTraces > 0 ? Math.max(0.75, 1 - (totalErrors / totalTraces) * 1.5) : 1.0;
-
-  // Compute database aggregates
-  const dbCalls = dbMetrics.reduce((sum, q) => sum + q.callCount, 0);
-  const dbErrors = dbMetrics.reduce((sum, q) => sum + q.errorCount, 0);
-  const avgDbLatency = dbMetrics.length > 0 ? dbMetrics.reduce((sum, q) => sum + q.avgDurationMs, 0) / dbMetrics.length : 0;
-  const avgResponseTime = filteredNamespaces.length > 0 ? filteredNamespaces.reduce((a, b) => a + b.avgDurationMs, 0) / filteredNamespaces.length : 0;
-
-  // Real time-series data from ClickHouse — no synthetic curves.
-  const tsLoading = timeseries === null;
   const buckets = timeseries?.buckets || [];
-  const serviceErrors = timeseries?.serviceErrors || [];
-  const hasChartData = buckets.some(b => b.spans > 0);
+  const serviceErrors = useMemo(
+    () => rankServiceErrors(timeseries?.serviceErrors || []),
+    [timeseries]
+  );
+  const tsLoading = timeseries === null;
+  const hasTraffic = buckets.some(bucket => bucket.spans > 0 || bucket.errors > 0 || bucket.dbCalls > 0);
+  const timeLabels = buckets.map(bucket => bucket.label);
 
-  const volumeData = buckets.map(b => b.spans);
-  const errorData = buckets.map(b => b.errors);
-  const maxVolume = Math.max(...volumeData.map((v, i) => v + errorData[i]), 1);
+  const serviceRequests = services.reduce((sum, service) => sum + service.requestCount, 0);
+  const serviceErrorsTotal = services.reduce((sum, service) => sum + service.errorCount, 0);
+  const totalPods = filteredNamespaces.reduce((sum, ns) => sum + ns.podCount, 0);
+  const namespaceCount = selectedNamespace ? 1 : namespaces.length;
+  const avgP50 = weightedServiceValue(services, service => service.p50Ms);
+  const avgP95 = weightedServiceValue(services, service => service.p95Ms);
+  const avgP99 = weightedServiceValue(services, service => service.p99Ms);
+  const apdex = weightedServiceValue(services, service => service.apdex ?? inferApdex(service), 1);
 
-  const avgLatencyData = buckets.map(b => b.avgMs);
-  const p99LatencyData = buckets.map(b => b.p99Ms);
-  const maxLatency = Math.max(...p99LatencyData, 1);
+  const dbCalls = dbMetrics.reduce((sum, metric) => sum + metric.callCount, 0);
+  const dbErrors = dbMetrics.reduce((sum, metric) => sum + metric.errorCount, 0);
+  const dbErrorRate = dbCalls > 0 ? (dbErrors / dbCalls) * 100 : 0;
+  const avgDbLatency = weightedBy(dbMetrics, metric => metric.avgDurationMs, metric => metric.callCount);
 
-  const timeLabels = buckets.map(b => b.label);
+  const trafficData = buckets.map(bucket => Math.max(0, bucket.spans));
+  const trafficErrorData = buckets.map(bucket => Math.max(0, bucket.errors));
+  const successData = buckets.map(bucket => Math.max(0, bucket.spans - bucket.errors));
+  const latencyAvgData = buckets.map(bucket => bucket.avgMs);
+  const latencyP99Data = buckets.map(bucket => bucket.p99Ms);
+  const dbVolumeData = buckets.map(bucket => bucket.dbCalls);
+  const dbLatencyData = buckets.map(bucket => bucket.dbAvgMs);
+  const timeseriesRequests = trafficData.reduce((sum, value) => sum + value, 0);
+  const timeseriesErrors = trafficErrorData.reduce((sum, value) => sum + value, 0);
+  const totalRequests = serviceRequests > 0 ? serviceRequests : timeseriesRequests;
+  const totalErrors = serviceRequests > 0 ? serviceErrorsTotal : timeseriesErrors;
+  const activeServicesCount = services.length || serviceErrors.length;
+  const errorRate = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
+  const serviceHealthScore = weightedServiceValue(services, service => service.healthScore ?? inferHealthScore(service), 100);
+  const healthScore = services.length > 0 ? serviceHealthScore : clamp(100 - Math.min(70, errorRate * 4.5), 0, 100);
+  const healthTone = getHealthTone(healthScore, totalRequests);
 
-  const dbVolumeData = buckets.map(b => b.dbCalls);
-  const dbLatencyData = buckets.map(b => b.dbAvgMs);
-  const maxDbVolume = Math.max(...dbVolumeData, 1);
-  const maxDbLatency = Math.max(...dbLatencyData, 1);
+  const riskServices = useMemo(() => {
+    return [...services]
+      .sort((a, b) => serviceRiskScore(b) - serviceRiskScore(a))
+      .slice(0, 6);
+  }, [services]);
 
-  // Helper to generate coordinates for line/area chart paths
-  const getLinePath = (data: number[], width: number, height: number, maxVal: number) => {
-    const points = data.map((val, idx) => {
-      const x = 45 + (idx * (width - 65)) / (data.length - 1);
-      const y = height - 35 - (val / maxVal) * (height - 65);
-      return { x, y };
-    });
-    return points.map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`)).join(' ');
-  };
+  const slowDbQueries = useMemo(() => {
+    return [...dbMetrics]
+      .sort((a, b) => b.avgDurationMs * Math.max(b.callCount, 1) - a.avgDurationMs * Math.max(a.callCount, 1))
+      .slice(0, 5);
+  }, [dbMetrics]);
 
-  const getAreaPath = (data: number[], width: number, height: number, maxVal: number) => {
-    const points = data.map((val, idx) => {
-      const x = 45 + (idx * (width - 65)) / (data.length - 1);
-      const y = height - 35 - (val / maxVal) * (height - 65);
-      return { x, y };
-    });
-    if (points.length === 0) return '';
-    const firstX = points[0].x;
-    const lastX = points[points.length - 1].x;
-    const baseY = height - 35;
-    return `M ${firstX} ${baseY} ` + points.map(p => `L ${p.x} ${p.y}`).join(' ') + ` L ${lastX} ${baseY} Z`;
-  };
+  const signalMetrics: SignalMetric[] = [
+    {
+      label: t('Traffic'),
+      value: formatMetric(totalRequests, 'count'),
+      detail: `${formatMetric(totalErrors, 'count')} ${t('errors')} / ${formatPercent(errorRate)}`,
+      tone: errorRate > 5 ? 'critical' : errorRate > 1 ? 'warning' : 'healthy',
+      icon: 'traffic',
+      trend: trafficData,
+    },
+    {
+      label: t('P99 Latency'),
+      value: formatMetric(avgP99, 'latency'),
+      detail: `${t('P50')} ${formatMetric(avgP50, 'latency')} / ${t('P95')} ${formatMetric(avgP95, 'latency')}`,
+      tone: avgP99 > 1200 ? 'critical' : avgP99 > 500 ? 'warning' : 'info',
+      icon: 'latency',
+      trend: latencyP99Data,
+    },
+    {
+      label: t('Apdex'),
+      value: apdex.toFixed(2),
+      detail: apdex >= 0.94 ? t('Satisfied users') : apdex >= 0.85 ? t('Needs attention') : t('User pain likely'),
+      tone: apdex >= 0.94 ? 'healthy' : apdex >= 0.85 ? 'warning' : 'critical',
+      icon: 'apdex',
+    },
+    {
+      label: t('Database'),
+      value: formatMetric(dbCalls, 'count'),
+      detail: `${formatMetric(avgDbLatency, 'latency')} ${t('avg')} / ${formatPercent(dbErrorRate)} ${t('errors')}`,
+      tone: dbErrorRate > 2 ? 'critical' : avgDbLatency > 400 ? 'warning' : 'neutral',
+      icon: 'database',
+      trend: dbVolumeData,
+    },
+  ];
+
+  const namespaceOptions = namespaces.map(ns => ns.namespace).sort((a, b) => a.localeCompare(b));
 
   return (
-    <div className="animate-fade-in dashboard-page">
-      {/* Top Header Bar */}
-      <div className="visibility-header-bar" style={{ paddingBottom: '12px', borderBottom: '1px solid var(--border-primary)', justifyContent: 'flex-start' }}>
-        <div className="visibility-title-container">
-          <div className="visibility-breadcrumbs" style={{ fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-            <span className="breadcrumb-parent" style={{ color: 'var(--text-tertiary)' }}>{t('Dashboards')}</span>
-            <span className="breadcrumb-separator" style={{ margin: '0 8px', color: 'var(--text-muted)' }}>&gt;</span>
-            <span className="breadcrumb-active" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{t('Telemetry Visibility')}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Section 1: Circular Gauge & 12 Stats Grid */}
-      <div className="visibility-main-row" style={{ marginTop: '16px' }}>
-        {/* Left: circular gauge global health score */}
-        <div className="card visibility-gauge-card">
-          <div className="card-header" style={{ paddingBottom: 0, justifyContent: 'center' }}>
-            <div className="card-title" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-secondary)', textAlign: 'center' }}>
-              {t('Global Health Score')}
-            </div>
-          </div>
-          <div className="gauge-chart-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px 0' }}>
-            <div style={{ position: 'relative', width: '160px', height: '160px' }}>
-              <svg viewBox="0 0 200 200" className="gauge-svg" style={{ width: '100%', height: '100%' }}>
-                <defs>
-                  <linearGradient id="gauge-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#f43f5e" />
-                    <stop offset="55%" stopColor="#fbbf24" />
-                    <stop offset="100%" stopColor="#10b981" />
-                  </linearGradient>
-                  <filter id="gauge-glow" x="-20%" y="-20%" width="140%" height="140%">
-                    <feGaussianBlur stdDeviation="6" result="blur" />
-                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                  </filter>
-                </defs>
-                {/* Outer dial ring */}
-                <circle cx="100" cy="100" r="85" fill="none" stroke="var(--border-primary)" strokeWidth="1" strokeDasharray="4 4" opacity="0.6"/>
-                {/* Background Track */}
-                <circle cx="100" cy="100" r="70" fill="none" stroke="var(--border-primary)" strokeWidth="9" opacity="0.25" />
-                {/* Value Path (Concentric Glowing Ring) */}
-                <circle 
-                  cx="100" 
-                  cy="100" 
-                  r="70" 
-                  fill="none" 
-                  stroke="url(#gauge-gradient)" 
-                  strokeWidth="9" 
-                  strokeLinecap="round"
-                  strokeDasharray={2 * Math.PI * 70}
-                  strokeDashoffset={2 * Math.PI * 70 - (healthScore / 100) * (2 * Math.PI * 70)}
-                  transform="rotate(-90 100 100)"
-                  filter="url(#gauge-glow)" 
-                  style={{ transition: 'stroke-dashoffset 0.8s ease-in-out' }}
-                />
-                {/* Score text in center */}
-                <text x="100" y="105" textAnchor="middle" className="gauge-score-value" fill="var(--text-primary)" style={{ fontSize: '28px', fontWeight: '800', fontFamily: 'var(--font-sans)', letterSpacing: '-0.5px' }}>
-                  {healthScore.toFixed(1)}%
-                </text>
-                <text x="100" y="125" textAnchor="middle" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                  {t('System Health')}
-                </text>
-              </svg>
-            </div>
-            <div style={{ marginTop: '-4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-              <span className="badge" style={{ 
-                background: healthScore > 90 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)', 
-                color: healthScore > 90 ? 'var(--accent-emerald)' : 'var(--accent-rose)',
-                borderColor: healthScore > 90 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)',
-                borderWidth: '1px',
-                borderStyle: 'solid',
-                fontSize: '10px',
-                padding: '3px 8px',
-                borderRadius: '12px',
-                fontWeight: 700
-              }}>
-                {healthScore > 95 ? t('Optimal') : healthScore > 90 ? t('Healthy') : t('Degraded')}
-              </span>
-            </div>
-          </div>
+    <div className="dashboard-page apm-dashboard animate-fade-in">
+      <section className="apm-dashboard-header">
+        <div className="apm-title-block">
+          <span className="apm-eyebrow">{t('Telemetry Visibility')}</span>
+          <h1>{selectedNamespace || t('All services')}</h1>
+          <p>{t('Requests, errors, latency, database pressure, and service hotspots.')}</p>
         </div>
 
-        {/* Right: 4x3 Grid of 12 APM Stats Cards */}
-        <div className="visibility-grid-container">
-          <div className="stat-grid-item">
-            <div className="grid-item-icon color-violet">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="3" width="20" height="18" rx="2" ry="2" />
-                <line x1="2" y1="12" x2="22" y2="12" />
-                <line x1="2" y1="7" x2="22" y2="7" />
-                <line x1="2" y1="17" x2="22" y2="17" />
-              </svg>
-            </div>
-            <div className="grid-item-content">
-              <div className="grid-item-value">{activeServicesCount}</div>
-              <div className="grid-item-label">{t('Active Services')}</div>
-            </div>
+        <div className="apm-header-meta">
+          <div className="apm-live-pill">
+            <span />
+            {t('Live')}
           </div>
-
-          <div className="stat-grid-item">
-            <div className="grid-item-icon color-indigo">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-                <line x1="12" y1="22.08" x2="12" y2="12" />
-              </svg>
-            </div>
-            <div className="grid-item-content">
-              <div className="grid-item-value">{namespacesCount}</div>
-              <div className="grid-item-label">{t('Namespaces')}</div>
-            </div>
+          <div className="apm-meta-item">
+            <span>{t('Window')}</span>
+            <strong>{timeseries?.windowMinutes || 60}m</strong>
           </div>
-
-          <div className="stat-grid-item">
-            <div className="grid-item-icon color-emerald">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-              </svg>
-            </div>
-            <div className="grid-item-content">
-              <div className="grid-item-value">{formatMetric(totalTraces * 8, 'traces')}</div>
-              <div className="grid-item-label">{t('Total Spans')}</div>
-            </div>
-          </div>
-
-          <div className="stat-grid-item">
-            <div className="grid-item-icon color-cyan">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="7" height="7" />
-                <rect x="14" y="3" width="7" height="7" />
-                <rect x="14" y="14" width="7" height="7" />
-                <rect x="3" y="14" width="7" height="7" />
-              </svg>
-            </div>
-            <div className="grid-item-content">
-              <div className="grid-item-value">{totalPods}</div>
-              <div className="grid-item-label">{t('Active Pods')}</div>
-            </div>
-          </div>
-
-          <div className="stat-grid-item">
-            <div className="grid-item-icon color-amber">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-            </div>
-            <div className="grid-item-content">
-              <div className="grid-item-value">{formatMetric(totalTraces, 'traces')}</div>
-              <div className="grid-item-label">{t('Trace Ingestions')}</div>
-            </div>
-          </div>
-
-          <div className="stat-grid-item">
-            <div className="grid-item-icon color-rose">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <circle cx="12" cy="16" r="0.8" fill="currentColor" />
-              </svg>
-            </div>
-            <div className="grid-item-content">
-              <div className="grid-item-value" style={{ color: totalErrors > 0 ? 'var(--accent-rose)' : 'inherit' }}>{formatMetric(totalErrors, 'errors')}</div>
-              <div className="grid-item-label">{t('Failed Traces')}</div>
-            </div>
-          </div>
-
-          <div className="stat-grid-item">
-            <div className="grid-item-icon color-indigo">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
-              </svg>
-            </div>
-            <div className="grid-item-content">
-              <div className="grid-item-value">{formatMetric(avgResponseTime, 'latency')}</div>
-              <div className="grid-item-label">{t('Avg Response Time')}</div>
-            </div>
-          </div>
-
-          <div className="stat-grid-item">
-            <div className="grid-item-icon color-emerald">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              </svg>
-            </div>
-            <div className="grid-item-content">
-              <div className="grid-item-value" style={{ color: 'var(--accent-emerald)' }}>{apdexScore.toFixed(2)}</div>
-              <div className="grid-item-label">{t('Apdex Score')}</div>
-            </div>
-          </div>
-
-          <div className="stat-grid-item">
-            <div className="grid-item-icon color-violet">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <ellipse cx="12" cy="5" rx="9" ry="3"/>
-                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-                <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
-              </svg>
-            </div>
-            <div className="grid-item-content">
-              <div className="grid-item-value">{formatMetric(dbCalls, 'dbCalls')}</div>
-              <div className="grid-item-label">{t('DB Operations')}</div>
-            </div>
-          </div>
-
-          <div className="stat-grid-item">
-            <div className="grid-item-icon color-rose">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <ellipse cx="12" cy="5" rx="9" ry="3"/>
-                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-                <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
-                <line x1="12" y1="10" x2="12" y2="14" stroke="currentColor" />
-                <circle cx="12" cy="18" r="0.8" fill="currentColor"/>
-              </svg>
-            </div>
-            <div className="grid-item-content">
-              <div className="grid-item-value" style={{ color: dbErrors > 0 ? 'var(--accent-rose)' : 'inherit' }}>{formatMetric(dbErrors, 'dbErrors')}</div>
-              <div className="grid-item-label">{t('DB Query Errors')}</div>
-            </div>
-          </div>
-
-          <div className="stat-grid-item">
-            <div className="grid-item-icon color-cyan">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-              </svg>
-            </div>
-            <div className="grid-item-content">
-              <div className="grid-item-value">{formatMetric(avgDbLatency, 'dbLatency')}</div>
-              <div className="grid-item-label">{t('Mean DB Latency')}</div>
-            </div>
-          </div>
-
-          <div className="stat-grid-item">
-            <div className="grid-item-icon color-amber">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="3" width="20" height="18" rx="2" ry="2" />
-                <line x1="2" y1="12" x2="22" y2="12" />
-                <line x1="2" y1="7" x2="22" y2="7" />
-                <line x1="2" y1="17" x2="22" y2="17" />
-              </svg>
-            </div>
-            <div className="grid-item-content">
-              <div className="grid-item-value">{Math.max(2, filteredNamespaces.length * 2 - 1)}</div>
-              <div className="grid-item-label">{t('System Nodes')}</div>
-            </div>
+          <div className="apm-meta-item">
+            <span>{t('Scope')}</span>
+            <strong>{selectedNamespace || t('All namespaces')}</strong>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Main Section 2: Tracing Analytics Charts */}
-      <div className="visibility-charts-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))', gap: '20px', marginTop: '20px' }}>
-        
-        {/* Chart 1: Trace Ingestion Volume (Interactive Bar) */}
-        <div className="card visibility-chart-card">
-          <div className="chart-header">
-            <div>
-              <span className="chart-title-main">{t('Trace Ingestion Volume')}</span>
-              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{t('Trace Ingestion Rate')}</div>
-            </div>
-            <div className="chart-legend">
-              <div className="legend-item">
-                <span className="legend-dot" style={{ background: '#6366f1' }} />
-                <span>{t('Healthy')}</span>
-              </div>
-              <div className="legend-item">
-                <span className="legend-dot" style={{ background: '#ef4444' }} />
-                <span>{t('Errors')}</span>
-              </div>
-            </div>
-          </div>
-          <div className="chart-svg-container" style={{ position: 'relative' }}>
-            {(tsLoading || !hasChartData) && (
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', zIndex: 5, borderRadius: '8px' }}>
-                {tsLoading ? <LoadingState height={160} label={t("Loading telemetry…")} /> : <NoDataState height={160} title={t("No traffic in the last hour")} hint={t("Appears once services send traces.")} />}
-              </div>
-            )}
-            <svg
-              viewBox="0 0 500 180"
-              className="chart-svg" 
-              preserveAspectRatio="none"
-              onMouseLeave={() => setHoverIndex(null)}
-            >
-              <defs>
-                <linearGradient id="bar-success-grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#818cf8" />
-                  <stop offset="100%" stopColor="#4f46e5" />
-                </linearGradient>
-                <linearGradient id="bar-error-grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#fca5a5" />
-                  <stop offset="100%" stopColor="#dc2626" />
-                </linearGradient>
-              </defs>
-              
-              {/* Horizontal Grid lines */}
-              <line x1="45" y1="30" x2="480" y2="30" stroke="var(--border-primary)" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.4" />
-              <line x1="45" y1="87.5" x2="480" y2="87.5" stroke="var(--border-primary)" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.4" />
-              <line x1="45" y1="145" x2="480" y2="145" stroke="var(--border-primary)" strokeWidth="0.8" opacity="0.8" />
-
-              {/* Y Axis Labels */}
-              <text x="38" y="33" textAnchor="end" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
-                {formatMetric(maxVolume, 'traces')}
-              </text>
-              <text x="38" y="90.5" textAnchor="end" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
-                {formatMetric(maxVolume / 2, 'traces')}
-              </text>
-              <text x="38" y="148" textAnchor="end" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
-                0
-              </text>
-
-              {/* Volume Bars */}
-              {volumeData.map((val, idx) => {
-                const errVal = errorData[idx];
-                const totalVal = val + errVal;
-                
-                const hTotal = (totalVal / maxVolume) * 115;
-                const hError = (errVal / maxVolume) * 115;
-                const hSuccess = hTotal - hError;
-
-                const x = 50 + idx * 36;
-                const ySuccess = 145 - hSuccess;
-                const yError = ySuccess - hError;
-
-                const isHovered = hoverIndex === idx;
-
-                return (
-                  <g 
-                     key={idx}
-                     onMouseEnter={() => setHoverIndex(idx)}
-                     style={{ cursor: 'pointer' }}
-                  >
-                    {/* Background hover guide bar */}
-                    <rect 
-                      x={x - 6} 
-                      y={15} 
-                      width={28} 
-                      height={130} 
-                      fill="var(--accent-indigo)" 
-                      opacity={isHovered ? 0.06 : 0} 
-                      rx={4}
-                      style={{ transition: 'opacity 0.2s' }}
-                    />
-                    
-                    {/* Success segment */}
-                    {hSuccess > 0 && (
-                      <rect 
-                        x={x} 
-                        y={ySuccess} 
-                        width={16} 
-                        height={hSuccess} 
-                        rx={1.5} 
-                        fill="url(#bar-success-grad)"
-                        opacity={hoverIndex === null || isHovered ? 1 : 0.65}
-                        style={{ transition: 'all 0.2s' }}
-                      />
-                    )}
-                    {/* Error segment */}
-                    {hError > 0 && (
-                      <rect 
-                        x={x} 
-                        y={yError} 
-                        width={16} 
-                        height={hError} 
-                        rx={1.5} 
-                        fill="url(#bar-error-grad)"
-                        opacity={hoverIndex === null || isHovered ? 1 : 0.65}
-                        style={{ transition: 'all 0.2s' }}
-                      />
-                    )}
-                  </g>
-                );
-              })}
-
-              {/* X Axis Time Labels */}
-              {timeLabels.map((time, idx) => {
-                const x = 58 + idx * 36;
-                const isSelected = hoverIndex === idx;
-                return (
-                  <text 
-                    key={idx} 
-                    x={x} 
-                    y="162" 
-                    textAnchor="middle" 
-                    fill={isSelected ? 'var(--text-primary)' : 'var(--text-tertiary)'} 
-                    style={{ 
-                      fontSize: '9px', 
-                      fontFamily: 'var(--font-sans)', 
-                      fontWeight: isSelected ? 700 : 500,
-                      transition: 'fill 0.2s'
-                    }}
-                  >
-                    {time.split(':')[0]}h
-                  </text>
-                );
-              })}
-            </svg>
-
-            {/* Hover Tooltip Overlay */}
-            {hoverIndex !== null && (
-              <div 
-                className="chart-tooltip animate-fade-in"
-                style={{
-                  position: 'absolute',
-                  left: `${58 + hoverIndex * 36 - 60}px`,
-                  top: '0px',
-                  pointerEvents: 'none',
-                }}
-              >
-                <div className="tooltip-time">{timeLabels[hoverIndex]} UTC</div>
-                <div className="tooltip-row">
-                  <span className="tooltip-dot" style={{ background: '#6366f1' }} />
-                  <span className="tooltip-label">{t('Healthy')}:</span>
-                  <span className="tooltip-value">{volumeData[hoverIndex]}</span>
-                </div>
-                <div className="tooltip-row">
-                  <span className="tooltip-dot" style={{ background: '#ef4444' }} />
-                  <span className="tooltip-label">{t('Errors')}:</span>
-                  <span className="tooltip-value" style={{ color: errorData[hoverIndex] > 0 ? '#ef4444' : 'inherit' }}>{errorData[hoverIndex]}</span>
-                </div>
-                <div className="tooltip-divider" />
-                <div className="tooltip-row" style={{ fontWeight: 700 }}>
-                  <span className="tooltip-label">Total:</span>
-                  <span className="tooltip-value">{volumeData[hoverIndex] + errorData[hoverIndex]}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Chart 2: Latency Trend & Percentiles (Glowing Area) */}
-        <div className="card visibility-chart-card">
-          <div className="chart-header">
-            <div>
-              <span className="chart-title-main">{t('Avg Latency')}</span>
-              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{t('Avg Latency')}</div>
-            </div>
-            <div className="chart-legend">
-              <div className="legend-item">
-                <span style={{ display: 'inline-block', width: '12px', height: '3px', background: '#22d3ee', marginRight: '4px', borderRadius: '1px' }} />
-                <span>{t('Avg (P50)')}</span>
-              </div>
-              <div className="legend-item">
-                <span style={{ display: 'inline-block', width: '12px', height: '3px', borderTop: '2px dashed #f59e0b', marginRight: '4px' }} />
-                <span>{t('Tail (P99)')}</span>
-              </div>
-            </div>
-          </div>
-          <div className="chart-svg-container" style={{ position: 'relative' }}>
-            {(tsLoading || !hasChartData) && (
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', zIndex: 5, borderRadius: '8px' }}>
-                {tsLoading ? <LoadingState height={160} label={t("Loading telemetry…")} /> : <NoDataState height={160} title={t("No traffic in the last hour")} hint={t("Appears once services send traces.")} />}
-              </div>
-            )}
-            <svg
-              viewBox="0 0 500 180"
-              className="chart-svg" 
-              preserveAspectRatio="none"
-              onMouseLeave={() => setHoverLatencyIndex(null)}
-              onMouseMove={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const xPos = e.clientX - rect.left - 45;
-                const widthRange = rect.width - 65;
-                const percent = Math.max(0, Math.min(1, xPos / widthRange));
-                const index = Math.round(percent * (avgLatencyData.length - 1));
-                setHoverLatencyIndex(index);
-              }}
-            >
-              <defs>
-                <linearGradient id="latency-area-grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.18" />
-                  <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
-                </linearGradient>
-                <filter id="line-glow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="3" result="blur" />
-                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                </filter>
-              </defs>
-
-              {/* Horizontal Grid lines */}
-              <line x1="45" y1="30" x2="480" y2="30" stroke="var(--border-primary)" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.4" />
-              <line x1="45" y1="87.5" x2="480" y2="87.5" stroke="var(--border-primary)" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.4" />
-              <line x1="45" y1="145" x2="480" y2="145" stroke="var(--border-primary)" strokeWidth="0.8" opacity="0.8" />
-
-              {/* Y Axis Labels */}
-              <text x="38" y="33" textAnchor="end" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
-                {formatMetric(maxLatency, 'latency')}
-              </text>
-              <text x="38" y="90.5" textAnchor="end" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
-                {formatMetric(maxLatency / 2, 'latency')}
-              </text>
-              <text x="38" y="148" textAnchor="end" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
-                0ms
-              </text>
-
-              {/* Area under P50 Avg line */}
-              <path d={getAreaPath(avgLatencyData, 500, 180, maxLatency)} fill="url(#latency-area-grad)" />
-
-              {/* Average Latency Line (P50) */}
-              <path 
-                d={getLinePath(avgLatencyData, 500, 180, maxLatency)} 
-                fill="none" 
-                stroke="#22d3ee" 
-                strokeWidth="2.2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round"
-                filter="url(#line-glow)"
-              />
-
-              {/* P99 Latency Line */}
-              <path 
-                d={getLinePath(p99LatencyData, 500, 180, maxLatency)} 
-                fill="none" 
-                stroke="#f59e0b" 
-                strokeWidth="1.8" 
-                strokeDasharray="4 3" 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-              />
-
-              {/* Vertical Guide lines & Dots on Hover */}
-              {hoverLatencyIndex !== null && (() => {
-                const x = 45 + (hoverLatencyIndex * 435) / (avgLatencyData.length - 1);
-                const y50 = 145 - (avgLatencyData[hoverLatencyIndex] / maxLatency) * 115;
-                const y99 = 145 - (p99LatencyData[hoverLatencyIndex] / maxLatency) * 115;
-                return (
-                  <g>
-                    <line x1={x} y1={25} x2={x} y2={145} stroke="var(--accent-cyan)" strokeWidth="1" opacity="0.45" />
-                    <circle cx={x} cy={y50} r="4" fill="#22d3ee" stroke="#0f0f23" strokeWidth="1.5" />
-                    <circle cx={x} cy={y99} r="4" fill="#f59e0b" stroke="#0f0f23" strokeWidth="1.5" />
-                  </g>
-                );
-              })()}
-
-              {/* X Axis Time Labels */}
-              {timeLabels.map((time, idx) => {
-                const x = 45 + (idx * 435) / (timeLabels.length - 1);
-                const isSelected = hoverLatencyIndex === idx;
-                return (
-                  <text 
-                    key={idx} 
-                    x={x} 
-                    y="162" 
-                    textAnchor="middle" 
-                    fill={isSelected ? 'var(--text-primary)' : 'var(--text-tertiary)'} 
-                    style={{ 
-                      fontSize: '9px', 
-                      fontFamily: 'var(--font-sans)', 
-                      fontWeight: isSelected ? 700 : 500,
-                      transition: 'fill 0.2s'
-                    }}
-                  >
-                    {time.split(':')[0]}h
-                  </text>
-                );
-              })}
-            </svg>
-
-            {/* Hover Tooltip Overlay */}
-            {hoverLatencyIndex !== null && (
-              <div 
-                className="chart-tooltip animate-fade-in"
-                style={{
-                  position: 'absolute',
-                  left: `${45 + (hoverLatencyIndex * 435) / (avgLatencyData.length - 1) - 60}px`,
-                  top: '0px',
-                  pointerEvents: 'none',
-                }}
-              >
-                <div className="tooltip-time">{timeLabels[hoverLatencyIndex]} UTC</div>
-                <div className="tooltip-row">
-                  <span className="tooltip-dot" style={{ background: '#22d3ee' }} />
-                  <span className="tooltip-label">Avg (P50):</span>
-                  <span className="tooltip-value">{avgLatencyData[hoverLatencyIndex].toFixed(1)} ms</span>
-                </div>
-                <div className="tooltip-row">
-                  <span className="tooltip-dot" style={{ background: '#f59e0b' }} />
-                  <span className="tooltip-label">Tail (P99):</span>
-                  <span className="tooltip-value">{p99LatencyData[hoverLatencyIndex].toFixed(1)} ms</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Chart 3: Database Operations and Latency (Dual Axes) */}
-        <div className="card visibility-chart-card">
-          <div className="chart-header">
-            <div>
-              <span className="chart-title-main">{t('Database Operations & Latency')}</span>
-              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{t('Query Performance')}</div>
-            </div>
-            <div className="chart-legend">
-              <div className="legend-item">
-                <span className="legend-dot" style={{ background: '#a78bfa' }} />
-                <span>{t('Queries')}</span>
-              </div>
-              <div className="legend-item">
-                <span style={{ display: 'inline-block', width: '12px', height: '3px', background: '#10b981', marginRight: '4px', borderRadius: '1px' }} />
-                <span>{t('DB Latency')}</span>
-              </div>
-            </div>
-          </div>
-          <div className="chart-svg-container" style={{ position: 'relative' }}>
-            {(tsLoading || !hasChartData) && (
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', zIndex: 5, borderRadius: '8px' }}>
-                {tsLoading ? <LoadingState height={160} label={t("Loading telemetry…")} /> : <NoDataState height={160} title={t("No traffic in the last hour")} hint={t("Appears once services send traces.")} />}
-              </div>
-            )}
-            <svg
-              viewBox="0 0 500 180"
-              className="chart-svg" 
-              preserveAspectRatio="none"
-              onMouseLeave={() => setHoverDbIndex(null)}
-              onMouseMove={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const xPos = e.clientX - rect.left - 45;
-                const widthRange = rect.width - 65;
-                const percent = Math.max(0, Math.min(1, xPos / widthRange));
-                const index = Math.round(percent * (dbVolumeData.length - 1));
-                setHoverDbIndex(index);
-              }}
-            >
-              <defs>
-                <linearGradient id="db-area-grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.16" />
-                  <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-
-              {/* Horizontal Grid lines */}
-              <line x1="45" y1="30" x2="480" y2="30" stroke="var(--border-primary)" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.4" />
-              <line x1="45" y1="87.5" x2="480" y2="87.5" stroke="var(--border-primary)" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.4" />
-              <line x1="45" y1="145" x2="480" y2="145" stroke="var(--border-primary)" strokeWidth="0.8" opacity="0.8" />
-
-              {/* Y Axis Labels (Left: Volume) */}
-              <text x="38" y="33" textAnchor="end" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
-                {formatMetric(maxDbVolume, 'dbCalls')}
-              </text>
-              <text x="38" y="90.5" textAnchor="end" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
-                {formatMetric(maxDbVolume / 2, 'dbCalls')}
-              </text>
-              <text x="38" y="148" textAnchor="end" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
-                0
-              </text>
-
-              {/* Y Axis Labels (Right: Latency) */}
-              <text x="488" y="33" textAnchor="start" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
-                {formatMetric(maxDbLatency, 'dbLatency')}
-              </text>
-              <text x="488" y="90.5" textAnchor="start" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
-                {formatMetric(maxDbLatency / 2, 'dbLatency')}
-              </text>
-              <text x="488" y="148" textAnchor="start" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
-                0ms
-              </text>
-
-              {/* Area under DB Latency line */}
-              <path d={getAreaPath(dbLatencyData, 500, 180, maxDbLatency)} fill="url(#db-area-grad)" />
-
-              {/* DB Volume Columns (Thin, transparent cards) */}
-              {dbVolumeData.map((val, idx) => {
-                const x = 50 + idx * 36;
-                const h = (val / maxDbVolume) * 115;
-                const y = 145 - h;
-                const isHovered = hoverDbIndex === idx;
-                return (
-                  <rect 
-                    key={idx}
-                    x={x + 5}
-                    y={y}
-                    width={6}
-                    height={h}
-                    rx={1}
-                    fill="#a78bfa"
-                    opacity={isHovered ? 0.95 : 0.45}
-                    style={{ transition: 'all 0.2s' }}
-                  />
-                );
-              })}
-
-              {/* DB Latency Line */}
-              <path 
-                d={getLinePath(dbLatencyData, 500, 180, maxDbLatency)} 
-                fill="none" 
-                stroke="#10b981" 
-                strokeWidth="2.2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                filter="url(#line-glow)"
-              />
-
-              {/* Vertical Guide Line on Hover */}
-              {hoverDbIndex !== null && (() => {
-                const x = 45 + (hoverDbIndex * 435) / (dbLatencyData.length - 1);
-                const yLat = 145 - (dbLatencyData[hoverDbIndex] / maxDbLatency) * 115;
-                return (
-                  <g>
-                    <line x1={x} y1={25} x2={x} y2={145} stroke="#10b981" strokeWidth="1" opacity="0.45" />
-                    <circle cx={x} cy={yLat} r="4.5" fill="#10b981" stroke="#0f0f23" strokeWidth="1.5" />
-                  </g>
-                );
-              })()}
-
-              {/* X Axis Time Labels */}
-              {timeLabels.map((time, idx) => {
-                const x = 45 + (idx * 435) / (timeLabels.length - 1);
-                const isSelected = hoverDbIndex === idx;
-                return (
-                  <text 
-                    key={idx} 
-                    x={x} 
-                    y="162" 
-                    textAnchor="middle" 
-                    fill={isSelected ? 'var(--text-primary)' : 'var(--text-tertiary)'} 
-                    style={{ 
-                      fontSize: '9px', 
-                      fontFamily: 'var(--font-sans)', 
-                      fontWeight: isSelected ? 700 : 500,
-                      transition: 'fill 0.2s'
-                    }}
-                  >
-                    {time.split(':')[0]}h
-                  </text>
-                );
-              })}
-            </svg>
-
-            {/* Hover Tooltip Overlay */}
-            {hoverDbIndex !== null && (
-              <div 
-                className="chart-tooltip animate-fade-in"
-                style={{
-                  position: 'absolute',
-                  left: `${45 + (hoverDbIndex * 435) / (dbLatencyData.length - 1) - 60}px`,
-                  top: '0px',
-                  pointerEvents: 'none',
-                }}
-              >
-                <div className="tooltip-time">{timeLabels[hoverDbIndex]} UTC</div>
-                <div className="tooltip-row">
-                  <span className="tooltip-dot" style={{ background: '#a78bfa' }} />
-                  <span className="tooltip-label">{t('DB Operations')}:</span>
-                  <span className="tooltip-value">{dbVolumeData[hoverDbIndex]} {t('queries')}</span>
-                </div>
-                <div className="tooltip-row">
-                  <span className="tooltip-dot" style={{ background: '#10b981' }} />
-                  <span className="tooltip-label">{t('Avg Latency')}:</span>
-                  <span className="tooltip-value">{dbLatencyData[hoverDbIndex].toFixed(1)} ms</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Chart 4: Service Health Heatmap (Best-in-class APM) */}
-        <div className="card visibility-chart-card">
-          <div className="chart-header">
-            <div>
-              <span className="chart-title-main">{t('Error Rate')}</span>
-              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{t('Error Rate')}</div>
-            </div>
-            <div className="chart-legend" style={{ gap: '6px' }}>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{t('Healthy')}</span>
-              <div style={{ display: 'flex', gap: '2px' }}>
-                <span style={{ width: '10px', height: '10px', background: 'rgba(16, 185, 129, 0.15)', borderRadius: '2px' }} />
-                <span style={{ width: '10px', height: '10px', background: 'rgba(16, 185, 129, 0.45)', borderRadius: '2px' }} />
-                <span style={{ width: '10px', height: '10px', background: '#fbbf24', borderRadius: '2px' }} />
-                <span style={{ width: '10px', height: '10px', background: '#ef4444', borderRadius: '2px' }} />
-              </div>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{t('Critical')}</span>
-            </div>
-          </div>
-          <div 
-            ref={heatmapContainerRef}
-            style={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              gap: '6px', 
-              marginTop: '12px',
-              paddingBottom: '10px', 
-              overflowY: 'auto',
-              maxHeight: '145px',
-              position: 'relative'
-            }}
-            onMouseLeave={() => {
-              setHoverHeatmapCell(null);
-              setHeatmapTooltipPos(null);
-            }}
+      {namespaceOptions.length > 0 && (
+        <section className="apm-scope-strip" aria-label={t('Namespace scope')}>
+          <span className="apm-scope-label">{t('Namespace')}</span>
+          <button
+            type="button"
+            className={!selectedNamespace ? 'active' : ''}
+            onClick={() => onSelectNamespace('')}
           >
-            {tsLoading && <LoadingState height={130} label="Loading service health…" />}
-            {!tsLoading && serviceErrors.length === 0 && (
-              <NoDataState height={130} title="No service activity" hint="Per-service errors appear once traffic flows." />
-            )}
-            {!tsLoading && serviceErrors.map((svc, svcIdx) => {
-              const svcName = svc.service;
-              return (
-                <div key={svcIdx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div
-                    className="truncate"
-                    style={{
-                      width: '100px',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: 'var(--text-secondary)',
-                      textAlign: 'right'
-                    }}
-                    title={`${svc.namespace}/${svcName}`}
-                  >
-                    {svcName}
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '4px', flex: 1 }}>
-                    {timeLabels.map((time, timeIdx) => {
-                      // Real per-bucket health: color by error count/rate
-                      const spansInCell = svc.spans[timeIdx] || 0;
-                      const errsInCell = svc.errors[timeIdx] || 0;
-                      const cellErrRate = spansInCell > 0 ? errsInCell / spansInCell : 0;
+            {t('All')}
+          </button>
+          {namespaceOptions.slice(0, 7).map(ns => (
+            <button
+              key={ns}
+              type="button"
+              className={selectedNamespace === ns ? 'active' : ''}
+              onClick={() => onSelectNamespace(ns)}
+              title={ns}
+            >
+              {ns}
+            </button>
+          ))}
+          {namespaceOptions.length > 7 && (
+            <select value={selectedNamespace} onChange={event => onSelectNamespace(event.target.value)}>
+              <option value="">{t('More')}</option>
+              {namespaceOptions.slice(7).map(ns => (
+                <option key={ns} value={ns}>{ns}</option>
+              ))}
+            </select>
+          )}
+        </section>
+      )}
 
-                      let bg = 'var(--bg-tertiary)'; // no traffic
-                      if (spansInCell > 0) {
-                        bg = 'rgba(16, 185, 129, 0.18)'; // healthy
-                        if (errsInCell > 0) bg = 'rgba(16, 185, 129, 0.5)'; // minor
-                        if (errsInCell >= 3 || cellErrRate >= 0.05) bg = 'rgba(251, 191, 36, 0.85)'; // degraded
-                        if (errsInCell >= 10 || cellErrRate >= 0.2) bg = 'rgba(239, 68, 68, 0.9)'; // critical
-                      }
+      <section className="apm-overview-grid">
+        <HealthPanel
+          score={healthScore}
+          tone={healthTone}
+          totalRequests={totalRequests}
+          errorRate={errorRate}
+          services={activeServicesCount}
+          namespaces={namespaceCount}
+          pods={totalPods}
+        />
 
-                      const isCellHovered = hoverHeatmapCell?.svcIdx === svcIdx && hoverHeatmapCell?.timeIdx === timeIdx;
-
-                      return (
-                        <div 
-                          key={timeIdx}
-                          onMouseEnter={() => setHoverHeatmapCell({ svcIdx, timeIdx })}
-                          onMouseMove={(e) => {
-                            const container = heatmapContainerRef.current;
-                            if (container) {
-                              const rect = container.getBoundingClientRect();
-                              let x = e.clientX - rect.left + 15;
-                              let y = e.clientY - rect.top + container.scrollTop + 15;
-                              if (x + 270 > rect.width) {
-                                x = e.clientX - rect.left - 275;
-                              }
-                              setHeatmapTooltipPos({ x, y });
-                            }
-                          }}
-                          style={{
-                            height: '14px',
-                            background: bg,
-                            borderRadius: '3px',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s',
-                            boxShadow: isCellHovered ? '0 0 8px var(--text-primary)' : 'none',
-                            transform: isCellHovered ? 'scale(1.12)' : 'none',
-                            zIndex: isCellHovered ? 10 : 1,
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Hover Tooltip Overlay for Heatmap (real per-bucket counts) */}
-            {hoverHeatmapCell !== null && heatmapTooltipPos !== null && serviceErrors[hoverHeatmapCell.svcIdx] && (() => {
-              const svc = serviceErrors[hoverHeatmapCell.svcIdx];
-              const time = timeLabels[hoverHeatmapCell.timeIdx] || '';
-              const spansInCell = svc.spans[hoverHeatmapCell.timeIdx] || 0;
-              const errsInCell = svc.errors[hoverHeatmapCell.timeIdx] || 0;
-              const cellErrRate = spansInCell > 0 ? (errsInCell / spansInCell) * 100 : 0;
-
-              let cellStatus = 'No traffic';
-              if (spansInCell > 0) {
-                cellStatus = 'Healthy';
-                if (errsInCell > 0) cellStatus = 'Minor errors';
-                if (errsInCell >= 3 || cellErrRate >= 5) cellStatus = 'Degraded';
-                if (errsInCell >= 10 || cellErrRate >= 20) cellStatus = 'Critical';
-              }
-
-              return (
-                <div
-                  className="chart-tooltip animate-fade-in"
-                  style={{
-                    position: 'absolute',
-                    left: `${heatmapTooltipPos.x}px`,
-                    top: `${heatmapTooltipPos.y}px`,
-                    width: '260px',
-                    pointerEvents: 'none',
-                  }}
-                >
-                  <div className="tooltip-time">{svc.service} @ {time}</div>
-                  <div className="tooltip-row">
-                    <span className="tooltip-label">{t('Status')}:</span>
-                    <span
-                      className="tooltip-value"
-                      style={{
-                        color: cellStatus === 'Critical' ? '#ef4444' : cellStatus === 'Degraded' ? '#fbbf24' : cellStatus === 'No traffic' ? 'var(--text-muted)' : '#10b981',
-                        fontWeight: 700
-                      }}
-                    >
-                      {t(cellStatus)}
-                    </span>
-                  </div>
-                  <div className="tooltip-row">
-                    <span className="tooltip-label">{t('Spans')}:</span>
-                    <span className="tooltip-value">{spansInCell.toLocaleString()}</span>
-                  </div>
-                  <div className="tooltip-row">
-                    <span className="tooltip-label">{t('Errors')}:</span>
-                    <span className="tooltip-value" style={{ color: errsInCell > 0 ? '#ef4444' : undefined }}>{errsInCell.toLocaleString()} ({cellErrRate.toFixed(1)}%)</span>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
+        <div className="apm-signal-grid">
+          {signalMetrics.map(metric => (
+            <SignalCard key={metric.label} metric={metric} />
+          ))}
         </div>
+      </section>
 
-      </div>
+      <section className="apm-chart-grid">
+        <ChartPanel
+          title={t('Traffic & Errors')}
+          subtitle={t('Successful and failed spans over time')}
+          legend={[
+            { label: t('Successful'), color: trafficColor },
+            { label: t('Errors'), color: errorColor },
+          ]}
+        >
+          <TrafficChart
+            successData={successData}
+            errorData={trafficErrorData}
+            labels={timeLabels}
+            hoverIndex={trafficHover}
+            setHoverIndex={setTrafficHover}
+            loading={tsLoading}
+            empty={!hasTraffic}
+            t={t}
+          />
+        </ChartPanel>
 
-      <style>{`
-        .dashboard-page {
-          max-width: 1400px;
-          margin: 0 auto;
-          padding-bottom: 40px;
-        }
+        <ChartPanel
+          title={t('Latency Percentiles')}
+          subtitle={t('Average latency compared with tail latency')}
+          legend={[
+            { label: t('Average'), color: latencyColor },
+            { label: t('P99'), color: tailLatencyColor, dashed: true },
+          ]}
+        >
+          <LineChart
+            primary={latencyAvgData}
+            secondary={latencyP99Data}
+            labels={timeLabels}
+            primaryLabel={t('Average')}
+            secondaryLabel={t('P99')}
+            unit="latency"
+            primaryColor={latencyColor}
+            secondaryColor={tailLatencyColor}
+            hoverIndex={latencyHover}
+            setHoverIndex={setLatencyHover}
+            loading={tsLoading}
+            empty={!hasTraffic}
+            t={t}
+          />
+        </ChartPanel>
 
-        .visibility-gauge-card {
-          padding: 20px 10px;
-        }
+        <ChartPanel
+          title={t('Database Pressure')}
+          subtitle={t('DB operations overlaid with latency')}
+          legend={[
+            { label: t('Calls'), color: dbColor },
+            { label: t('Latency'), color: dbLatencyColor },
+          ]}
+        >
+          <DatabaseChart
+            calls={dbVolumeData}
+            latency={dbLatencyData}
+            labels={timeLabels}
+            hoverIndex={dbHover}
+            setHoverIndex={setDbHover}
+            loading={tsLoading}
+            empty={!hasTraffic}
+            t={t}
+          />
+        </ChartPanel>
 
-        .visibility-chart-card {
-          padding: 20px;
-          display: flex;
-          flex-direction: column;
-          background: var(--bg-secondary);
-          border: 1px solid var(--border-primary);
-          border-radius: 12px;
-          box-shadow: var(--shadow-sm);
-        }
+        <ChartPanel
+          title={t('Service Error Heatmap')}
+          subtitle={t('Per-service error density across the same time window')}
+          legend={[
+            { label: t('Healthy'), color: '#10b981' },
+            { label: t('Degraded'), color: '#f59e0b' },
+            { label: t('Critical'), color: '#ef4444' },
+          ]}
+        >
+          <ServiceHeatmap
+            services={serviceErrors}
+            labels={timeLabels}
+            loading={tsLoading}
+            hoverCell={heatmapHover}
+            setHoverCell={setHeatmapHover}
+            tooltipPos={heatmapTooltipPos}
+            setTooltipPos={setHeatmapTooltipPos}
+            containerRef={heatmapRef}
+            t={t}
+          />
+        </ChartPanel>
+      </section>
 
-        .chart-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 16px;
-        }
+      <section className="apm-bottom-grid">
+        <ListPanel title={t('Services Needing Attention')} subtitle={t('Sorted by health, errors, and tail latency')}>
+          {riskServices.length === 0 ? (
+            <NoDataState height={190} title={t('No service activity')} hint={t('Services appear once traces arrive.')} />
+          ) : (
+            <div className="apm-risk-list">
+              {riskServices.map(service => {
+                const serviceErrorRate = service.requestCount > 0 ? (service.errorCount / service.requestCount) * 100 : service.errorRate;
+                const score = service.healthScore ?? inferHealthScore(service);
+                const tone = getHealthTone(score, service.requestCount);
+                return (
+                  <div className="apm-risk-row" key={`${service.namespace}:${service.serviceName}`}>
+                    <div className="apm-risk-main">
+                      <div className={`apm-status-dot ${tone}`} />
+                      <div>
+                        <strong>{service.serviceName}</strong>
+                        <span>{service.namespace}</span>
+                      </div>
+                    </div>
+                    <div className="apm-risk-metrics">
+                      <MetricPill label={t('Health')} value={service.requestCount > 0 ? score.toFixed(0) : '--'} tone={tone} />
+                      <MetricPill label={t('Errors')} value={formatPercent(serviceErrorRate)} tone={serviceErrorRate > 5 ? 'critical' : serviceErrorRate > 0 ? 'warning' : 'healthy'} />
+                      <MetricPill label={t('P99')} value={formatMetric(service.p99Ms, 'latency')} tone={service.p99Ms > 1200 ? 'critical' : service.p99Ms > 500 ? 'warning' : 'neutral'} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </ListPanel>
 
-        .chart-title-main {
-          font-size: 13px;
-          font-weight: 800;
-          text-transform: uppercase;
-          letter-spacing: 0.8px;
-          color: var(--text-primary);
-        }
-
-        .chart-legend {
-          display: flex;
-          gap: 12px;
-          font-size: 11px;
-          color: var(--text-secondary);
-        }
-
-        .legend-item {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-
-        .legend-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-        }
-
-        .chart-svg-container {
-          width: 100%;
-          height: 180px;
-        }
-
-        .chart-svg {
-          width: 100%;
-          height: 100%;
-          overflow: visible;
-        }
-
-        /* Premium Floating Tooltip Styles */
-        .chart-tooltip {
-          background: rgba(15, 15, 35, 0.95);
-          backdrop-filter: blur(8px);
-          border: 1px solid var(--border-primary);
-          box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5), 0 0 15px rgba(99,102,241,0.15);
-          border-radius: 8px;
-          padding: 10px 12px;
-          z-index: 1000;
-          min-width: 130px;
-          pointer-events: none;
-          transition: left 0.1s ease-out, top 0.1s ease-out;
-        }
-
-        .tooltip-time {
-          font-family: var(--font-mono);
-          font-size: 10px;
-          font-weight: 700;
-          color: var(--text-tertiary);
-          margin-bottom: 6px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-
-        .tooltip-row {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 11px;
-          color: var(--text-primary);
-          margin: 3px 0;
-        }
-
-        .tooltip-dot {
-          width: 6px;
-          height: 6px;
-          border-radius: 50%;
-        }
-
-        .tooltip-label {
-          color: var(--text-secondary);
-          flex: 1;
-        }
-
-        .tooltip-value {
-          font-weight: 600;
-          font-family: var(--font-mono);
-          text-align: right;
-        }
-
-        .tooltip-divider {
-          height: 1px;
-          background: var(--border-primary);
-          margin: 6px 0;
-          opacity: 0.6;
-        }
-      `}</style>
+        <ListPanel title={t('Database Hotspots')} subtitle={t('Highest query latency impact')}>
+          {slowDbQueries.length === 0 ? (
+            <NoDataState height={190} title={t('No database calls')} hint={t('Database activity appears after traced DB spans arrive.')} />
+          ) : (
+            <div className="apm-db-list">
+              {slowDbQueries.map((metric, idx) => (
+                <div className="apm-db-row" key={`${metric.namespace}:${metric.service}:${metric.system}:${idx}`}>
+                  <div className="apm-db-index">{idx + 1}</div>
+                  <div className="apm-db-main">
+                    <strong>{metric.service}</strong>
+                    <span>{metric.system || t('database')} / {metric.namespace}</span>
+                    <code>{trimQuery(metric.query)}</code>
+                  </div>
+                  <div className="apm-db-metrics">
+                    <MetricPill label={t('Avg')} value={formatMetric(metric.avgDurationMs, 'latency')} tone={metric.avgDurationMs > 500 ? 'warning' : 'neutral'} />
+                    <MetricPill label={t('Calls')} value={formatMetric(metric.callCount, 'count')} tone="info" />
+                    <MetricPill label={t('Err')} value={formatPercent(metric.errorRate)} tone={metric.errorRate > 0 ? 'critical' : 'healthy'} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </ListPanel>
+      </section>
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════
-// Inline Helper Visualization Sub-Components
-// ═══════════════════════════════════════════════════
+function HealthPanel({
+  score,
+  tone,
+  totalRequests,
+  errorRate,
+  services,
+  namespaces,
+  pods,
+}: {
+  score: number;
+  tone: ToneName;
+  totalRequests: number;
+  errorRate: number;
+  services: number;
+  namespaces: number;
+  pods: number;
+}) {
+  const circumference = 2 * Math.PI * 62;
+  const offset = circumference - (score / 100) * circumference;
+  const toneColor = toneColorFor(tone);
 
-function formatMetric(val: number, metric: string): string {
-  if (metric === 'errorRate') return `${val.toFixed(2)}%`;
-  if (metric === 'latency' || metric === 'dbLatency') {
-    if (val < 1) return `${(val * 1000).toFixed(0)}µs`;
-    if (val < 1000) return `${val.toFixed(1)}ms`;
-    return `${(val / 1000).toFixed(2)}s`;
+  return (
+    <div className="apm-health-panel">
+      <div className="apm-panel-topline">
+        <div>
+          <span>System health</span>
+          <strong>{healthLabel(tone)}</strong>
+        </div>
+        <DashboardIcon name="shield" />
+      </div>
+      <div className="apm-health-body">
+        <svg viewBox="0 0 160 160" className="apm-health-gauge" aria-hidden="true">
+          <circle cx="80" cy="80" r="62" className="apm-gauge-track" />
+          <circle
+            cx="80"
+            cy="80"
+            r="62"
+            className="apm-gauge-value"
+            stroke={toneColor}
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            transform="rotate(-90 80 80)"
+          />
+          <text x="80" y="78" textAnchor="middle" className="apm-gauge-number">{score.toFixed(0)}</text>
+          <text x="80" y="98" textAnchor="middle" className="apm-gauge-label">score</text>
+        </svg>
+        <div className="apm-health-copy">
+          <div className={`apm-status-badge ${tone}`}>{healthLabel(tone)}</div>
+          <p>{formatMetric(totalRequests, 'count')} requests with {formatPercent(errorRate)} failures in scope.</p>
+        </div>
+      </div>
+      <div className="apm-health-stats">
+        <span><strong>{services}</strong> services</span>
+        <span><strong>{namespaces}</strong> namespaces</span>
+        <span><strong>{pods}</strong> pods</span>
+      </div>
+    </div>
+  );
+}
+
+function SignalCard({ metric }: { metric: SignalMetric }) {
+  return (
+    <div className={`apm-signal-card ${metric.tone}`}>
+      <div className="apm-signal-icon">
+        <DashboardIcon name={metric.icon} />
+      </div>
+      <div className="apm-signal-content">
+        <span>{metric.label}</span>
+        <strong>{metric.value}</strong>
+        <p>{metric.detail}</p>
+      </div>
+      {metric.trend && <MiniTrend data={metric.trend} tone={metric.tone} />}
+    </div>
+  );
+}
+
+function ChartPanel({
+  title,
+  subtitle,
+  legend,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  legend: { label: string; color: string; dashed?: boolean }[];
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="apm-chart-panel">
+      <div className="apm-chart-header">
+        <div>
+          <h2>{title}</h2>
+          <p>{subtitle}</p>
+        </div>
+        <div className="apm-chart-legend">
+          {legend.map(item => (
+            <span key={item.label}>
+              <i style={{ background: item.dashed ? 'transparent' : item.color, borderTop: item.dashed ? `2px dashed ${item.color}` : undefined }} />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function TrafficChart({
+  successData,
+  errorData,
+  labels,
+  hoverIndex,
+  setHoverIndex,
+  loading,
+  empty,
+  t,
+}: {
+  successData: number[];
+  errorData: number[];
+  labels: string[];
+  hoverIndex: number | null;
+  setHoverIndex: (idx: number | null) => void;
+  loading: boolean;
+  empty: boolean;
+  t: (key: string) => string;
+}) {
+  const id = React.useId().replace(/:/g, '');
+  const maxValue = Math.max(...successData.map((value, idx) => value + errorData[idx]), 1);
+  const usableWidth = chartWidth - chartLeft - chartRight;
+  const barStep = usableWidth / Math.max(successData.length, 1);
+  const barWidth = Math.min(20, Math.max(6, barStep * 0.46));
+
+  return (
+    <div className="apm-chart-stage">
+      <ChartOverlay loading={loading} empty={empty} t={t} />
+      <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="apm-svg-chart" onMouseLeave={() => setHoverIndex(null)}>
+        <defs>
+          <linearGradient id={`traffic-${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#60a5fa" />
+            <stop offset="100%" stopColor={trafficColor} />
+          </linearGradient>
+          <linearGradient id={`errors-${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fb7185" />
+            <stop offset="100%" stopColor={errorColor} />
+          </linearGradient>
+        </defs>
+        <ChartGrid maxValue={maxValue} unit="count" />
+        {successData.map((success, idx) => {
+          const errors = errorData[idx] || 0;
+          const total = success + errors;
+          const totalHeight = scaleY(total, maxValue);
+          const errorHeight = scaleY(errors, maxValue);
+          const successHeight = Math.max(0, totalHeight - errorHeight);
+          const x = chartLeft + idx * barStep + (barStep - barWidth) / 2;
+          const ySuccess = chartHeight - chartBottom - successHeight;
+          const yError = ySuccess - errorHeight;
+          const isActive = hoverIndex === idx;
+
+          return (
+            <g key={idx} onMouseEnter={() => setHoverIndex(idx)} className="apm-bar-group">
+              <rect x={x - 5} y={chartTop} width={barWidth + 10} height={chartHeight - chartTop - chartBottom} rx="6" className={isActive ? 'apm-hover-rail active' : 'apm-hover-rail'} />
+              {successHeight > 0 && <rect x={x} y={ySuccess} width={barWidth} height={successHeight} rx="5" fill={`url(#traffic-${id})`} opacity={hoverIndex === null || isActive ? 0.86 : 0.36} />}
+              {errorHeight > 0 && <rect x={x} y={yError} width={barWidth} height={errorHeight} rx="5" fill={`url(#errors-${id})`} opacity={hoverIndex === null || isActive ? 0.92 : 0.42} />}
+            </g>
+          );
+        })}
+        <XAxis labels={labels} />
+      </svg>
+      {hoverIndex !== null && (
+        <ChartTooltip leftPercent={tooltipPercent(hoverIndex, successData.length)}>
+          <strong>{labels[hoverIndex]}</strong>
+          <span>{t('Successful')}: {formatMetric(successData[hoverIndex], 'count')}</span>
+          <span>{t('Errors')}: {formatMetric(errorData[hoverIndex], 'count')}</span>
+          <span>{t('Error rate')}: {formatPercent(((errorData[hoverIndex] || 0) / Math.max(successData[hoverIndex] + (errorData[hoverIndex] || 0), 1)) * 100)}</span>
+        </ChartTooltip>
+      )}
+    </div>
+  );
+}
+
+function LineChart({
+  primary,
+  secondary,
+  labels,
+  primaryLabel,
+  secondaryLabel,
+  unit,
+  primaryColor,
+  secondaryColor,
+  hoverIndex,
+  setHoverIndex,
+  loading,
+  empty,
+  t,
+}: {
+  primary: number[];
+  secondary: number[];
+  labels: string[];
+  primaryLabel: string;
+  secondaryLabel: string;
+  unit: 'latency' | 'count';
+  primaryColor: string;
+  secondaryColor: string;
+  hoverIndex: number | null;
+  setHoverIndex: (idx: number | null) => void;
+  loading: boolean;
+  empty: boolean;
+  t: (key: string) => string;
+}) {
+  const id = React.useId().replace(/:/g, '');
+  const maxValue = Math.max(...primary, ...secondary, 1);
+  const primaryPoints = getPoints(primary, maxValue);
+  const secondaryPoints = getPoints(secondary, maxValue);
+  const hoverPoint = hoverIndex !== null ? primaryPoints[hoverIndex] : null;
+  const secondaryHoverPoint = hoverIndex !== null ? secondaryPoints[hoverIndex] : null;
+
+  return (
+    <div className="apm-chart-stage">
+      <ChartOverlay loading={loading} empty={empty} t={t} />
+      <svg
+        viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+        className="apm-svg-chart"
+        onMouseLeave={() => setHoverIndex(null)}
+        onMouseMove={event => setHoverIndex(indexFromMouse(event, primary.length))}
+      >
+        <defs>
+          <linearGradient id={`area-${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={primaryColor} stopOpacity="0.20" />
+            <stop offset="100%" stopColor={primaryColor} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <ChartGrid maxValue={maxValue} unit={unit} />
+        <path d={smoothAreaPath(primaryPoints)} fill={`url(#area-${id})`} />
+        <path d={smoothPath(primaryPoints)} fill="none" stroke={primaryColor} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={smoothPath(secondaryPoints)} fill="none" stroke={secondaryColor} strokeWidth="2.3" strokeDasharray="7 5" strokeLinecap="round" strokeLinejoin="round" />
+        {hoverPoint && secondaryHoverPoint && (
+          <g>
+            <line x1={hoverPoint.x} y1={chartTop} x2={hoverPoint.x} y2={chartHeight - chartBottom} className="apm-crosshair" />
+            <circle cx={hoverPoint.x} cy={hoverPoint.y} r="5" fill={primaryColor} className="apm-point-ring" />
+            <circle cx={secondaryHoverPoint.x} cy={secondaryHoverPoint.y} r="5" fill={secondaryColor} className="apm-point-ring" />
+          </g>
+        )}
+        <XAxis labels={labels} />
+      </svg>
+      {hoverIndex !== null && (
+        <ChartTooltip leftPercent={tooltipPercent(hoverIndex, primary.length)}>
+          <strong>{labels[hoverIndex]}</strong>
+          <span>{primaryLabel}: {formatMetric(primary[hoverIndex], unit)}</span>
+          <span>{secondaryLabel}: {formatMetric(secondary[hoverIndex], unit)}</span>
+          <span>{t('Gap')}: {formatMetric(Math.max(0, secondary[hoverIndex] - primary[hoverIndex]), unit)}</span>
+        </ChartTooltip>
+      )}
+    </div>
+  );
+}
+
+function DatabaseChart({
+  calls,
+  latency,
+  labels,
+  hoverIndex,
+  setHoverIndex,
+  loading,
+  empty,
+  t,
+}: {
+  calls: number[];
+  latency: number[];
+  labels: string[];
+  hoverIndex: number | null;
+  setHoverIndex: (idx: number | null) => void;
+  loading: boolean;
+  empty: boolean;
+  t: (key: string) => string;
+}) {
+  const id = React.useId().replace(/:/g, '');
+  const maxCalls = Math.max(...calls, 1);
+  const maxLatency = Math.max(...latency, 1);
+  const usableWidth = chartWidth - chartLeft - chartRight;
+  const barStep = usableWidth / Math.max(calls.length, 1);
+  const barWidth = Math.min(14, Math.max(5, barStep * 0.34));
+  const latencyPoints = getPoints(latency, maxLatency);
+
+  return (
+    <div className="apm-chart-stage">
+      <ChartOverlay loading={loading} empty={empty} t={t} />
+      <svg
+        viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+        className="apm-svg-chart"
+        onMouseLeave={() => setHoverIndex(null)}
+        onMouseMove={event => setHoverIndex(indexFromMouse(event, calls.length))}
+      >
+        <defs>
+          <linearGradient id={`db-bars-${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#a78bfa" />
+            <stop offset="100%" stopColor={dbColor} />
+          </linearGradient>
+          <linearGradient id={`db-area-${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={dbLatencyColor} stopOpacity="0.16" />
+            <stop offset="100%" stopColor={dbLatencyColor} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <ChartGrid maxValue={maxCalls} unit="count" />
+        <path d={smoothAreaPath(latencyPoints)} fill={`url(#db-area-${id})`} />
+        {calls.map((value, idx) => {
+          const height = scaleY(value, maxCalls);
+          const x = chartLeft + idx * barStep + (barStep - barWidth) / 2;
+          const y = chartHeight - chartBottom - height;
+          return <rect key={idx} x={x} y={y} width={barWidth} height={height} rx="4" fill={`url(#db-bars-${id})`} opacity={hoverIndex === null || hoverIndex === idx ? 0.68 : 0.28} />;
+        })}
+        <path d={smoothPath(latencyPoints)} fill="none" stroke={dbLatencyColor} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        {hoverIndex !== null && latencyPoints[hoverIndex] && (
+          <g>
+            <line x1={latencyPoints[hoverIndex].x} y1={chartTop} x2={latencyPoints[hoverIndex].x} y2={chartHeight - chartBottom} className="apm-crosshair" />
+            <circle cx={latencyPoints[hoverIndex].x} cy={latencyPoints[hoverIndex].y} r="5" fill={dbLatencyColor} className="apm-point-ring" />
+          </g>
+        )}
+        <XAxis labels={labels} />
+        <text x={chartWidth - 14} y={chartTop + 4} textAnchor="end" className="apm-axis-text">{formatMetric(maxLatency, 'latency')}</text>
+      </svg>
+      {hoverIndex !== null && (
+        <ChartTooltip leftPercent={tooltipPercent(hoverIndex, calls.length)}>
+          <strong>{labels[hoverIndex]}</strong>
+          <span>{t('DB Operations')}: {formatMetric(calls[hoverIndex], 'count')}</span>
+          <span>{t('Avg Latency')}: {formatMetric(latency[hoverIndex], 'latency')}</span>
+        </ChartTooltip>
+      )}
+    </div>
+  );
+}
+
+function ServiceHeatmap({
+  services,
+  labels,
+  loading,
+  hoverCell,
+  setHoverCell,
+  tooltipPos,
+  setTooltipPos,
+  containerRef,
+  t,
+}: {
+  services: ServiceErrorSeries[];
+  labels: string[];
+  loading: boolean;
+  hoverCell: { svcIdx: number; timeIdx: number } | null;
+  setHoverCell: (cell: { svcIdx: number; timeIdx: number } | null) => void;
+  tooltipPos: { x: number; y: number } | null;
+  setTooltipPos: (pos: { x: number; y: number } | null) => void;
+  containerRef: React.RefObject<HTMLDivElement>;
+  t: (key: string) => string;
+}) {
+  if (loading) {
+    return <LoadingState height={235} label={t('Loading service health...')} />;
   }
-  return val.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  if (services.length === 0 || labels.length === 0) {
+    return <NoDataState height={235} title={t('No service activity')} hint={t('Per-service errors appear once traffic flows.')} />;
+  }
+
+  return (
+    <div
+      className="apm-heatmap"
+      ref={containerRef}
+      onMouseLeave={() => {
+        setHoverCell(null);
+        setTooltipPos(null);
+      }}
+    >
+      {services.slice(0, 9).map((service, svcIdx) => (
+        <div className="apm-heatmap-row" key={`${service.namespace}:${service.service}`}>
+          <div className="apm-heatmap-label" title={`${service.namespace}/${service.service}`}>{service.service}</div>
+          <div className="apm-heatmap-cells">
+            {labels.map((label, timeIdx) => {
+              const spans = service.spans[timeIdx] || 0;
+              const errors = service.errors[timeIdx] || 0;
+              const cellTone = heatmapTone(spans, errors);
+              const active = hoverCell?.svcIdx === svcIdx && hoverCell?.timeIdx === timeIdx;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  className={`apm-heatmap-cell ${cellTone} ${active ? 'active' : ''}`}
+                  onMouseEnter={() => setHoverCell({ svcIdx, timeIdx })}
+                  onMouseMove={event => {
+                    const container = containerRef.current;
+                    if (!container) return;
+                    const rect = container.getBoundingClientRect();
+                    let x = event.clientX - rect.left + 16;
+                    let y = event.clientY - rect.top + container.scrollTop + 16;
+                    if (x + 250 > rect.width) x = event.clientX - rect.left - 260;
+                    setTooltipPos({ x, y });
+                  }}
+                  aria-label={`${service.service} ${label}`}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <div className="apm-heatmap-times">
+        <span />
+        {labels.map((label, idx) => (
+          <em key={`${label}:${idx}`}>{idx % 3 === 0 ? label.split(':')[0] : ''}</em>
+        ))}
+      </div>
+      {hoverCell && tooltipPos && services[hoverCell.svcIdx] && (
+        <div className="apm-floating-tooltip" style={{ left: tooltipPos.x, top: tooltipPos.y }}>
+          {(() => {
+            const service = services[hoverCell.svcIdx];
+            const spans = service.spans[hoverCell.timeIdx] || 0;
+            const errors = service.errors[hoverCell.timeIdx] || 0;
+            const errorRate = spans > 0 ? (errors / spans) * 100 : 0;
+            return (
+              <>
+                <strong>{service.service} / {labels[hoverCell.timeIdx]}</strong>
+                <span>{t('Spans')}: {formatMetric(spans, 'count')}</span>
+                <span>{t('Errors')}: {formatMetric(errors, 'count')} ({formatPercent(errorRate)})</span>
+              </>
+            );
+          })()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ListPanel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+  return (
+    <div className="apm-list-panel">
+      <div className="apm-list-header">
+        <h2>{title}</h2>
+        <p>{subtitle}</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function MetricPill({ label, value, tone }: { label: string; value: string; tone: ToneName }) {
+  return (
+    <span className={`apm-metric-pill ${tone}`}>
+      <em>{label}</em>
+      <strong>{value}</strong>
+    </span>
+  );
+}
+
+function MiniTrend({ data, tone }: { data: number[]; tone: ToneName }) {
+  const width = 74;
+  const height = 28;
+  const maxValue = Math.max(...data, 1);
+  const points = data.slice(-14).map((value, idx, arr) => {
+    const x = arr.length <= 1 ? 0 : (idx / (arr.length - 1)) * width;
+    const y = height - (value / maxValue) * (height - 4) - 2;
+    return { x, y };
+  });
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="apm-mini-trend" aria-hidden="true">
+      <path d={linePath(points)} fill="none" stroke={toneColorFor(tone)} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ChartOverlay({ loading, empty, t }: { loading: boolean; empty: boolean; t: (key: string) => string }) {
+  if (!loading && !empty) return null;
+  return (
+    <div className="apm-chart-overlay">
+      {loading ? (
+        <LoadingState height={185} label={t('Loading telemetry...')} />
+      ) : (
+        <NoDataState height={185} title={t('No traffic in the last hour')} hint={t('Appears once services send traces.')} />
+      )}
+    </div>
+  );
+}
+
+function ChartGrid({ maxValue, unit }: { maxValue: number; unit: 'latency' | 'count' }) {
+  const rows = [1, 0.5, 0];
+  return (
+    <g>
+      {rows.map(row => {
+        const y = chartTop + (1 - row) * (chartHeight - chartTop - chartBottom);
+        return (
+          <g key={row}>
+            <line x1={chartLeft} y1={y} x2={chartWidth - chartRight} y2={y} className="apm-grid-line" />
+            <text x={chartLeft - 12} y={y + 4} textAnchor="end" className="apm-axis-text">
+              {formatMetric(maxValue * row, unit)}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function XAxis({ labels }: { labels: string[] }) {
+  const usableWidth = chartWidth - chartLeft - chartRight;
+  return (
+    <g>
+      {labels.map((label, idx) => {
+        if (idx % 3 !== 0 && idx !== labels.length - 1) return null;
+        const x = chartLeft + (idx * usableWidth) / Math.max(labels.length - 1, 1);
+        return (
+          <text key={`${label}:${idx}`} x={x} y={chartHeight - 12} textAnchor="middle" className="apm-axis-text">
+            {label.split(':')[0]}h
+          </text>
+        );
+      })}
+    </g>
+  );
+}
+
+function ChartTooltip({ leftPercent, children }: { leftPercent: number; children: React.ReactNode }) {
+  return (
+    <div className="apm-floating-tooltip" style={{ left: `${leftPercent}%`, top: 10 }}>
+      {children}
+    </div>
+  );
+}
+
+function DashboardIcon({ name }: { name: IconName }) {
+  const common = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+
+  switch (name) {
+    case 'activity':
+      return <svg {...common}><path d="M3 12h4l3-8 4 16 3-8h4" /></svg>;
+    case 'apdex':
+      return <svg {...common}><path d="M4 14a8 8 0 0 1 16 0" /><path d="M12 14l4-5" /><path d="M7 14h10" /><path d="M12 4v2" /></svg>;
+    case 'database':
+      return <svg {...common}><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 10c0 1.7 3.6 3 8 3s8-1.3 8-3" /><path d="m9 19 2 2 4-4" /></svg>;
+    case 'errors':
+      return <svg {...common}><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.3 3.6 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z" /></svg>;
+    case 'latency':
+      return <svg {...common}><path d="M9 2h6" /><path d="M12 6v5l3 2" /><circle cx="12" cy="14" r="8" /></svg>;
+    case 'namespace':
+      return <svg {...common}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>;
+    case 'pods':
+      return <svg {...common}><path d="M12 2 4 6.5v9L12 20l8-4.5v-9L12 2Z" /><path d="m4.5 7 7.5 4.2L19.5 7" /><path d="M12 20v-8.8" /></svg>;
+    case 'services':
+      return <svg {...common}><circle cx="6" cy="6" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="12" cy="18" r="3" /><path d="m8.4 8.2 2.4 6.1" /><path d="m15.6 8.2-2.4 6.1" /><path d="M9 6h6" /></svg>;
+    case 'shield':
+      return <svg {...common}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="M8 12h2l1.4-3.5L14 16l1.4-4H18" /></svg>;
+    case 'traffic':
+      return <svg {...common}><path d="M4 18V8" /><path d="M10 18v-5" /><path d="M16 18V6" /><path d="m4 8 6 5 6-7 4 3" /><path d="M20 9V5h-4" /></svg>;
+    default:
+      return <svg {...common}><path d="M3 12h18" /></svg>;
+  }
+}
+
+function weightedServiceValue(services: ServiceStats[], getValue: (service: ServiceStats) => number, fallback = 0) {
+  const totals = services.reduce(
+    (acc, service) => {
+      const weight = Math.max(service.requestCount, 1);
+      const value = getValue(service);
+      if (Number.isFinite(value)) {
+        acc.value += value * weight;
+        acc.weight += weight;
+      }
+      return acc;
+    },
+    { value: 0, weight: 0 }
+  );
+  return totals.weight > 0 ? totals.value / totals.weight : fallback;
+}
+
+function weightedBy<T>(items: T[], getValue: (item: T) => number, getWeight: (item: T) => number) {
+  const totals = items.reduce(
+    (acc, item) => {
+      const weight = Math.max(getWeight(item), 0);
+      acc.value += getValue(item) * weight;
+      acc.weight += weight;
+      return acc;
+    },
+    { value: 0, weight: 0 }
+  );
+  return totals.weight > 0 ? totals.value / totals.weight : 0;
+}
+
+function inferHealthScore(service: ServiceStats) {
+  if (service.requestCount <= 0) return 100;
+  const errRate = service.requestCount > 0 ? (service.errorCount / service.requestCount) * 100 : service.errorRate;
+  const latencyPenalty = Math.min(30, Math.max(0, service.p95Ms - 300) / 30) + Math.min(15, Math.max(0, service.p99Ms - 1200) / 120);
+  const errorPenalty = Math.min(70, errRate * 4.5);
+  return clamp(100 - latencyPenalty - errorPenalty, 0, 100);
+}
+
+function inferApdex(service: ServiceStats) {
+  if (service.requestCount <= 0) return 1;
+  const errRate = service.requestCount > 0 ? (service.errorCount / service.requestCount) * 100 : service.errorRate;
+  let score = 1;
+  if (service.p50Ms > 300) score -= Math.min(0.3, ((service.p50Ms - 300) / 300) * 0.2);
+  if (service.p95Ms > 300) score -= Math.min(0.25, ((service.p95Ms - 300) / 900) * 0.25);
+  if (service.p95Ms > 1200) score -= Math.min(0.25, ((service.p95Ms - 1200) / 1200) * 0.25);
+  if (service.p99Ms > 2400) score -= Math.min(0.1, ((service.p99Ms - 2400) / 2400) * 0.1);
+  return clamp(score - Math.min(0.4, (errRate / 100) * 0.75), 0, 1);
+}
+
+function serviceRiskScore(service: ServiceStats) {
+  const health = service.healthScore ?? inferHealthScore(service);
+  const errRate = service.requestCount > 0 ? (service.errorCount / service.requestCount) * 100 : service.errorRate;
+  return (100 - health) * 2 + errRate * 8 + Math.min(service.p99Ms / 40, 50);
+}
+
+function rankServiceErrors(services: ServiceErrorSeries[]) {
+  return [...services].sort((a, b) => {
+    const aErrors = a.errors.reduce((sum, value) => sum + value, 0);
+    const bErrors = b.errors.reduce((sum, value) => sum + value, 0);
+    const aSpans = a.spans.reduce((sum, value) => sum + value, 0);
+    const bSpans = b.spans.reduce((sum, value) => sum + value, 0);
+    return bErrors * 100 + bSpans - (aErrors * 100 + aSpans);
+  });
+}
+
+function heatmapTone(spans: number, errors: number) {
+  if (spans <= 0) return 'empty';
+  const rate = errors / spans;
+  if (errors >= 10 || rate >= 0.2) return 'critical';
+  if (errors >= 3 || rate >= 0.05) return 'warning';
+  if (errors > 0) return 'minor';
+  return 'healthy';
+}
+
+function getHealthTone(score: number, totalRequests: number): ToneName {
+  if (totalRequests <= 0) return 'neutral';
+  if (score >= 90) return 'healthy';
+  if (score >= 70) return 'warning';
+  return 'critical';
+}
+
+function healthLabel(tone: ToneName) {
+  if (tone === 'healthy') return 'Healthy';
+  if (tone === 'warning') return 'Degraded';
+  if (tone === 'critical') return 'Critical';
+  return 'No traffic';
+}
+
+function toneColorFor(tone: ToneName) {
+  switch (tone) {
+    case 'healthy':
+      return '#059669';
+    case 'warning':
+      return '#d97706';
+    case 'critical':
+      return '#e11d48';
+    case 'info':
+      return '#2563eb';
+    default:
+      return '#64748b';
+  }
+}
+
+function scaleY(value: number, maxValue: number) {
+  return (value / Math.max(maxValue, 1)) * (chartHeight - chartTop - chartBottom);
+}
+
+function getPoints(data: number[], maxValue: number) {
+  const usableWidth = chartWidth - chartLeft - chartRight;
+  return data.map((value, idx) => {
+    const x = chartLeft + (idx * usableWidth) / Math.max(data.length - 1, 1);
+    const y = chartHeight - chartBottom - (value / Math.max(maxValue, 1)) * (chartHeight - chartTop - chartBottom);
+    return { x, y };
+  });
+}
+
+function linePath(points: { x: number; y: number }[]) {
+  if (points.length === 0) return '';
+  return points.map((point, idx) => `${idx === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ');
+}
+
+function smoothPath(points: { x: number; y: number }[]) {
+  if (points.length < 2) return linePath(points);
+  const [first, ...rest] = points;
+  return rest.reduce((path, point, idx) => {
+    const prev = points[idx];
+    const midX = (prev.x + point.x) / 2;
+    return `${path} Q ${prev.x.toFixed(2)} ${prev.y.toFixed(2)} ${midX.toFixed(2)} ${((prev.y + point.y) / 2).toFixed(2)}${idx === rest.length - 1 ? ` T ${point.x.toFixed(2)} ${point.y.toFixed(2)}` : ''}`;
+  }, `M ${first.x.toFixed(2)} ${first.y.toFixed(2)}`);
+}
+
+function areaPath(points: { x: number; y: number }[]) {
+  if (points.length === 0) return '';
+  const baseY = chartHeight - chartBottom;
+  const first = points[0];
+  const last = points[points.length - 1];
+  return `M ${first.x.toFixed(2)} ${baseY} ${points.map(point => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ')} L ${last.x.toFixed(2)} ${baseY} Z`;
+}
+
+function smoothAreaPath(points: { x: number; y: number }[]) {
+  if (points.length === 0) return '';
+  if (points.length < 2) return areaPath(points);
+  const baseY = chartHeight - chartBottom;
+  const first = points[0];
+  const last = points[points.length - 1];
+  return `M ${first.x.toFixed(2)} ${baseY} L ${first.x.toFixed(2)} ${first.y.toFixed(2)} ${smoothPath(points).replace(/^M [^QTL]+/, '')} L ${last.x.toFixed(2)} ${baseY} Z`;
+}
+
+function indexFromMouse(event: React.MouseEvent<SVGSVGElement>, length: number) {
+  if (length <= 0) return null;
+  const rect = event.currentTarget.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const usableWidth = rect.width - (chartLeft / chartWidth) * rect.width - (chartRight / chartWidth) * rect.width;
+  const left = (chartLeft / chartWidth) * rect.width;
+  const percent = clamp((x - left) / Math.max(usableWidth, 1), 0, 1);
+  return Math.round(percent * (length - 1));
+}
+
+function tooltipPercent(index: number, length: number) {
+  if (length <= 1) return 50;
+  return 8 + (index / (length - 1)) * 84;
+}
+
+function formatMetric(value: number, metric: 'count' | 'latency') {
+  if (!Number.isFinite(value)) return metric === 'latency' ? '0ms' : '0';
+  if (metric === 'latency') {
+    if (value < 1) return `${(value * 1000).toFixed(0)}us`;
+    if (value < 1000) return `${value.toFixed(value < 10 ? 1 : 0)}ms`;
+    return `${(value / 1000).toFixed(2)}s`;
+  }
+  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) return '0.0%';
+  return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
+}
+
+function trimQuery(query: string) {
+  if (!query) return 'unknown query';
+  const normalized = query.replace(/\s+/g, ' ').trim();
+  return normalized.length > 92 ? `${normalized.slice(0, 92)}...` : normalized;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }

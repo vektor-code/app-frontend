@@ -118,7 +118,7 @@ const parseInfraName = (name: string, ns: string = 'default'): { system: string;
       host = inner;
     }
   } else {
-    // Revert to showing just the system name, NO fake fallbacks!
+    // Show only the system name when details are not reported.
     const lower = name.toLowerCase();
     if (lower.includes('postgres') || lower.includes('postgresql')) {
       system = 'PostgreSQL';
@@ -782,6 +782,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
 
   // Refs for tracking real-time particles and cached span mappings
   const particlesRef = useRef<Particle[]>([]);
+  const particleIdRef = useRef(0);
   const spanServiceCache = useRef<Map<string, string>>(new Map());
   const spanNamespaceCache = useRef<Map<string, string>>(new Map());
   const spanNameCache = useRef<Map<string, string>>(new Map());
@@ -1001,7 +1002,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       const source = span.serviceName;
       if (source && infraName && source !== infraName) {
         particlesRef.current.push({
-          id: Math.random().toString(36).slice(2),
+          id: `infra-${span.traceId || span.spanId || 'span'}-${particleIdRef.current++}`,
           source,
           target: infraName,
           sourceNamespace: span.namespace,
@@ -1071,7 +1072,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
     // 3. Trigger a dynamic particle if the call is external or inter-service
     if (source && target && source !== target) {
       particlesRef.current.push({
-        id: Math.random().toString(36).slice(2),
+        id: `flow-${span.traceId || span.spanId || 'span'}-${particleIdRef.current++}`,
         source,
         target,
         sourceNamespace,
@@ -2653,10 +2654,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           <button
             className="context-menu-item"
             onClick={() => {
-              alert(`RED metrics for ${contextMenu.nodeName}:
-• Throughput: ${(Math.random() * 100 + 10).toFixed(1)} req/s
-• Latency: p50: ${(Math.random() * 20 + 2).toFixed(1)}ms, p99: ${(Math.random() * 80 + 30).toFixed(1)}ms
-• Error Rate: ${(Math.random() * 1.5).toFixed(2)}%`);
+              navigate(`/services?service=${encodeURIComponent(contextMenu.nodeName)}`);
               setContextMenu(null);
             }}
           >

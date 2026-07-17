@@ -25,8 +25,8 @@ export default function SystemMetrics({ namespace }: SystemMetricsProps) {
       setMetricsHistory(prev => {
         const next = { ...prev };
         podList.forEach(p => {
-          const hist = prev[p.name] || Array.from({ length: 10 }, () => p.cpuUsage * (0.8 + Math.random() * 0.4));
-          next[p.name] = [...hist.slice(1), p.cpuUsage];
+          const hist = prev[p.name] || [];
+          next[p.name] = [...hist.slice(-9), p.cpuUsage];
         });
         return next;
       });

@@ -341,7 +341,7 @@ const getDependencyLogo = (name: string): string | null => {
   return null;
 };
 
-// Upgraded infrastructure parser with highly realistic production details
+// Infrastructure parser with production-focused naming details.
 const parseRawName = (rawName: string, ns: string = 'default') => {
   const match = rawName.match(/^([^(]+)\(([^)]+)\)$/);
   let system = '';
@@ -351,7 +351,7 @@ const parseRawName = (rawName: string, ns: string = 'default') => {
     system = match[1].trim();
     details = match[2].trim();
   } else {
-    // Revert to showing just the system name, NO fake fallbacks!
+    // Show only the system name when details are not reported.
     const lower = rawName.toLowerCase();
     if (lower.includes('postgres') || lower.includes('postgresql')) {
       system = 'PostgreSQL';
@@ -598,12 +598,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
           latencyHistory = [...prevItem.latencyHistory].slice(-9).concat(item.avgDurationMs);
           throughputHistory = [...prevItem.throughputHistory].slice(-9).concat(item.requestCount);
           errorsHistory = [...prevItem.errorsHistory].slice(-9).concat(item.errorRate);
-        } else {
-          // Seed initial variations for sparklines first load rendering
-          const seedCount = 8;
-          latencyHistory = Array.from({ length: seedCount }, () => item.avgDurationMs * (0.9 + Math.random() * 0.2)).concat(item.avgDurationMs);
-          throughputHistory = Array.from({ length: seedCount }, () => item.requestCount * (0.9 + Math.random() * 0.2)).concat(item.requestCount);
-          errorsHistory = Array.from({ length: seedCount }, () => item.errorRate > 0 ? item.errorRate * (0.9 + Math.random() * 0.2) : 0).concat(item.errorRate);
         }
 
         next[item.id] = {

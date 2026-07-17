@@ -1,19 +1,21 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import type { ServiceStats } from '../entities';
+import { LoadingState, NoDataState } from '../components/DataState';
 import LanguageIcon from '../components/LanguageIcon';
 import { useTranslation } from '../utils/i18n';
-import { useColumnResize } from '../utils/useColumnResize';
 
 interface ServicesProps {
   namespace: string;
 }
 
 type ServiceHealthStatus = 'healthy' | 'degraded' | 'critical' | 'unknown' | string;
+type SortField = 'health' | 'throughput' | 'latency' | 'errorRate' | 'name';
+type SortDir = 'asc' | 'desc';
 
 interface AggregatedService {
-  key: string; // project:serviceName
+  key: string;
   serviceName: string;
   project: string;
   language?: string;
@@ -32,304 +34,126 @@ interface AggregatedService {
   errorsHistory: number[];
 }
 
-// Premium Sparkline SVG renderer with filled gradient area
-function Sparkline({ data, color }: { data: number[]; color: string }) {
-  const gradientId = React.useId();
-
-  if (!data || data.length < 2) {
-    return (
-      <svg width="55" height="20" viewBox="0 0 55 20" style={{ opacity: 0.3, marginRight: '8px' }}>
-        <line x1="0" y1="10" x2="55" y2="10" stroke="var(--text-muted)" strokeWidth="1.5" strokeDasharray="2,2" />
-      </svg>
-    );
-  }
-
-  const max = Math.max(...data, 1);
-  const min = Math.min(...data, 0);
-  const range = max - min || 1;
-  
-  const width = 55;
-  const height = 20;
-  const padding = 2;
-  
-  const points = data.map((val, idx) => {
-    const x = (idx / (data.length - 1)) * width;
-    const y = height - padding - ((val - min) / range) * (height - 2 * padding);
-    return { x, y };
-  });
-
-  const pathD = points.map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`)).join(' ');
-  const areaD = `${pathD} L ${width} ${height} L 0 ${height} Z`;
-
-  // Use a unique ID for gradients to prevent overlap
-  const gradId = `spark-grad-${color.replace('#', '')}-${gradientId.replace(/:/g, '')}`;
-
-  return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible', marginRight: '8px' }}>
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.0" />
-        </linearGradient>
-      </defs>
-      <path d={areaD} fill={`url(#${gradId})`} />
-      <path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+interface ServiceGroup {
+  key: string;
+  serviceName: string;
+  project: string;
+  language?: string;
+  environments: string[];
+  requestCount: number;
+  errorCount: number;
+  latencyWeight: number;
+  p50MsTotal: number;
+  p95MsTotal: number;
+  p99MsTotal: number;
+  healthWeight: number;
+  healthScoreTotal: number;
+  apdexTotal: number;
+  status: ServiceHealthStatus;
 }
 
-// Format duration
-const formatDuration = (ms: number): string => {
-  if (ms < 1) return '<1 ms';
-  if (ms < 1000) return `${Math.round(ms)} ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)} s`;
-  return `${(ms / 60000).toFixed(1)} min`;
-};
-
-// Format throughput
-const formatThroughput = (count: number): string => {
-  const tpm = count / 5;
-  if (tpm < 1) return `${(tpm * 60).toFixed(1)} tph`;
-  if (tpm >= 1000) return `${(tpm / 1000).toFixed(1)}k tpm`;
-  return `${tpm.toFixed(1)} tpm`;
-};
-
-// Helper to extract project prefix from namespace (e.g. econtract-dev -> project: econtract, env: dev)
-const getProjectName = (ns: string): string => {
-  const dashIdx = ns.indexOf('-');
-  if (dashIdx !== -1) {
-    return ns.slice(0, dashIdx);
-  }
-  return ns;
-};
-
-const finiteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
-const inferHealthScore = (requestCount: number, errorRate: number, p95Ms: number, p99Ms: number) => {
-  if (requestCount <= 0) return 100;
-  const latencyPenalty = Math.min(30, Math.max(0, p95Ms - 300) / 30) + Math.min(15, Math.max(0, p99Ms - 1200) / 120);
-  const errorPenalty = Math.min(70, errorRate * 4.5);
-  return clamp(100 - latencyPenalty - errorPenalty, 0, 100);
-};
-
-const inferApdex = (requestCount: number, errorRate: number, p50Ms: number, p95Ms: number, p99Ms: number) => {
-  if (requestCount <= 0) return 1;
-  let score = 1;
-  if (p50Ms > 300) score -= Math.min(0.3, ((p50Ms - 300) / 300) * 0.2);
-  if (p95Ms > 300) score -= Math.min(0.25, ((p95Ms - 300) / 900) * 0.25);
-  if (p95Ms > 1200) score -= Math.min(0.25, ((p95Ms - 1200) / 1200) * 0.25);
-  if (p99Ms > 2400) score -= Math.min(0.1, ((p99Ms - 2400) / 2400) * 0.1);
-  return clamp(score - Math.min(0.4, (errorRate / 100) * 0.75), 0, 1);
-};
-
-const inferStatus = (requestCount: number, healthScore: number): ServiceHealthStatus => {
-  if (requestCount <= 0) return 'unknown';
-  if (healthScore >= 90) return 'healthy';
-  if (healthScore >= 70) return 'degraded';
-  return 'critical';
-};
-
-const getServiceHealth = (service: ServiceStats, errorRate: number) => {
-  const healthScore = finiteNumber(service.healthScore)
-    ? service.healthScore
-    : inferHealthScore(service.requestCount, errorRate, service.p95Ms, service.p99Ms);
-  const apdex = finiteNumber(service.apdex)
-    ? service.apdex
-    : inferApdex(service.requestCount, errorRate, service.p50Ms, service.p95Ms, service.p99Ms);
-
-  return {
-    healthScore: clamp(healthScore, 0, 100),
-    apdex: clamp(apdex, 0, 1),
-    status: service.status || inferStatus(service.requestCount, healthScore),
-  };
-};
-
-const statusRank: Record<string, number> = {
-  unknown: 0,
-  healthy: 1,
-  degraded: 2,
-  critical: 3,
-};
-
-const worstStatus = (current: ServiceHealthStatus, next: ServiceHealthStatus): ServiceHealthStatus => {
-  return (statusRank[next] || 0) > (statusRank[current] || 0) ? next : current;
-};
-
-const healthTone = (status: ServiceHealthStatus, score: number) => {
-  if (status === 'unknown') {
-    return { color: 'var(--text-tertiary)', background: 'var(--bg-tertiary)', border: 'var(--border-primary)', label: 'No traffic' };
-  }
-  if (status === 'critical' || score < 70) {
-    return { color: 'var(--accent-rose)', background: 'rgba(244, 63, 94, 0.10)', border: 'rgba(244, 63, 94, 0.22)', label: 'Critical' };
-  }
-  if (status === 'degraded' || score < 90) {
-    return { color: 'var(--accent-amber)', background: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.22)', label: 'Degraded' };
-  }
-  return { color: 'var(--accent-emerald)', background: 'rgba(16, 185, 129, 0.10)', border: 'rgba(16, 185, 129, 0.22)', label: 'Healthy' };
-};
-
-type SortField = 'name' | 'environments' | 'health' | 'latency' | 'throughput' | 'errorRate';
-type SortDir = 'asc' | 'desc';
+const historyStorageKey = 'accumulatedServicesV3';
 
 export default function Services({ namespace }: ServicesProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('throughput');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [aggregatedServices, setAggregatedServices] = useState<Record<string, AggregatedService>>({});
 
-  // Resizable column widths (drag steals width from the neighbour so the
-  // table always stays within its border).
-  const { widths: colWidths, startResize } = useColumnResize({
-    name: 300,
-    environments: 340,
-    health: 180,
-    latency: 220,
-    throughput: 200,
-    errorRate: 240,
-  });
-
   const loadServices = useCallback(async () => {
     try {
+      setLoadError(false);
       const res = await api.getServices(namespace || undefined);
-      const rawList = (res.services || []).filter(s => !s.isInfrastructure);
+      const rawList = (res.services || []).filter(service => !service.isInfrastructure);
+      const groups: Record<string, ServiceGroup> = {};
 
-      // Group services by BOTH project prefix and serviceName to avoid mixing different projects' gateways
-      const groups: Record<string, {
-        key: string;
-        serviceName: string;
-        project: string;
-        language?: string;
-        environments: string[];
-        requestCount: number;
-        errorCount: number;
-        latencyWeight: number;
-        p50MsTotal: number;
-        p95MsTotal: number;
-        p99MsTotal: number;
-        healthWeight: number;
-        healthScoreTotal: number;
-        apdexTotal: number;
-        status: ServiceHealthStatus;
-      }> = {};
+      for (const service of rawList) {
+        const project = getProjectName(service.namespace);
+        const key = `${project}:${service.serviceName}`;
+        const group = groups[key] || {
+          key,
+          serviceName: service.serviceName,
+          project,
+          language: service.language,
+          environments: [],
+          requestCount: 0,
+          errorCount: 0,
+          latencyWeight: 0,
+          p50MsTotal: 0,
+          p95MsTotal: 0,
+          p99MsTotal: 0,
+          healthWeight: 0,
+          healthScoreTotal: 0,
+          apdexTotal: 0,
+          status: 'unknown',
+        };
 
-      for (const s of rawList) {
-        const proj = getProjectName(s.namespace);
-        const groupKey = `${proj}:${s.serviceName}`;
+        const weight = Math.max(service.requestCount, 1);
+        const serviceErrorRate = service.requestCount > 0 ? (service.errorCount / service.requestCount) * 100 : service.errorRate;
+        const serviceHealth = getServiceHealth(service, serviceErrorRate);
 
-        if (!groups[groupKey]) {
-          groups[groupKey] = {
-            key: groupKey,
-            serviceName: s.serviceName,
-            project: proj,
-            language: s.language,
-            environments: [],
-            requestCount: 0,
-            errorCount: 0,
-            latencyWeight: 0,
-            p50MsTotal: 0,
-            p95MsTotal: 0,
-            p99MsTotal: 0,
-            healthWeight: 0,
-            healthScoreTotal: 0,
-            apdexTotal: 0,
-            status: 'unknown',
-          };
+        if (service.language && !group.language) {
+          group.language = service.language;
         }
-        const g = groups[groupKey];
-        const weight = Math.max(s.requestCount, 1);
-        const serviceErrorRate = s.requestCount > 0 ? (s.errorCount / s.requestCount) * 100 : s.errorRate;
-        const serviceHealth = getServiceHealth(s, serviceErrorRate);
-
-        if (s.language && !g.language) {
-          g.language = s.language;
+        if (!group.environments.includes(service.namespace)) {
+          group.environments.push(service.namespace);
         }
-        if (!g.environments.includes(s.namespace)) {
-          g.environments.push(s.namespace);
-        }
-        g.requestCount += s.requestCount;
-        g.errorCount += s.errorCount;
-        g.latencyWeight += weight;
-        g.p50MsTotal += s.p50Ms * weight;
-        g.p95MsTotal += s.p95Ms * weight;
-        g.p99MsTotal += s.p99Ms * weight;
-        g.healthWeight += weight;
-        g.healthScoreTotal += serviceHealth.healthScore * weight;
-        g.apdexTotal += serviceHealth.apdex * weight;
-        g.status = worstStatus(g.status, serviceHealth.status);
+        group.requestCount += service.requestCount;
+        group.errorCount += service.errorCount;
+        group.latencyWeight += weight;
+        group.p50MsTotal += service.p50Ms * weight;
+        group.p95MsTotal += service.p95Ms * weight;
+        group.p99MsTotal += service.p99Ms * weight;
+        group.healthWeight += weight;
+        group.healthScoreTotal += serviceHealth.healthScore * weight;
+        group.apdexTotal += serviceHealth.apdex * weight;
+        group.status = worstStatus(group.status, serviceHealth.status);
+        groups[key] = group;
       }
 
-      // Read cache from localStorage
-      let cache: Record<string, AggregatedService> = {};
-      try {
-        const cachedStr = localStorage.getItem('accumulatedServicesV2');
-        if (cachedStr) {
-          cache = JSON.parse(cachedStr);
-        }
-      } catch (e) {
-        console.error('Failed to parse cached accumulated services:', e);
-      }
+      const cache = readHistoryCache();
+      const nextAggregated = Object.values(groups).reduce<Record<string, AggregatedService>>((acc, group) => {
+        const p50Ms = weightedAverage(group.p50MsTotal, group.latencyWeight);
+        const p95Ms = weightedAverage(group.p95MsTotal, group.latencyWeight);
+        const p99Ms = weightedAverage(group.p99MsTotal, group.latencyWeight);
+        const errorRate = group.requestCount > 0 ? (group.errorCount / group.requestCount) * 100 : 0;
+        const healthScore = weightedAverage(group.healthScoreTotal, group.healthWeight, 100);
+        const apdex = weightedAverage(group.apdexTotal, group.healthWeight, 1);
+        const status = group.requestCount > 0 ? group.status : 'unknown';
+        const previous = cache[group.key];
 
-      const nextAggregated: Record<string, AggregatedService> = {};
-
-      Object.values(groups).forEach(g => {
-        const avgP50 = g.latencyWeight > 0 ? g.p50MsTotal / g.latencyWeight : 0;
-        const avgP95 = g.latencyWeight > 0 ? g.p95MsTotal / g.latencyWeight : 0;
-        const avgP99 = g.latencyWeight > 0 ? g.p99MsTotal / g.latencyWeight : 0;
-        const healthScore = g.healthWeight > 0 ? g.healthScoreTotal / g.healthWeight : 100;
-        const apdex = g.healthWeight > 0 ? g.apdexTotal / g.healthWeight : 1;
-        const status = g.requestCount > 0 ? g.status : 'unknown';
-        const computedErrorRate = g.requestCount > 0 ? (g.errorCount / g.requestCount) * 100 : 0;
-
-        let latencyHistory: number[] = [];
-        let throughputHistory: number[] = [];
-        let errorsHistory: number[] = [];
-
-        const prevItem = cache[g.key];
-        if (prevItem && prevItem.latencyHistory && prevItem.latencyHistory.length > 0) {
-          latencyHistory = [...prevItem.latencyHistory].slice(-9).concat(avgP50);
-          throughputHistory = [...prevItem.throughputHistory].slice(-9).concat(g.requestCount);
-          errorsHistory = [...prevItem.errorsHistory].slice(-9).concat(computedErrorRate);
-        } else {
-          latencyHistory = [avgP50];
-          throughputHistory = [g.requestCount];
-          errorsHistory = [computedErrorRate];
-        }
-
-        nextAggregated[g.key] = {
-          key: g.key,
-          serviceName: g.serviceName,
-          project: g.project,
-          language: g.language,
-          environments: g.environments,
-          requestCount: g.requestCount,
-          errorCount: g.errorCount,
-          errorRate: computedErrorRate,
+        acc[group.key] = {
+          key: group.key,
+          serviceName: group.serviceName,
+          project: group.project,
+          language: group.language,
+          environments: group.environments.sort(),
+          requestCount: group.requestCount,
+          errorCount: group.errorCount,
+          errorRate,
           healthScore,
           apdex,
           status,
-          p50Ms: avgP50,
-          p95Ms: avgP95,
-          p99Ms: avgP99,
-          latencyHistory,
-          throughputHistory,
-          errorsHistory,
+          p50Ms,
+          p95Ms,
+          p99Ms,
+          latencyHistory: appendHistory(previous?.latencyHistory, p50Ms),
+          throughputHistory: appendHistory(previous?.throughputHistory, group.requestCount),
+          errorsHistory: appendHistory(previous?.errorsHistory, errorRate),
         };
-      });
+        return acc;
+      }, {});
 
       setAggregatedServices(nextAggregated);
-
-      try {
-        localStorage.setItem('accumulatedServicesV2', JSON.stringify(nextAggregated));
-      } catch (err) {
-        console.error('Failed to cache accumulated services:', err);
-      }
-
+      writeHistoryCache(nextAggregated);
     } catch (err) {
       console.error('loadServices error:', err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -342,309 +166,449 @@ export default function Services({ namespace }: ServicesProps) {
     return () => clearInterval(interval);
   }, [loadServices]);
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDir(field === 'name' || field === 'environments' ? 'asc' : 'desc');
+  useEffect(() => {
+    const service = searchParams.get('service');
+    if (service) {
+      setSearchTerm(service);
     }
-  };
+  }, [searchParams]);
 
   const servicesList = useMemo(() => Object.values(aggregatedServices), [aggregatedServices]);
+  const filteredServices = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    const filtered = query
+      ? servicesList.filter(service =>
+          service.serviceName.toLowerCase().includes(query) ||
+          service.project.toLowerCase().includes(query) ||
+          service.environments.some(env => env.toLowerCase().includes(query))
+        )
+      : servicesList;
 
-  const sorted = useMemo(() => {
-    let filtered = servicesList.filter(s =>
-      s.serviceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.environments.some(env => env.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-
-    filtered.sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       let cmp = 0;
       switch (sortField) {
-        case 'name': cmp = a.serviceName.localeCompare(b.serviceName); break;
-        case 'environments': cmp = a.environments.length - b.environments.length; break;
-        case 'health': cmp = a.healthScore - b.healthScore; break;
-        case 'latency': cmp = a.p50Ms - b.p50Ms; break;
-        case 'throughput': cmp = a.requestCount - b.requestCount; break;
-        case 'errorRate': cmp = a.errorRate - b.errorRate; break;
+        case 'name':
+          cmp = a.serviceName.localeCompare(b.serviceName);
+          break;
+        case 'health':
+          cmp = a.healthScore - b.healthScore;
+          break;
+        case 'latency':
+          cmp = a.p95Ms - b.p95Ms;
+          break;
+        case 'throughput':
+          cmp = a.requestCount - b.requestCount;
+          break;
+        case 'errorRate':
+          cmp = a.errorRate - b.errorRate;
+          break;
       }
       return sortDir === 'asc' ? cmp : -cmp;
     });
-
-    return filtered;
   }, [servicesList, searchTerm, sortField, sortDir]);
 
-  const SortHeader = ({ field, label, align, colKey }: { field: SortField; label: string; align?: string; colKey: keyof typeof colWidths }) => (
-    <th
-      onClick={() => handleSort(field)}
-      style={{
-        cursor: 'pointer',
-        userSelect: 'none',
-        textAlign: (align as any) || 'left',
-        padding: '12px 14px',
-        fontSize: '11px',
-        fontWeight: 600,
-        textTransform: 'uppercase',
-        letterSpacing: '0.06em',
-        color: sortField === field ? 'var(--accent-indigo)' : 'var(--text-secondary)',
-        borderBottom: '1px solid var(--border-primary)',
-        whiteSpace: 'nowrap',
-        position: 'sticky',
-        top: 0,
-        width: colWidths[colKey],
-        background: 'var(--bg-primary)',
-        zIndex: 2,
-      }}
-    >
-      {label}
-      {sortField === field && (
-        <span style={{ marginLeft: '4px', fontSize: '10px' }}>
-          {sortDir === 'asc' ? '↑' : '↓'}
-        </span>
-      )}
-      <div className="resize-handle" onClick={e => e.stopPropagation()} onMouseDown={e => startResize(e, colKey)} />
-    </th>
-  );
+  const summary = useMemo(() => {
+    const totalRequests = servicesList.reduce((sum, service) => sum + service.requestCount, 0);
+    const totalErrors = servicesList.reduce((sum, service) => sum + service.errorCount, 0);
+    const activeServices = servicesList.filter(service => service.requestCount > 0).length;
+    const degraded = servicesList.filter(service => service.status === 'degraded').length;
+    const critical = servicesList.filter(service => service.status === 'critical').length;
+    const avgHealth = servicesList.length > 0
+      ? servicesList.reduce((sum, service) => sum + service.healthScore, 0) / servicesList.length
+      : 100;
+
+    return {
+      activeServices,
+      totalServices: servicesList.length,
+      totalRequests,
+      totalErrors,
+      errorRate: totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0,
+      avgHealth,
+      degraded,
+      critical,
+    };
+  }, [servicesList]);
+
+  const setSort = (field: SortField) => {
+    if (field === sortField) {
+      setSortDir(current => (current === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortField(field);
+    setSortDir(field === 'name' ? 'asc' : 'desc');
+  };
 
   if (loading && servicesList.length === 0) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
-        <div style={{
-          width: '36px', height: '36px',
-          border: '3px solid rgba(99, 102, 241, 0.15)',
-          borderTopColor: 'var(--accent-indigo)',
-          borderRadius: '50%',
-          animation: 'spin 0.8s linear infinite',
-        }} />
-      </div>
-    );
+    return <LoadingState height={420} label={t('Loading services...')} />;
   }
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: '1400px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <h1 style={{
-          fontSize: '22px',
-          fontWeight: 700,
-          color: 'var(--text-primary)',
-          margin: 0,
-          letterSpacing: '-0.02em',
-        }}>
-          Services
-        </h1>
-      </div>
+    <div className="services-page">
+      <section className="services-header">
+        <div>
+          <span className="services-eyebrow">{namespace || t('All namespaces')}</span>
+          <h1>{t('Services')}</h1>
+          <p>{t('Health, traffic, latency, and failures grouped by service.')}</p>
+        </div>
+        <div className="services-header-actions">
+          <MetricBox label={t('Services')} value={summary.totalServices.toString()} />
+          <MetricBox label={t('Requests')} value={formatCompact(summary.totalRequests)} />
+          <MetricBox label={t('Error rate')} value={formatPercent(summary.errorRate)} tone={summary.errorRate > 5 ? 'critical' : summary.errorRate > 0 ? 'warning' : 'neutral'} />
+        </div>
+      </section>
 
-      {/* Search */}
-      <div style={{ marginBottom: '20px' }}>
-        <div style={{ position: 'relative', maxWidth: '400px' }}>
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--text-tertiary)" strokeWidth="2" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}>
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
+      <section className="services-summary-grid">
+        <SummaryCard label={t('Active')} value={summary.activeServices.toString()} detail={t('services with traffic')} tone="info" />
+        <SummaryCard label={t('Health')} value={summary.avgHealth.toFixed(0)} detail={summary.critical > 0 ? `${summary.critical} ${t('critical')}` : summary.degraded > 0 ? `${summary.degraded} ${t('degraded')}` : t('healthy')} tone={summary.critical > 0 ? 'critical' : summary.degraded > 0 ? 'warning' : 'healthy'} />
+        <SummaryCard label={t('Failures')} value={formatCompact(summary.totalErrors)} detail={formatPercent(summary.errorRate)} tone={summary.totalErrors > 0 ? 'critical' : 'neutral'} />
+        <SummaryCard label={t('Scope')} value={namespace || t('All')} detail={t('namespace filter')} tone="neutral" />
+      </section>
+
+      <section className="services-controls">
+        <div className="services-search">
+          <SearchIcon />
           <input
             type="text"
-            placeholder="Filter services..."
+            placeholder={t('Search services, projects, namespaces...')}
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '9px 12px 9px 36px',
-              fontSize: '13px',
-              background: 'var(--bg-secondary)',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border-primary)',
-              borderRadius: '8px',
-              outline: 'none',
-            }}
+            onChange={event => setSearchTerm(event.target.value)}
           />
         </div>
-      </div>
-
-      {/* Table */}
-      <div style={{
-        background: 'var(--bg-secondary)',
-        borderRadius: '12px',
-        border: '1px solid var(--border-primary)',
-        overflow: 'hidden',
-      }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-            <thead>
-              <tr>
-                <SortHeader field="name" label="Name" colKey="name" />
-                <SortHeader field="environments" label="Environment" colKey="environments" />
-                <SortHeader field="health" label="Health" align="right" colKey="health" />
-                <SortHeader field="latency" label="Latency (avg.)" align="right" colKey="latency" />
-                <SortHeader field="throughput" label="Throughput" align="right" colKey="throughput" />
-                <SortHeader field="errorRate" label="Failed transaction rate" align="right" colKey="errorRate" />
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.length === 0 ? (
-                <tr>
-                  <td colSpan={6} style={{ padding: '48px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '13px' }}>
-                    No services found
-                  </td>
-                </tr>
-              ) : (
-                sorted.map((svc, idx) => {
-                  const errorPct = svc.errorRate;
-                  const tone = healthTone(svc.status, svc.healthScore);
-
-                  return (
-                    <tr
-                      key={svc.key}
-                      onClick={() => navigate(`/traces?service=${encodeURIComponent(svc.serviceName)}`)}
-                      style={{
-                        cursor: 'pointer',
-                        borderBottom: idx < sorted.length - 1 ? '1px solid var(--border-primary)' : 'none',
-                        transition: 'background 0.12s ease',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-tertiary)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      {/* Name with language icon */}
-                      <td style={{ padding: '14px 14px', width: colWidths.name, overflow: 'hidden' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                          <LanguageIcon language={svc.language} size={20} />
-                          <span style={{
-                            fontSize: '13.5px',
-                            fontWeight: 600,
-                            color: 'var(--accent-indigo)',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }} title={svc.serviceName}>
-                            {svc.serviceName}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Environment Badges */}
-                      <td style={{ padding: '14px 14px', width: colWidths.environments }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                          {svc.environments.length > 1 && (
-                            <span style={{
-                              fontSize: '11px',
-                              padding: '3px 8px',
-                              borderRadius: '6px',
-                              background: 'var(--bg-tertiary)',
-                              color: 'var(--text-primary)',
-                              border: '1px solid var(--border-primary)',
-                              fontWeight: 600
-                            }}>
-                              {svc.environments.length} environments
-                            </span>
-                          )}
-                          {svc.environments.map(env => (
-                            <span key={env} style={{
-                              fontSize: '11px',
-                              padding: '2px 7px',
-                              borderRadius: '5px',
-                              background: 'rgba(99, 102, 241, 0.06)',
-                              color: 'var(--accent-indigo-light)',
-                              border: '1px solid rgba(99, 102, 241, 0.15)',
-                            }}>
-                              {env}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-
-                      {/* Health */}
-                      <td style={{ padding: '14px 14px', textAlign: 'right', width: colWidths.health }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
-                            <span style={{
-                              fontSize: '13px',
-                              fontWeight: 700,
-                              color: tone.color,
-                              fontFamily: 'var(--font-mono)',
-                            }}>
-                              {svc.status === 'unknown' ? '--' : svc.healthScore.toFixed(0)}
-                            </span>
-                            <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
-                              {svc.apdex.toFixed(2)}
-                            </span>
-                          </div>
-                          <span style={{
-                            fontSize: '10.5px',
-                            padding: '3px 7px',
-                            borderRadius: '999px',
-                            background: tone.background,
-                            color: tone.color,
-                            border: `1px solid ${tone.border}`,
-                            fontWeight: 700,
-                            textTransform: 'uppercase',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            {tone.label}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Latency with Sparkline */}
-                      <td style={{ padding: '14px 14px', textAlign: 'right', width: colWidths.latency }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>
-                          <span style={{
-                            fontSize: '13px',
-                            fontWeight: 600,
-                            color: svc.p50Ms > 1000 ? 'var(--accent-amber)' : 'var(--text-primary)',
-                            fontFamily: 'var(--font-mono)',
-                          }}>
-                            {formatDuration(svc.p50Ms)}
-                          </span>
-                          <Sparkline
-                            data={svc.latencyHistory}
-                            color="#3b82f6"
-                          />
-                        </div>
-                      </td>
-
-                      {/* Throughput */}
-                      <td style={{ padding: '14px 14px', textAlign: 'right', width: colWidths.throughput }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>
-                          <span style={{
-                            fontSize: '13px',
-                            fontWeight: 600,
-                            color: 'var(--text-primary)',
-                            fontFamily: 'var(--font-mono)',
-                          }}>
-                            {formatThroughput(svc.requestCount)}
-                          </span>
-                          <Sparkline
-                            data={svc.throughputHistory}
-                            color="#10b981"
-                          />
-                        </div>
-                      </td>
-
-                      {/* Failed Transaction Rate (Error rate) */}
-                      <td style={{ padding: '14px 14px', textAlign: 'right', width: colWidths.errorRate }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>
-                          <span style={{
-                            fontSize: '13px',
-                            fontWeight: 600,
-                            fontFamily: 'var(--font-mono)',
-                            color: errorPct > 5 ? 'var(--accent-rose)' : errorPct > 0 ? 'var(--accent-amber)' : 'var(--text-tertiary)',
-                          }}>
-                            {errorPct > 0 ? `${errorPct.toFixed(1)}%` : '0.0%'}
-                          </span>
-                          <Sparkline
-                            data={svc.errorsHistory}
-                            color="#ef4444"
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+        <div className="services-sort-controls" aria-label={t('Sort services')}>
+          <SortButton label={t('Health')} active={sortField === 'health'} dir={sortDir} onClick={() => setSort('health')} />
+          <SortButton label={t('Traffic')} active={sortField === 'throughput'} dir={sortDir} onClick={() => setSort('throughput')} />
+          <SortButton label={t('Latency')} active={sortField === 'latency'} dir={sortDir} onClick={() => setSort('latency')} />
+          <SortButton label={t('Errors')} active={sortField === 'errorRate'} dir={sortDir} onClick={() => setSort('errorRate')} />
+          <SortButton label={t('Name')} active={sortField === 'name'} dir={sortDir} onClick={() => setSort('name')} />
         </div>
-      </div>
+      </section>
+
+      {loadError && servicesList.length === 0 ? (
+        <NoDataState height={360} title={t('Could not load services')} hint={t('Retry after the API is reachable.')} />
+      ) : filteredServices.length === 0 ? (
+        <NoDataState height={360} title={t('No services found')} hint={searchTerm ? t('Try a different search.') : t('Services appear once telemetry is received.')} />
+      ) : (
+        <section className="services-list" aria-label={t('Services')}>
+          <div className="services-list-head">
+            <span>{t('Service')}</span>
+            <span>{t('Health')}</span>
+            <span>{t('Latency')}</span>
+            <span>{t('Traffic')}</span>
+            <span>{t('Failures')}</span>
+          </div>
+          {filteredServices.map(service => (
+            <ServiceRow
+              key={service.key}
+              service={service}
+              onClick={() => navigate(`/traces?service=${encodeURIComponent(service.serviceName)}`)}
+            />
+          ))}
+        </section>
+      )}
     </div>
   );
+}
+
+function ServiceRow({ service, onClick }: { service: AggregatedService; onClick: () => void }) {
+  const tone = healthTone(service.status, service.healthScore);
+  const latencyTone = service.p99Ms > 1200 ? 'critical' : service.p95Ms > 500 ? 'warning' : 'neutral';
+  const errorTone = service.errorRate > 5 ? 'critical' : service.errorRate > 0 ? 'warning' : 'neutral';
+
+  return (
+    <button type="button" className="service-row" onClick={onClick}>
+      <div className="service-identity-cell">
+        <div className="service-icon-wrap">
+          <LanguageIcon language={service.language} size={22} />
+        </div>
+        <div className="service-title-wrap">
+          <strong>{service.serviceName}</strong>
+          <span>{service.project}</span>
+          <div className="service-envs">
+            {service.environments.slice(0, 3).map(env => (
+              <em key={env}>{env}</em>
+            ))}
+            {service.environments.length > 3 && <em>+{service.environments.length - 3}</em>}
+          </div>
+        </div>
+      </div>
+
+      <div className="service-health-cell">
+        <div className={`service-status-pill ${tone.kind}`}>{tone.label}</div>
+        <strong style={{ color: tone.color }}>{service.status === 'unknown' ? '--' : service.healthScore.toFixed(0)}</strong>
+        <span>Apdex {service.apdex.toFixed(2)}</span>
+      </div>
+
+      <MetricCell
+        label="P95"
+        value={formatDuration(service.p95Ms)}
+        sub={`P50 ${formatDuration(service.p50Ms)} / P99 ${formatDuration(service.p99Ms)}`}
+        tone={latencyTone}
+        trend={service.latencyHistory}
+        trendColor="#2563eb"
+      />
+
+      <MetricCell
+        label="Throughput"
+        value={formatThroughput(service.requestCount)}
+        sub={`${formatCompact(service.requestCount)} spans`}
+        tone="neutral"
+        trend={service.throughputHistory}
+        trendColor="#059669"
+      />
+
+      <MetricCell
+        label="Error rate"
+        value={formatPercent(service.errorRate)}
+        sub={`${formatCompact(service.errorCount)} failed`}
+        tone={errorTone}
+        trend={service.errorsHistory}
+        trendColor="#e11d48"
+      />
+    </button>
+  );
+}
+
+function MetricCell({
+  label,
+  value,
+  sub,
+  tone,
+  trend,
+  trendColor,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  tone: 'critical' | 'warning' | 'neutral';
+  trend: number[];
+  trendColor: string;
+}) {
+  return (
+    <div className={`service-metric-cell ${tone}`}>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <em>{sub}</em>
+      </div>
+      <Sparkline data={trend} color={trendColor} />
+    </div>
+  );
+}
+
+function SummaryCard({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: 'healthy' | 'warning' | 'critical' | 'neutral' | 'info' }) {
+  return (
+    <div className={`services-summary-card ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <em>{detail}</em>
+    </div>
+  );
+}
+
+function MetricBox({ label, value, tone = 'neutral' }: { label: string; value: string; tone?: 'critical' | 'warning' | 'neutral' }) {
+  return (
+    <div className={`services-metric-box ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function SortButton({ label, active, dir, onClick }: { label: string; active: boolean; dir: SortDir; onClick: () => void }) {
+  return (
+    <button type="button" className={active ? 'active' : ''} onClick={onClick}>
+      {label}
+      {active && <span>{dir === 'asc' ? '↑' : '↓'}</span>}
+    </button>
+  );
+}
+
+function Sparkline({ data, color }: { data: number[]; color: string }) {
+  const gradientId = React.useId().replace(/:/g, '');
+  const cleanData = data.filter(value => Number.isFinite(value));
+
+  if (cleanData.length < 2) {
+    return (
+      <svg className="service-sparkline" viewBox="0 0 88 28" aria-hidden="true">
+        <line x1="2" y1="14" x2="86" y2="14" stroke="var(--border-secondary)" strokeWidth="1.4" strokeDasharray="4 4" />
+      </svg>
+    );
+  }
+
+  const width = 88;
+  const height = 28;
+  const padding = 3;
+  const max = Math.max(...cleanData, 1);
+  const min = Math.min(...cleanData, 0);
+  const range = max - min || 1;
+  const points = cleanData.map((value, idx) => {
+    const x = padding + (idx / (cleanData.length - 1)) * (width - padding * 2);
+    const y = height - padding - ((value - min) / range) * (height - padding * 2);
+    return { x, y };
+  });
+  const path = smoothPath(points);
+  const area = `${path} L ${points[points.length - 1].x} ${height - padding} L ${points[0].x} ${height - padding} Z`;
+
+  return (
+    <svg className="service-sparkline" viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+      <defs>
+        <linearGradient id={`service-spark-${gradientId}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.18" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#service-spark-${gradientId})`} />
+      <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+function appendHistory(previous: number[] | undefined, value: number) {
+  return [...(previous || []).slice(-11), value];
+}
+
+function readHistoryCache() {
+  try {
+    const value = localStorage.getItem(historyStorageKey);
+    return value ? JSON.parse(value) as Record<string, AggregatedService> : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeHistoryCache(value: Record<string, AggregatedService>) {
+  try {
+    localStorage.setItem(historyStorageKey, JSON.stringify(value));
+  } catch {
+    // Caching is optional; the UI still renders current telemetry honestly.
+  }
+}
+
+function getProjectName(namespace: string) {
+  const dashIdx = namespace.indexOf('-');
+  return dashIdx === -1 ? namespace : namespace.slice(0, dashIdx);
+}
+
+function weightedAverage(total: number, weight: number, fallback = 0) {
+  return weight > 0 ? total / weight : fallback;
+}
+
+function getServiceHealth(service: ServiceStats, errorRate: number) {
+  const healthScore = finiteNumber(service.healthScore)
+    ? service.healthScore
+    : inferHealthScore(service.requestCount, errorRate, service.p95Ms, service.p99Ms);
+  const apdex = finiteNumber(service.apdex)
+    ? service.apdex
+    : inferApdex(service.requestCount, errorRate, service.p50Ms, service.p95Ms, service.p99Ms);
+
+  return {
+    healthScore: clamp(healthScore, 0, 100),
+    apdex: clamp(apdex, 0, 1),
+    status: service.status || inferStatus(service.requestCount, healthScore),
+  };
+}
+
+function inferHealthScore(requestCount: number, errorRate: number, p95Ms: number, p99Ms: number) {
+  if (requestCount <= 0) return 100;
+  const latencyPenalty = Math.min(30, Math.max(0, p95Ms - 300) / 30) + Math.min(15, Math.max(0, p99Ms - 1200) / 120);
+  const errorPenalty = Math.min(70, errorRate * 4.5);
+  return clamp(100 - latencyPenalty - errorPenalty, 0, 100);
+}
+
+function inferApdex(requestCount: number, errorRate: number, p50Ms: number, p95Ms: number, p99Ms: number) {
+  if (requestCount <= 0) return 1;
+  let score = 1;
+  if (p50Ms > 300) score -= Math.min(0.3, ((p50Ms - 300) / 300) * 0.2);
+  if (p95Ms > 300) score -= Math.min(0.25, ((p95Ms - 300) / 900) * 0.25);
+  if (p95Ms > 1200) score -= Math.min(0.25, ((p95Ms - 1200) / 1200) * 0.25);
+  if (p99Ms > 2400) score -= Math.min(0.1, ((p99Ms - 2400) / 2400) * 0.1);
+  return clamp(score - Math.min(0.4, (errorRate / 100) * 0.75), 0, 1);
+}
+
+function inferStatus(requestCount: number, healthScore: number): ServiceHealthStatus {
+  if (requestCount <= 0) return 'unknown';
+  if (healthScore >= 90) return 'healthy';
+  if (healthScore >= 70) return 'degraded';
+  return 'critical';
+}
+
+const statusRank: Record<string, number> = {
+  unknown: 0,
+  healthy: 1,
+  degraded: 2,
+  critical: 3,
+};
+
+function worstStatus(current: ServiceHealthStatus, next: ServiceHealthStatus): ServiceHealthStatus {
+  return (statusRank[next] || 0) > (statusRank[current] || 0) ? next : current;
+}
+
+function healthTone(status: ServiceHealthStatus, score: number) {
+  if (status === 'unknown') {
+    return { color: 'var(--text-tertiary)', kind: 'neutral', label: 'No traffic' };
+  }
+  if (status === 'critical' || score < 70) {
+    return { color: 'var(--accent-rose)', kind: 'critical', label: 'Critical' };
+  }
+  if (status === 'degraded' || score < 90) {
+    return { color: 'var(--accent-amber)', kind: 'warning', label: 'Degraded' };
+  }
+  return { color: 'var(--accent-emerald)', kind: 'healthy', label: 'Healthy' };
+}
+
+function smoothPath(points: { x: number; y: number }[]) {
+  if (points.length === 0) return '';
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  const [first, ...rest] = points;
+  return rest.reduce((path, point, idx) => {
+    const prev = points[idx];
+    const midX = (prev.x + point.x) / 2;
+    const midY = (prev.y + point.y) / 2;
+    return `${path} Q ${prev.x.toFixed(2)} ${prev.y.toFixed(2)} ${midX.toFixed(2)} ${midY.toFixed(2)}${idx === rest.length - 1 ? ` T ${point.x.toFixed(2)} ${point.y.toFixed(2)}` : ''}`;
+  }, `M ${first.x.toFixed(2)} ${first.y.toFixed(2)}`);
+}
+
+function formatDuration(ms: number) {
+  if (!Number.isFinite(ms) || ms <= 0) return '0ms';
+  if (ms < 1) return `${(ms * 1000).toFixed(0)}us`;
+  if (ms < 1000) return `${ms.toFixed(ms < 10 ? 1 : 0)}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`;
+  return `${(ms / 60000).toFixed(1)}m`;
+}
+
+function formatThroughput(count: number) {
+  const tpm = count / 5;
+  if (tpm <= 0) return '0 tpm';
+  if (tpm < 1) return `${(tpm * 60).toFixed(1)} tph`;
+  if (tpm >= 1000) return `${(tpm / 1000).toFixed(1)}k tpm`;
+  return `${tpm.toFixed(1)} tpm`;
+}
+
+function formatCompact(value: number) {
+  if (!Number.isFinite(value)) return '0';
+  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+function formatPercent(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0.0%';
+  return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
+}
+
+function finiteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }

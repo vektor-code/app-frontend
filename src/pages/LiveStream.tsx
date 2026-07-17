@@ -152,6 +152,7 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
   const pausedRef = useRef(paused);
   const totalCountRef = useRef(0);
   const prevCountRef = useRef(0);
+  const liveSpanIdRef = useRef(0);
   const maxSpans = 150;
 
   pausedRef.current = paused;
@@ -172,7 +173,7 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
     totalCountRef.current += 1;
     setTotalCount(c => c + 1);
     if (pausedRef.current) return;
-    const liveSpan: LiveSpan = { ...span, _id: `${span.spanId}-${Date.now()}-${Math.random()}` };
+    const liveSpan: LiveSpan = { ...span, _id: `${span.spanId}-${Date.now()}-${liveSpanIdRef.current++}` };
     setSpans(prev => [liveSpan, ...prev].slice(0, maxSpans));
   }, []);
 
