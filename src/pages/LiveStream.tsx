@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { connectLiveStream, type Span, isSpanError } from '../api/client';
+import { connectLiveStream } from '../api/liveStream';
+import type { Span } from '../entities';
+import { isSpanError } from '../utils/spanStatus';
+import { useTranslation } from '../utils/i18n';
 
 interface LiveStreamProps {
   namespace: string;
@@ -134,6 +137,7 @@ function CustomDropdown({
 }
 
 export default function LiveStream({ namespace }: LiveStreamProps) {
+  const { t } = useTranslation();
   const [spans, setSpans] = useState<LiveSpan[]>([]);
   const [connected, setConnected] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -146,22 +150,26 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
   const navigate = useNavigate();
   const disconnectRef = useRef<(() => void) | null>(null);
   const pausedRef = useRef(paused);
+  const totalCountRef = useRef(0);
   const prevCountRef = useRef(0);
   const maxSpans = 150;
 
   pausedRef.current = paused;
 
-  // Calculate spans per second rate dynamically
+  // Calculate spans per second rate dynamically. The interval must be stable
+  // (created once) and read counts via refs — depending on totalCount would
+  // reset the timer on every span, so it would never fire under load.
   useEffect(() => {
     const interval = setInterval(() => {
-      const diff = totalCount - prevCountRef.current;
+      const diff = totalCountRef.current - prevCountRef.current;
       setSpansPerSec(Math.max(0, Math.round(diff / 2)));
-      prevCountRef.current = totalCount;
+      prevCountRef.current = totalCountRef.current;
     }, 2000);
     return () => clearInterval(interval);
-  }, [totalCount]);
+  }, []);
 
   const handleSpan = useCallback((span: Span) => {
+    totalCountRef.current += 1;
     setTotalCount(c => c + 1);
     if (pausedRef.current) return;
     const liveSpan: LiveSpan = { ...span, _id: `${span.spanId}-${Date.now()}-${Math.random()}` };
@@ -182,6 +190,7 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
   const clearSpans = () => {
     setSpans([]);
     setTotalCount(0);
+    totalCountRef.current = 0;
     prevCountRef.current = 0;
     setSpansPerSec(0);
   };
@@ -233,9 +242,9 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
 
   return (
     <div className="animate-fade-in">
-      <h1 className="page-title">Live Tail</h1>
+      <h1 className="page-title">{t('Live Tail')}</h1>
       <p className="page-subtitle">
-        Real-time request telemetry and span updates streaming from active runtimes
+        {t('Real-time request telemetry and span updates streaming from active runtimes')}
       </p>
 
       {/* Real-time stats grid */}
@@ -251,13 +260,13 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
           background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(99, 102, 241, 0.03) 100%)'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>Stream Throughput</span>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>{t('Stream Throughput')}</span>
             <span style={{ fontSize: '11px', color: connected ? 'var(--accent-emerald)' : 'var(--accent-rose)', fontWeight: 600 }}>
-              {connected ? '● LIVE' : '○ OFFLINE'}
+              {connected ? '● ' + t('LIVE') : '○ ' + t('OFFLINE')}
             </span>
           </div>
           <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
-            {spansPerSec} <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 400 }}>spans/sec</span>
+            {spansPerSec} <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 400 }}>{t('spans/sec')}</span>
           </div>
         </div>
 
@@ -271,7 +280,7 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
           borderLeft: '4px solid var(--accent-emerald)',
           background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(16, 185, 129, 0.03) 100%)'
         }}>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>Live Avg Latency</div>
+          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>{t('Live Avg Latency')}</div>
           <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
             {formatDuration(stats.avgDuration)}
           </div>
@@ -287,7 +296,7 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
           borderLeft: `4px solid ${stats.errorRate > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)'}`,
           background: `linear-gradient(135deg, var(--bg-secondary) 0%, ${stats.errorRate > 0 ? 'rgba(244, 63, 94, 0.03)' : 'rgba(16, 185, 129, 0.03)'} 100%)`
         }}>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>Live Error Rate</div>
+          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>{t('Live Error Rate')}</div>
           <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: stats.errorRate > 0 ? 'var(--accent-rose)' : 'var(--text-primary)' }}>
             {stats.errorRate.toFixed(1)}%
           </div>
@@ -303,7 +312,7 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
           borderLeft: '4px solid var(--accent-amber)',
           background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(245, 158, 11, 0.03) 100%)'
         }}>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>Active Services</div>
+          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>{t('Active Services')}</div>
           <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
             {stats.uniqueServices}
           </div>
@@ -316,7 +325,7 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
         <div style={{ flex: '1', minWidth: '240px', position: 'relative' }}>
           <input
             type="text"
-            placeholder="Live search spans, services, trace IDs..."
+            placeholder={t("Live search spans, services, trace IDs...")}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             style={{
@@ -358,7 +367,7 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
           options={flowingServicesOptions}
           value={serviceFilter}
           onChange={setServiceFilter}
-          placeholder="All Services"
+          placeholder={t("All Services")}
         />
 
         {/* Status selector */}
@@ -366,7 +375,7 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
           options={statusOptions}
           value={statusFilter}
           onChange={setStatusFilter}
-          placeholder="All Status"
+          placeholder={t("All Status")}
         />
 
         {/* Pause/Resume button */}
@@ -383,7 +392,7 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
               </>
             )}
           </svg>
-          {paused ? 'Resume' : 'Pause'}
+          {paused ? t('Resume') : t('Pause')}
         </button>
 
         {/* Clear button */}
@@ -396,7 +405,7 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
             <polyline points="3 6 5 6 21 6" />
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
           </svg>
-          Clear
+          {t('Clear')}
         </button>
       </div>
 
@@ -411,11 +420,11 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
                     <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
                   </svg>
                 </div>
-                <div className="empty-state-title">{connected ? 'Waiting for matching spans...' : 'Connecting...'}</div>
+                <div className="empty-state-title">{connected ? t('Waiting for matching spans...') : t('Connecting...')}</div>
                 <div className="empty-state-text">
                   {connected
-                    ? 'Spans matching your active filters will appear here in real-time'
-                    : 'Attempting to establish WebSocket connection to the backend telemetry server'
+                    ? t('Spans matching your active filters will appear here in real-time')
+                    : t('Attempting to establish WebSocket connection to the backend telemetry server')
                   }
                 </div>
               </div>

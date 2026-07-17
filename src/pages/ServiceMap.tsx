@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, type ServiceMapData, type ServiceStats, type Span, connectLiveStream, isSpanError } from '../api/client';
+import { api } from '../api/client';
+import { connectLiveStream } from '../api/liveStream';
+import type { ServiceMapData, ServiceStats, Span } from '../entities';
+import { isSpanError } from '../utils/spanStatus';
 import { createPortal } from 'react-dom';
+import { LoadingState, NoDataState } from '../components/DataState';
+import { useTranslation } from '../utils/i18n';
 
 interface ServiceMapProps {
   namespace: string;
@@ -46,6 +51,7 @@ const isInfraNode = (node: ServiceStats) => {
     name.includes('elasticsearch') ||
     name.includes('clickhouse') ||
     name.includes('vault') ||
+    name.includes('apm') ||
     name.includes('minio') ||
     name.includes('dns') ||
     name.includes('config') ||
@@ -94,40 +100,59 @@ const getNodeSize = (
 };
 
 // Helper to parse infrastructure details from name (e.g. system (host/detail))
-const parseInfraName = (name: string): { system: string; host?: string; detail?: string } => {
+const parseInfraName = (name: string, ns: string = 'default'): { system: string; host?: string; detail?: string } => {
   const match = name.match(/^([^(]+)\(([^)]+)\)$/);
-  if (!match) {
+  
+  let system = '';
+  let host: string | undefined;
+  let detail: string | undefined;
+
+  if (match) {
+    system = match[1].trim();
+    const inner = match[2].trim();
+    const slashIndex = inner.indexOf('/');
+    if (slashIndex !== -1) {
+      host = inner.slice(0, slashIndex).trim();
+      detail = inner.slice(slashIndex + 1).trim();
+    } else {
+      host = inner;
+    }
+  } else {
+    // Revert to showing just the system name, NO fake fallbacks!
     const lower = name.toLowerCase();
-    if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(name) || lower.includes('vm')) {
-      return {
-        system: 'Virtual Machine',
-        host: name,
-      };
+    if (lower.includes('postgres') || lower.includes('postgresql')) {
+      system = 'PostgreSQL';
+    } else if (lower.includes('redis')) {
+      system = 'Redis';
+    } else if (lower.includes('kafka')) {
+      system = 'Kafka';
+    } else if (lower.includes('rabbitmq') || lower.includes('message_bus')) {
+      system = 'RabbitMQ';
+    } else if (lower.includes('mongo')) {
+      system = 'MongoDB';
+    } else if (lower.includes('clickhouse')) {
+      system = 'ClickHouse';
+    } else if (lower.includes('elastic')) {
+      system = 'Elasticsearch';
+    } else if (lower.includes('minio')) {
+      system = 'MinIO';
+    } else if (lower.includes('mysql')) {
+      system = 'MySQL';
+    } else if (lower.includes('sqlite')) {
+      system = 'SQLite';
+    } else if (lower.includes('db-') || lower.endsWith('-db') || lower.includes('database') || lower.includes('db')) {
+      const cleanSystem = name.replace(/[-_]db|db[-_]|database/gi, '').trim() || name;
+      system = cleanSystem.charAt(0).toUpperCase() + cleanSystem.slice(1) + ' Database';
+    } else if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(name) || lower.includes('vm')) {
+      system = 'Virtual Machine';
+    } else if (lower.includes('bridge') || lower.includes('.gov.az') || lower.includes('.az')) {
+      system = 'API Bridge';
+    } else {
+      system = name.charAt(0).toUpperCase() + name.slice(1);
     }
-    if (lower.includes('bridge') || lower.includes('.gov.az') || lower.includes('.az')) {
-      return {
-        system: 'API Bridge',
-        host: name,
-      };
-    }
-    return {
-      system: name,
-    };
   }
-  const system = match[1].trim();
-  const inner = match[2].trim();
-  const slashIndex = inner.indexOf('/');
-  if (slashIndex !== -1) {
-    return {
-      system,
-      host: inner.slice(0, slashIndex).trim(),
-      detail: inner.slice(slashIndex + 1).trim(),
-    };
-  }
-  return {
-    system,
-    host: inner,
-  };
+
+  return { system, host, detail };
 };
 
 // Vector canvas drawer for different infrastructure types
@@ -148,6 +173,7 @@ const drawInfraIcon = (
   else if (sys.includes('redis')) matchedKey = 'redis';
   else if (sys.includes('kafka')) matchedKey = 'kafka';
   else if (sys.includes('rabbitmq') || sys.includes('message_bus')) matchedKey = 'rabbitmq';
+  else if (sys.includes('apm')) matchedKey = 'apm';
   else if (sys.includes('vault')) matchedKey = 'vault';
   else if (sys.includes('elastic')) matchedKey = 'elasticsearch';
   else if (sys.includes('minio')) matchedKey = 'minio';
@@ -157,6 +183,9 @@ const drawInfraIcon = (
   else if (sys.includes('liqui') || sys.includes('liquid')) matchedKey = 'liquibase';
   else if (sys.includes('nginx')) matchedKey = 'nginx';
   else if (sys.includes('kong')) matchedKey = 'kong';
+  else if (sys.includes('clickhouse')) matchedKey = 'clickhouse';
+  else if (sys.includes('dns')) matchedKey = 'dns';
+  else if (sys.includes('database') || sys.includes('db')) matchedKey = 'database';
   else if (sys.includes('vm') || sys.includes('virtual machine') || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(sys)) matchedKey = 'vm';
   else if (sys.includes('bridge') || sys.includes('gov.az')) matchedKey = 'bridge';
 
@@ -238,6 +267,18 @@ const drawInfraIcon = (
     ctx.beginPath();
     ctx.arc(x + size / 2, y + size - 4, 1.5, 0, Math.PI * 2);
     ctx.fill();
+  } else if (sys.includes('apm')) {
+    // APM: Pulse wave line chart indicating telemetry/health metrics
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + 1, y + size / 2 + 2);
+    ctx.lineTo(x + size / 4, y + size / 2 + 2);
+    ctx.lineTo(x + size / 2 - 2, y + 2);
+    ctx.lineTo(x + size / 2 + 2, y + size - 2);
+    ctx.lineTo(x + 3 * size / 4, y + size / 2);
+    ctx.lineTo(x + size - 1, y + size / 2);
+    ctx.stroke();
   } else if (sys.includes('vault')) {
     // Vault: Safe box with keyhole/combination lock dial
     ctx.strokeStyle = isDark ? '#e2e8f0' : '#475569';
@@ -590,10 +631,12 @@ const getColumnTheme = (name: string, index: number, isDark: boolean) => {
 };
 
 export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
+  const { t } = useTranslation();
   const [data, setData] = useState<ServiceMapData | null>(null);
   const [visibleNamespaces, setVisibleNamespaces] = useState<string[]>([]);
   const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
   const [activityFilter, setActivityFilter] = useState<string>('all');
+  const [enabledNamespaces, setEnabledNamespaces] = useState<Set<string> | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 900, height: 600 });
@@ -695,24 +738,27 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
   const iconImagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
   useEffect(() => {
     const urls = {
-      redis: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/redis/redis-original.svg',
-      kafka: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/apachekafka/apachekafka-original.svg',
-      rabbitmq: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/rabbitmq/rabbitmq-original.svg',
-      vault: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/vault/vault-original.svg',
-      elasticsearch: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/elasticsearch/elasticsearch-original.svg',
-      minio: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/minio/minio-original.svg',
-      postgres: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/postgresql/postgresql-original.svg',
-      mysql: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mysql/mysql-original.svg',
-      mongodb: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mongodb/mongodb-original.svg',
-      liquibase: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/liquibase/liquibase-original.svg',
-      nginx: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nginx/nginx-original.svg',
-      kong: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/kong.svg',
+      redis: '/logos/redis.svg',
+      kafka: '/logos/kafka.svg',
+      rabbitmq: '/logos/rabbitmq.svg',
+      vault: '/logos/vault.svg',
+      elasticsearch: '/logos/elasticsearch.svg',
+      minio: '/logos/minio.svg',
+      postgres: '/logos/postgres.svg',
+      mysql: '/logos/mysql.svg',
+      mongodb: '/logos/mongodb.svg',
+      liquibase: '/logos/liquibase.svg',
+      nginx: '/logos/nginx.svg',
+      kong: '/logos/kong.svg',
       mygov: '/mygov-id.svg',
       vm: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linux.svg',
       bridge: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linkerd.svg',
       frontend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg',
       backend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg',
-      clickhouse: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/clickhouse/clickhouse-original.svg',
+      clickhouse: '/logos/clickhouse.svg',
+      apm: '/logos/apm.svg',
+      dns: '/logos/dns.svg',
+      database: '/logos/database.svg',
       // Language backends
       go: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg',
       php: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/php/php-original.svg',
@@ -759,6 +805,19 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       console.error('Error reloading custom positions:', e);
     }
   }, [selectedNamespaces, namespace]);
+
+  // Only namespaces with ingestion enabled (Namespace Manager) should ever appear here.
+  useEffect(() => {
+    let active = true;
+    api.getNamespaceStatuses().then(res => {
+      if (!active) return;
+      setEnabledNamespaces(new Set(res.enabled || []));
+    }).catch(() => {
+      if (!active) return;
+      setEnabledNamespaces(new Set());
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1058,8 +1117,12 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
     });
   }, []);
 
-  // Filter nodes and edges based on selected namespaces
-  const activeNamespacesSet = new Set(namespace ? [namespace] : selectedNamespaces);
+  // Filter nodes and edges based on selected namespaces — restricted to namespaces with ingestion enabled.
+  const activeNamespacesSet = new Set(
+    namespace
+      ? (enabledNamespaces && !enabledNamespaces.has(namespace) ? [] : [namespace])
+      : selectedNamespaces.filter(ns => !enabledNamespaces || enabledNamespaces.has(ns))
+  );
 
   const isNodeActive = useCallback((n: ServiceStats) => {
     if (n.serviceName === 'Internet') return true;
@@ -1080,12 +1143,16 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
 
     if (isInfraNode(n)) {
       if (n.namespace && activeNamespacesSet.has(n.namespace)) return true;
-      // Also show infra node if there are any active dependencies using it
+      // Also show infra node if an active namespace's own service actually calls THIS
+      // specific namespace-scoped instance of it — match by namespace, not just name,
+      // since many namespaces share identically-named resources (e.g. "postgresql").
+      const nNs = n.namespace || 'default';
       return (data?.edges || []).some(edge => {
-        if (edge.source !== n.serviceName && edge.target !== n.serviceName) return false;
-        const otherNodeName = edge.source === n.serviceName ? edge.target : edge.source;
-        const otherNode = (data?.nodes || []).find(x => x.serviceName === otherNodeName);
-        return otherNode && otherNode.namespace && activeNamespacesSet.has(otherNode.namespace);
+        const isSource = edge.source === n.serviceName && (edge.sourceNamespace || 'default') === nNs;
+        const isTarget = edge.target === n.serviceName && (edge.targetNamespace || 'default') === nNs;
+        if (!isSource && !isTarget) return false;
+        const otherNs = isSource ? edge.targetNamespace : edge.sourceNamespace;
+        return !!otherNs && activeNamespacesSet.has(otherNs);
       });
     }
     return activeNamespacesSet.has(n.namespace || 'default');
@@ -1848,7 +1915,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         ctx.restore();
 
         if (isInfra) {
-          const parsed = parseInfraName(node.serviceName);
+          const parsed = parseInfraName(node.serviceName, node.namespace || 'default');
           const iconSize = 20;
           const iconX = rx + 12;
           const iconY = ry + 12;
@@ -1950,9 +2017,9 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             // Fallback to name-based heuristics if language is not yet detected/populated
             if (!imgKey) {
               const sName = node.serviceName.toLowerCase();
-              if (sName.includes('php') || sName.includes('iam') || sName.includes('gendoc')) {
+              if (sName.includes('php')) {
                 imgKey = 'php';
-              } else if (sName.includes('java') || sName.includes('spring') || sName.includes('boot') || sName.includes('dictionary') || sName.includes('project') || sName.includes('asanpay') || sName.includes('protocol')) {
+              } else if (sName.includes('java') || sName.includes('spring') || sName.includes('boot')) {
                 imgKey = 'java';
               } else if (sName.includes('go') || sName.includes('golang') || sName.includes('gopkg')) {
                 imgKey = 'go';
@@ -2249,12 +2316,17 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
     localStorage.setItem(`service_map_namespaces_${namespace || 'all'}`, JSON.stringify(next));
   };
 
+  // Namespace pills only ever offer namespaces with ingestion enabled in Namespace Manager.
+  const filterableNamespaces = enabledNamespaces
+    ? visibleNamespaces.filter(ns => enabledNamespaces.has(ns))
+    : visibleNamespaces;
+
   const handleToggleAll = () => {
     let next: string[];
-    if (selectedNamespaces.length === visibleNamespaces.length) {
+    if (selectedNamespaces.length === filterableNamespaces.length) {
       next = [];
     } else {
-      next = [...visibleNamespaces];
+      next = [...filterableNamespaces];
     }
     setSelectedNamespaces(next);
     localStorage.setItem(`service_map_namespaces_${namespace || 'all'}`, JSON.stringify(next));
@@ -2264,29 +2336,37 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
 
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '40px' }}>
-      <h1 className="page-title">Service Map</h1>
+      <h1 className="page-title">{t('Service Map')}</h1>
       <p className="page-subtitle">
-        {namespace ? `Service dependencies in ${namespace}` : 'Service dependencies across all namespaces'}
+        {namespace ? t('Service dependencies in {{namespace}}').replace('{{namespace}}', namespace) : t('Service dependencies across all namespaces')}
       </p>
+
+      {namespace && enabledNamespaces && !enabledNamespaces.has(namespace) && (
+        <div className="card" style={{ marginBottom: '16px', borderColor: 'var(--accent-rose)' }}>
+          <div className="card-body" style={{ padding: '14px 18px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+            <strong style={{ color: 'var(--accent-rose)' }}>{t('Ingestion is disabled')}</strong> {t('for')} <code className="mono">{namespace}</code>. {t('Enable it in Namespace Manager to see its service map.')}
+          </div>
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="card" style={{ marginBottom: '16px' }}>
         <div className="card-body" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
           
           {/* Namespace Filter Pills */}
-          {!namespace && visibleNamespaces.length > 0 ? (
+          {!namespace && filterableNamespaces.length > 0 ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginRight: '8px' }}>
-                Filter Namespaces:
+                {t('Filter Namespaces:')}
               </span>
               <button
                 onClick={handleToggleAll}
                 className="btn btn-ghost btn-sm"
                 style={{ padding: '4px 8px', fontSize: '11px', borderRadius: '4px' }}
               >
-                {selectedNamespaces.length === visibleNamespaces.length ? 'Clear All' : 'Select All'}
+                {selectedNamespaces.length === filterableNamespaces.length ? t('Clear All') : t('Select All')}
               </button>
-              {visibleNamespaces.map((ns, idx) => {
+              {filterableNamespaces.map((ns, idx) => {
                 const theme = getColumnTheme(ns, idx, isDarkTheme);
                 const isSelected = selectedNamespaces.includes(ns);
                 return (
@@ -2327,7 +2407,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           {/* Activity / Inactivity Filter */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
             <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
-              Node Activity:
+              {t('Node Activity:')}
             </span>
             <select
               value={activityFilter}
@@ -2353,10 +2433,10 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
                 e.currentTarget.style.background = 'var(--bg-card)';
               }}
             >
-              <option value="all">All (No Pruning)</option>
-              <option value="5m">Active in last 5m</option>
-              <option value="15m">Active in last 15m</option>
-              <option value="1h">Active in last 1h</option>
+              <option value="all">{t('All (No Pruning)')}</option>
+              <option value="5m">{t('Active in last 5m')}</option>
+              <option value="15m">{t('Active in last 15m')}</option>
+              <option value="1h">{t('Active in last 1h')}</option>
             </select>
           </div>
 
@@ -2365,14 +2445,35 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
 
       <div className="card">
         <div className="card-header">
-          <div className="card-title">Service Topology</div>
-          <span className="text-sm text-muted">{activeNodes.length} services</span>
+          <div className="card-title">{t('Service Topology')}</div>
+          <span className="text-sm text-muted">{activeNodes.length} {t('services')}</span>
         </div>
         <div className="card-body" ref={containerRef} style={{ padding: 0, position: 'relative', overflow: 'hidden' }}>
           <canvas
             ref={canvasRef}
             style={{ width: dimensions.width, height: dimensions.height, display: 'block' }}
           />
+
+          {/* Loading / empty overlay — never leave the user guessing */}
+          {(data === null || activeNodes.length === 0) && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', zIndex: 20 }}>
+              {data === null ? (
+                <LoadingState height={220} label={t("Discovering service topology…")} />
+              ) : (
+                <NoDataState
+                  height={220}
+                  title={t("No services discovered yet")}
+                  hint={t("Enable tracing and send traffic to draw the map.")}
+                  icon={
+                    <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="5" cy="6" r="2.2" /><circle cx="19" cy="6" r="2.2" /><circle cx="12" cy="18" r="2.2" />
+                      <path d="M7 7.2 L10.4 16 M17 7.2 L13.6 16 M7.2 6 L16.8 6" strokeDasharray="2.5 3" />
+                    </svg>
+                  }
+                />
+              )}
+            </div>
+          )}
 
           {/* Minimap */}
           {activeNodes.length > 0 && (
@@ -2407,10 +2508,10 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             zIndex: 10,
           }}>
             {[
-              { label: '+', title: 'Zoom In', handler: handleZoomIn },
-              { label: '−', title: 'Zoom Out', handler: handleZoomOut },
-              { label: '⊞', title: 'Fit View', handler: handleFitView },
-              { label: '↺', title: 'Reset', handler: handleReset },
+              { label: '+', title: t('Zoom In'), handler: handleZoomIn },
+              { label: '−', title: t('Zoom Out'), handler: handleZoomOut },
+              { label: '⊞', title: t('Fit View'), handler: handleFitView },
+              { label: '↺', title: t('Reset'), handler: handleReset },
             ].map(btn => (
               <button
                 key={btn.title}
@@ -2510,8 +2611,8 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
                   <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
                 </svg>
               </div>
-              <div className="empty-state-title">No active services visible</div>
-              <div className="empty-state-text">Toggle on namespaces to display service topology</div>
+              <div className="empty-state-title">{t('No active services visible')}</div>
+              <div className="empty-state-text">{t('Toggle on namespaces to display service topology')}</div>
             </div>
           </div>
         </div>
@@ -2632,7 +2733,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
                   textAlign: 'center' 
                 }}
               >
-                Recent Traces
+                {t('Recent Traces')}
               </button>
               <button 
                 className={`drawer-tab-btn ${drawerTab === 'metrics' ? 'active' : ''}`}
@@ -2650,7 +2751,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
                   textAlign: 'center' 
                 }}
               >
-                Info & Topology
+                {t('Info & Topology')}
               </button>
             </div>
 
@@ -2659,16 +2760,16 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
               {drawerTab === 'traces' ? (
                 <div>
                   <h3 style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                    15 Most Recent Transactions
+                    {t('15 Most Recent Transactions')}
                   </h3>
                   
                   {loadingTraces ? (
                     <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '11.5px' }}>
-                      Loading traces...
+                      {t('Loading traces...')}
                     </div>
                   ) : serviceTraces.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '11.5px', border: '1px dashed var(--border-primary)', borderRadius: '8px' }}>
-                      No recent transactions recorded for this service.
+                      {t('No recent transactions recorded for this service.')}
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

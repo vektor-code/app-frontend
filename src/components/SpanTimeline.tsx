@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { type Span, isSpanError } from '../api/client';
+import type { Span } from '../entities';
+import { isSpanError } from '../utils/spanStatus';
 
 export interface DestinationInfo {
   type: 'infra' | '3rdparty' | 'service' | null;

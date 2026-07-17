@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../api/client';
+import { useTranslation } from '../utils/i18n';
+import VektorMark from '../components/VektorMark';
 
 interface LoginProps {
   onLogin: (user: any, token: string) => void;
 }
 
 export default function Login({ onLogin }: LoginProps) {
+  const { t, language, changeLanguage } = useTranslation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'local' | 'ldap'>('ldap');
@@ -14,6 +17,8 @@ export default function Login({ onLogin }: LoginProps) {
   const [isDark, setIsDark] = useState(() => {
     return document.body.classList.contains('dark-theme');
   });
+
+
 
   const toggleTheme = () => {
     if (isDark) {
@@ -37,7 +42,7 @@ export default function Login({ onLogin }: LoginProps) {
       const data = await api.login({ username, password, mode });
       onLogin(data.user, data.token);
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+      setError(err.message || t('Login failed. Please check your credentials.'));
     } finally {
       setLoading(false);
     }
@@ -46,38 +51,41 @@ export default function Login({ onLogin }: LoginProps) {
   return (
     <div className="login-container">
       <div className="login-card animate-fade-in">
-        <button
-          type="button"
-          className="theme-toggle-btn"
-          onClick={toggleTheme}
-          title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-        >
-          {isDark ? (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="5" />
-              <line x1="12" y1="1" x2="12" y2="3" />
-              <line x1="12" y1="21" x2="12" y2="23" />
-              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-              <line x1="1" y1="12" x2="3" y2="12" />
-              <line x1="21" y1="12" x2="23" y2="12" />
-              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-            </svg>
-          ) : (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-            </svg>
-          )}
-        </button>
+        <div style={{ position: 'absolute', top: '24px', right: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
 
-        <div className="login-logo">
-          <span className="logo-text">Trace</span>
+
+          <button
+            type="button"
+            className="theme-toggle-btn"
+            onClick={toggleTheme}
+            title={isDark ? t('Switch to light mode') : t('Switch to dark mode')}
+            style={{ position: 'static', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            {isDark ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="5" />
+                <line x1="12" y1="1" x2="12" y2="3" />
+                <line x1="12" y1="21" x2="12" y2="23" />
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                <line x1="1" y1="12" x2="3" y2="12" />
+                <line x1="21" y1="12" x2="23" y2="12" />
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+              </svg>
+            )}
+          </button>
         </div>
 
-        <h2 className="login-title">Sign in to telemetry platform</h2>
-        <p className="login-subtitle">Enter your credentials below to access the cluster dashboard</p>
+        <div className="login-logo">
+          <div className="login-logo-mark">
+            <VektorMark size={84} />
+          </div>
+        </div>
 
         {/* Auth Mode Tabs */}
         <div className="login-tabs">
@@ -89,7 +97,7 @@ export default function Login({ onLogin }: LoginProps) {
               setError(null);
             }}
           >
-            LDAP Login
+            {t('LDAP')}
           </button>
           <button
             type="button"
@@ -99,7 +107,7 @@ export default function Login({ onLogin }: LoginProps) {
               setError(null);
             }}
           >
-            Local Login
+            {t('Local Admin')}
           </button>
         </div>
 
@@ -112,7 +120,7 @@ export default function Login({ onLogin }: LoginProps) {
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
             <label className="form-label" htmlFor="username">
-              Username
+              {t('Username')}
             </label>
             <input
               type="text"
@@ -120,7 +128,7 @@ export default function Login({ onLogin }: LoginProps) {
               className="form-input"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              placeholder="Enter your username"
+              placeholder={t('Username').toLowerCase()}
               disabled={loading}
               required
             />
@@ -128,7 +136,7 @@ export default function Login({ onLogin }: LoginProps) {
 
           <div className="form-group">
             <label className="form-label" htmlFor="password">
-              Password
+              {t('Password')}
             </label>
             <input
               type="password"
@@ -136,14 +144,14 @@ export default function Login({ onLogin }: LoginProps) {
               className="form-input"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              placeholder="Enter your password"
+              placeholder="••••••••"
               disabled={loading}
               required
             />
           </div>
 
           <button type="submit" className="login-submit" disabled={loading}>
-            {loading ? 'Authenticating...' : 'Sign In'}
+            {loading ? t('Authenticating...') : t('Sign In')}
           </button>
         </form>
       </div>
@@ -193,26 +201,18 @@ export default function Login({ onLogin }: LoginProps) {
           color: var(--text-primary);
         }
         .login-logo {
-          margin-bottom: 24px;
+          display: flex;
+          justify-content: center;
+          margin: 4px 0 26px 0;
         }
-        .logo-text {
-          font-size: 22px;
-          font-weight: 700;
-          letter-spacing: -0.03em;
-          color: var(--text-primary);
+        .login-logo-mark {
+          user-select: none;
+          filter: drop-shadow(0 12px 30px rgba(99, 102, 241, 0.4));
+          animation: logo-float 5s ease-in-out infinite;
         }
-        .login-title {
-          font-size: 20px;
-          font-weight: 600;
-          color: var(--text-primary);
-          margin: 0 0 8px 0;
-          letter-spacing: -0.01em;
-        }
-        .login-subtitle {
-          font-size: 14px;
-          color: var(--text-secondary);
-          margin: 0 0 24px 0;
-          line-height: 1.5;
+        @keyframes logo-float {
+          0%, 100% { transform: translateY(0); filter: drop-shadow(0 12px 30px rgba(99, 102, 241, 0.4)); }
+          50% { transform: translateY(-5px); filter: drop-shadow(0 18px 38px rgba(99, 102, 241, 0.55)); }
         }
         .login-tabs {
           display: flex;

@@ -1,98 +1,22 @@
+import type {
+  ClusterApplication,
+  ClusterInventoryItem,
+  ClusterNamespace,
+  DatabaseQueryMetric,
+  DiagnosticReport,
+  EndpointStat,
+  NamespaceStats,
+  PermissionTemplate,
+  PodMetricInfo,
+  ServiceMapData,
+  ServiceStats,
+  TimeseriesData,
+  Trace,
+  TraceListItem,
+  UserPermission,
+} from '../entities';
+
 const API_BASE = '/api';
-
-export interface Span {
-  traceId: string;
-  spanId: string;
-  parentSpanId?: string;
-  name: string;
-  serviceName: string;
-  namespace: string;
-  podName?: string;
-  nodeName?: string;
-  startTime: string;
-  endTime: string;
-  durationMs: number;
-  status: 'OK' | 'ERROR' | 'UNSET';
-  statusCode?: number;
-  kind: 'SERVER' | 'CLIENT' | 'PRODUCER' | 'CONSUMER' | 'INTERNAL';
-  attributes?: Record<string, string>;
-  events?: SpanEvent[];
-  error?: string;
-}
-
-export interface SpanEvent {
-  name: string;
-  timestamp: string;
-  attributes?: Record<string, string>;
-}
-
-export interface Trace {
-  traceId: string;
-  rootSpan?: Span;
-  spans: Span[];
-  namespace: string;
-  serviceName: string;
-  startTime: string;
-  endTime: string;
-  durationMs: number;
-  spanCount: number;
-  hasError: boolean;
-}
-
-export interface TraceListItem {
-  traceId: string;
-  serviceName: string;
-  namespace: string;
-  rootName: string;
-  startTime: string;
-  durationMs: number;
-  spanCount: number;
-  hasError: boolean;
-  services?: string[];
-  thirdPartyTools?: string[];
-  errorType?: string;
-  errorSummary?: string;
-}
-
-export interface ServiceStats {
-  serviceName: string;
-  namespace: string;
-  requestCount: number;
-  errorCount: number;
-  errorRate: number;
-  p50Ms: number;
-  p95Ms: number;
-  p99Ms: number;
-  lastSeen: string;
-  isInfrastructure?: boolean;
-  language?: string;
-}
-
-export interface NamespaceStats {
-  namespace: string;
-  cluster?: string;
-  traceCount: number;
-  errorCount: number;
-  errorRate: number;
-  avgDurationMs: number;
-  services: ServiceStats[];
-  podCount: number;
-  lastActivity: string;
-}
-
-export interface ServiceMapData {
-  namespace: string;
-  nodes: ServiceStats[];
-  edges: {
-    source: string;
-    target: string;
-    sourceNamespace?: string;
-    targetNamespace?: string;
-    callCount: number;
-    errorCount: number;
-    avgDurationMs: number;
-  }[];
-}
 
 class ApiClient {
   private getHeaders(): HeadersInit {
@@ -145,12 +69,43 @@ class ApiClient {
 
   // Core APIs
   getHealth() { return this.get<{ status: string }>('/health'); }
-  getNamespaces() { return this.get<{ namespaces: string[] }>('/namespaces'); }
+  getNamespaces(cluster?: string) {
+    const qs = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
+    return this.get<{ namespaces: string[] }>(`/namespaces${qs}`);
+  }
   getStats() { return this.get<{ namespaces: NamespaceStats[] }>('/stats'); }
+  getTimeseries(namespace?: string, minutes = 60) {
+    const params = new URLSearchParams();
+    if (namespace) params.set('namespace', namespace);
+    params.set('minutes', String(minutes));
+    return this.get<TimeseriesData>(`/metrics/timeseries?${params.toString()}`);
+  }
   getClusters() { return this.get<{ clusters: string[] }>('/clusters'); }
   getAdminConfig() { return this.get<any>('/admin/config'); }
   updateAdminConfig(config: any) { return this.post<{ success: boolean }>('/admin/config', config); }
-  getNamespaceStatuses() { return this.get<{ enabled: string[]; disabled: string[] }>('/admin/namespaces'); }
+
+  // Users & access control
+  getUsers() { return this.get<{ users: UserPermission[] }>('/admin/users'); }
+  saveUser(user: UserPermission) {
+    return this.request<{ success: boolean }>(`/admin/users/${encodeURIComponent(user.username)}`, {
+      method: 'PUT',
+      body: JSON.stringify(user),
+    });
+  }
+  deleteUser(username: string) {
+    return this.request<{ success: boolean }>(`/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+  }
+  getPermissionTemplates() { return this.get<{ templates: PermissionTemplate[] }>('/admin/permission-templates'); }
+  savePermissionTemplate(template: PermissionTemplate) {
+    return this.post<{ success: boolean }>('/admin/permission-templates', template);
+  }
+  deletePermissionTemplate(name: string) {
+    return this.request<{ success: boolean }>(`/admin/permission-templates/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  }
+  getNamespaceStatuses(cluster?: string) {
+    const qs = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
+    return this.get<{ cluster?: string; enabled: string[]; disabled: string[] }>(`/admin/namespaces${qs}`);
+  }
   getAdminInstrumentations() {
     return this.get<{ instrumentations: { name: string; namespace: string; endpoint: string; sampler: string }[] }>('/admin/instrumentations');
   }
@@ -163,10 +118,55 @@ class ApiClient {
   deleteNamespace(namespace: string) {
     return this.post<{ success: boolean }>('/admin/namespaces/delete', { namespace });
   }
+  getClusterInventory() {
+    return this.get<{ inventory: ClusterInventoryItem[] }>('/admin/clusters/inventory');
+  }
+  saveClusterInventory(inventory: ClusterInventoryItem[]) {
+    return this.post<{ success: boolean }>('/admin/clusters/inventory', { inventory });
+  }
+  testClusterConnection(payload: { id?: string; token: string; credentialType?: string; apiServer?: string }) {
+    return this.post<{ success: boolean; serverVersion?: string; error?: string; message?: string }>('/admin/clusters/test', payload);
+  }
+  deleteCluster(id: string) {
+    return this.request<{ success: boolean }>(`/admin/clusters/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  getClusterNamespaces(clusterId: string) {
+    return this.get<{ cluster: string; namespaces: ClusterNamespace[] }>(`/admin/clusters/${encodeURIComponent(clusterId)}/namespaces`);
+  }
+  getClusterApplications(clusterId: string, namespace: string) {
+    return this.get<{ cluster: string; namespace: string; applications: ClusterApplication[] }>(
+      `/admin/clusters/${encodeURIComponent(clusterId)}/namespaces/${encodeURIComponent(namespace)}/applications`
+    );
+  }
+  toggleApplicationInstrumentation(payload: {
+    clusterId: string;
+    namespace: string;
+    workloadName: string;
+    workloadKind?: string;
+    language?: string;
+    enabled: boolean;
+  }) {
+    return this.post<{ success: boolean }>('/admin/applications/instrumentation/toggle', payload);
+  }
+
+  getRetention() {
+    return this.get<{ retentionHours: number }>('/admin/retention');
+  }
+  updateRetention(retentionHours: number) {
+    return this.post<{ success: boolean; retentionHours: number }>('/admin/retention', { retentionHours });
+  }
+  clearAllTraces() {
+    return this.post<{ success: boolean; deletedCount: number }>('/admin/retention/clear', {});
+  }
 
   getTraces(params?: Record<string, string>) {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
     return this.get<{ traces: TraceListItem[]; total: number }>(`/traces${qs}`);
+  }
+
+  getTopEndpoints(params?: Record<string, string>) {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return this.get<{ endpoints: EndpointStat[]; total: number }>(`/endpoints${qs}`);
   }
 
   getTrace(id: string) { return this.get<Trace>(`/traces/${id}`); }
@@ -189,86 +189,4 @@ class ApiClient {
   }
 }
 
-export interface DiagnosticReport {
-  traceId: string;
-  rootCauseSpanId?: string;
-  rootCauseService?: string;
-  rootCauseMessage?: string;
-  bottleneckSpanId: string;
-  bottleneckService: string;
-  bottleneckDurationMs: number;
-  bottleneckPercent: number;
-  summary: string;
-  issues: string[];
-  remediations: string[];
-}
-
-export interface DatabaseQueryMetric {
-  query: string;
-  system: string;
-  service: string;
-  namespace: string;
-  callCount: number;
-  errorCount: number;
-  errorRate: number;
-  avgDurationMs: number;
-  maxDurationMs: number;
-  recentErrors?: string[];
-}
-
-export interface PodMetricInfo {
-  name: string;
-  namespace: string;
-  nodeName: string;
-  labels: Record<string, string>;
-  phase: string;
-  cpuUsage: number;
-  cpuLimit: number;
-  memoryUsage: number;
-  memoryLimit: number;
-  restartCount: number;
-}
-
 export const api = new ApiClient();
-
-// WebSocket for live streaming
-export function connectLiveStream(
-  namespace: string | undefined,
-  onSpan: (span: Span) => void,
-  onConnect?: () => void,
-  onDisconnect?: () => void
-): () => void {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const nsParam = namespace ? `?namespace=${namespace}` : '';
-  const ws = new WebSocket(`${protocol}//${window.location.host}/ws${nsParam}`);
-
-  ws.onopen = () => onConnect?.();
-  ws.onclose = () => onDisconnect?.();
-  ws.onerror = () => onDisconnect?.();
-  ws.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data);
-      if (msg.type === 'span' && msg.data) {
-        onSpan(msg.data);
-      }
-    } catch {}
-  };
-
-  return () => ws.close();
-}
-
-export function isSpanError(span: any): boolean {
-  if (!span) return false;
-  return (
-    span.status === 'ERROR' ||
-    span.statusCode === 'ERROR' ||
-    span.statusCode === 2 ||
-    span.statusCode === '2' ||
-    !!span.error ||
-    span.attributes?.['error'] === 'true' ||
-    span.attributes?.['error'] === true ||
-    span.attributes?.['failed'] === 'true' ||
-    span.attributes?.['failed'] === true ||
-    (span.events && span.events.some((e: any) => e.name === 'exception'))
-  );
-}

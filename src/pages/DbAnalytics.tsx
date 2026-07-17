@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { api, type DatabaseQueryMetric } from '../api/client';
+import { api } from '../api/client';
+import type { DatabaseQueryMetric } from '../entities';
+import { useTranslation } from '../utils/i18n';
+import TechIcon from '../components/TechIcon';
+import LanguageIcon from '../components/LanguageIcon';
+import { useColumnResize } from '../utils/useColumnResize';
 
 interface DbAnalyticsProps {
   namespace: string;
@@ -128,6 +133,7 @@ function CustomDropdown({
 }
 
 export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
+  const { t } = useTranslation();
   const [metrics, setMetrics] = useState<DatabaseQueryMetric[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -135,44 +141,21 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
   const [selectedService, setSelectedService] = useState('');
   const [services, setServices] = useState<string[]>([]);
   const [systems, setSystems] = useState<string[]>([]);
+  const [serviceLanguages, setServiceLanguages] = useState<Record<string, string>>({});
   const [expandedQuery, setExpandedQuery] = useState<string | null>(null);
 
-  // Column width state for resizable columns
-  const [colWidths, setColWidths] = useState({
-    system: 90,
+  // Resizable columns — drag steals width from the neighbour, keeping the
+  // table within its border.
+  const { widths: colWidths, startResize } = useColumnResize({
+    system: 130,
     query: 300,
-    service: 140,
+    service: 170,
     calls: 70,
     avgLatency: 95,
     slowdown: 110,
     maxLatency: 95,
     errorRate: 85,
   });
-
-  const startResize = (e: React.MouseEvent, col: keyof typeof colWidths) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const startX = e.clientX;
-    const startWidth = colWidths[col];
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const newWidth = Math.max(50, startWidth + (moveEvent.clientX - startX));
-      setColWidths(prev => ({
-        ...prev,
-        [col]: newWidth
-      }));
-    };
-
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'col-resize';
-  };
 
   const loadMetrics = useCallback(async () => {
     try {
@@ -197,6 +180,17 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
   useEffect(() => {
     loadMetrics();
   }, [loadMetrics]);
+
+  // Fetch languages so the Service column can render icons like the Services/Traces pages.
+  useEffect(() => {
+    api.getServices(namespace || undefined).then(data => {
+      const langMap: Record<string, string> = {};
+      (data.services || []).forEach(s => {
+        if (s.language) langMap[s.serviceName] = s.language;
+      });
+      setServiceLanguages(langMap);
+    }).catch(() => {});
+  }, [namespace]);
 
   // Auto-refresh every 5 seconds
   useEffect(() => {
@@ -250,20 +244,20 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
   };
 
   const systemOptions = [
-    { value: '', label: 'All Dialects' },
+    { value: '', label: t('All Dialects') },
     ...systems.map(sys => ({ value: sys, label: sys.toUpperCase() }))
   ];
 
   const serviceOptions = [
-    { value: '', label: 'All Services' },
+    { value: '', label: t('All Services') },
     ...services.map(svc => ({ value: svc, label: svc }))
   ];
 
   return (
     <div className="animate-fade-in">
-      <h1 className="page-title">Query Performance</h1>
+      <h1 className="page-title">{t('Query Performance')}</h1>
       <p className="page-subtitle">
-        Analyze query performance, database engines, and call metrics across all clusters
+        {t('Analyze query performance, database engines, and call metrics across all clusters')}
       </p>
 
       {/* Grid of Key Metrics */}
@@ -280,7 +274,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           overflow: 'hidden'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>Total Calls</span>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>{t('Total Calls')}</span>
             <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-indigo)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
@@ -293,7 +287,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
             <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', lineHeight: 1 }}>
               {totalCalls.toLocaleString()}
             </div>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>Aggregate trace operations</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>{t('Aggregate trace operations')}</span>
           </div>
         </div>
 
@@ -309,7 +303,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           overflow: 'hidden'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>Avg Latency</span>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>{t('Avg Latency')}</span>
             <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"></circle>
@@ -321,7 +315,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
             <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', lineHeight: 1 }}>
               {formatDuration(avgLatency)}
             </div>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>Weighted execution avg</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>{t('Weighted execution avg')}</span>
           </div>
         </div>
 
@@ -337,7 +331,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           overflow: 'hidden'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>Error Rate</span>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>{t('Error Rate')}</span>
             <div style={{ padding: '6px', borderRadius: '8px', background: errorRate > 0 ? 'rgba(244, 63, 94, 0.1)' : 'rgba(16, 185, 129, 0.1)', color: errorRate > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
@@ -350,7 +344,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
             <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: errorRate > 0 ? 'var(--accent-rose)' : 'var(--text-primary)', lineHeight: 1 }}>
               {errorRate.toFixed(2)}%
             </div>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>{totalErrors} failed statements</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>{totalErrors} {t('failed statements')}</span>
           </div>
         </div>
 
@@ -366,7 +360,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           overflow: 'hidden'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>Peak Latency</span>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700, letterSpacing: '0.05em' }}>{t('Peak Latency')}</span>
             <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.1)', color: 'var(--accent-amber)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="12 2 2 22 22 22"></polygon>
@@ -378,7 +372,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
             <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: slowestQuery > 500 ? 'var(--accent-amber)' : 'var(--text-primary)', lineHeight: 1 }}>
               {formatDuration(slowestQuery)}
             </div>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>Peak statement duration</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>{t('Peak statement duration')}</span>
           </div>
         </div>
       </div>
@@ -388,7 +382,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
         <div style={{ flex: '1', minWidth: '240px', position: 'relative' }}>
           <input
             type="text"
-            placeholder="Search query statements..."
+            placeholder={t("Search queries...")}
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             style={{
@@ -428,63 +422,63 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           options={systemOptions}
           value={selectedSystem}
           onChange={setSelectedSystem}
-          placeholder="All Dialects"
+          placeholder={t("All Dialects")}
         />
         <CustomDropdown
           options={serviceOptions}
           value={selectedService}
           onChange={setSelectedService}
-          placeholder="All Services"
+          placeholder={t("All Services")}
         />
         <button className="btn btn-ghost btn-sm" onClick={loadMetrics} style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '36px', padding: '0 14px', borderRadius: '8px' }}>
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M23 4v6h-6M1 20v-6h6" />
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
           </svg>
-          Refresh
+          {t("Refresh")}
         </button>
       </div>
 
       {/* Query Performance Table */}
       <div className="card">
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="card-title">Queries & Operations</div>
-          <span className="text-sm text-muted">{filteredMetrics.length} query patterns active</span>
+          <div className="card-title">{t("Queries & Operations")}</div>
+          <span className="text-sm text-muted">{filteredMetrics.length} {t("query patterns active")}</span>
         </div>
         <div className="table-wrapper" style={{ overflowX: 'auto' }}>
           <table className="db-table" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
             <thead>
               <tr>
                 <th style={{ width: colWidths.system, position: 'relative' }}>
-                  System
+                  {t("System")}
                   <div className="resize-handle" onMouseDown={e => startResize(e, 'system')} />
                 </th>
                 <th style={{ width: colWidths.query, position: 'relative' }}>
-                  Query / Operation
+                  {t("Normalized Query")}
                   <div className="resize-handle" onMouseDown={e => startResize(e, 'query')} />
                 </th>
                 <th style={{ width: colWidths.service, position: 'relative' }}>
-                  Service
+                  {t("Service")}
                   <div className="resize-handle" onMouseDown={e => startResize(e, 'service')} />
                 </th>
                 <th style={{ width: colWidths.calls, textAlign: 'right', position: 'relative' }}>
-                  Calls
+                  {t("Calls")}
                   <div className="resize-handle" onMouseDown={e => startResize(e, 'calls')} />
                 </th>
                 <th style={{ width: colWidths.avgLatency, textAlign: 'right', position: 'relative' }}>
-                  Avg Latency
+                  {t("Avg Latency")}
                   <div className="resize-handle" onMouseDown={e => startResize(e, 'avgLatency')} />
                 </th>
                 <th style={{ width: colWidths.slowdown, position: 'relative' }}>
-                  Slowdown
+                  {t("Slowdown")}
                   <div className="resize-handle" onMouseDown={e => startResize(e, 'slowdown')} />
                 </th>
                 <th style={{ width: colWidths.maxLatency, textAlign: 'right', position: 'relative' }}>
-                  Max Latency
+                  {t("Max Latency")}
                   <div className="resize-handle" onMouseDown={e => startResize(e, 'maxLatency')} />
                 </th>
                 <th style={{ width: colWidths.errorRate, textAlign: 'right', position: 'relative' }}>
-                  Error Rate
+                  {t("Error Rate")}
                   <div className="resize-handle" onMouseDown={e => startResize(e, 'errorRate')} />
                 </th>
               </tr>
@@ -503,15 +497,18 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                       className="hover-row"
                     >
                       <td data-label="System" style={{ width: colWidths.system, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        <span className={`badge ${getSystemBadgeClass(m.system)}`} style={{ fontSize: '10px', fontWeight: 'bold' }}>
-                          {m.system.toUpperCase()}
-                        </span>
+                        <TechIcon name={m.system} showLabel size={18} />
                       </td>
                       <td data-label="Query" style={{ width: colWidths.query, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <code style={{ fontSize: '12px', color: 'var(--text-primary)' }}>{m.query}</code>
                       </td>
                       <td data-label="Service" style={{ width: colWidths.service, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        <span className="badge badge-ns">{m.service}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                          <LanguageIcon language={serviceLanguages[m.service]} size={16} />
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.service}>
+                            {m.service}
+                          </span>
+                        </div>
                       </td>
                       <td data-label="Calls" style={{ width: colWidths.calls, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{m.callCount}</td>
                       <td data-label="Avg Latency" style={{ width: colWidths.avgLatency, textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: '600', color: m.avgDurationMs > 200 ? 'var(--accent-amber)' : 'var(--text-primary)' }}>
@@ -580,7 +577,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                               <div><strong>Service:</strong> {m.service}</div>
                               <div><strong>Namespace:</strong> {m.namespace || 'N/A'}</div>
                               <div><strong>Total Executions:</strong> {m.callCount}</div>
-                              <div><strong>Failures:</strong> {m.errorCount}</div>
+                              <div><strong>{t('Failures:')}</strong> {m.errorCount}</div>
                             </div>
 
                             {m.recentErrors && m.recentErrors.length > 0 && (
@@ -599,7 +596,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                                     <line x1="12" y1="9" x2="12" y2="13"></line>
                                     <line x1="12" y1="17" x2="12.01" y2="17"></line>
                                   </svg>
-                                  Recent Error Messages
+                                  {t('Recent Error Messages')}
                                   <span style={{
                                     background: 'rgba(229, 62, 62, 0.15)',
                                     color: 'var(--accent-rose)',
@@ -653,9 +650,9 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                           <path d="M3 12A9 3 0 0 0 21 12"></path>
                         </svg>
                       </div>
-                      <div className="empty-state-title">No database queries found</div>
+                      <div className="empty-state-title">{t('No database queries found')}</div>
                       <div className="empty-state-text">
-                        No client spans with database tags were captured for {namespace ? `namespace "${namespace}"` : 'any namespace'}.
+                        {t('No client spans with database tags were captured for')} {namespace ? `${t('namespace')} "${namespace}"` : t('any namespace')}.
                       </div>
                     </div>
                   </td>
@@ -791,21 +788,6 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           background: rgba(229, 62, 62, 0.1) !important;
         }
 
-        /* Resizable Column Handles */
-        .resize-handle {
-          position: absolute;
-          right: 0;
-          top: 0;
-          bottom: 0;
-          width: 6px;
-          cursor: col-resize;
-          user-select: none;
-          z-index: 10;
-          transition: background 0.15s;
-        }
-        .resize-handle:hover {
-          background: rgba(99, 102, 241, 0.45) !important;
-        }
       `}</style>
     </div>
   );

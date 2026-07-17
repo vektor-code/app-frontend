@@ -1,19 +1,28 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { Suspense, useState, useEffect, useCallback } from 'react';
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
-import { api, type NamespaceStats } from './api/client';
+import { api } from './api/client';
+import type { NamespaceStats } from './entities';
 import Sidebar from './components/Sidebar';
-import Dashboard from './pages/Dashboard';
-import TraceExplorer from './pages/TraceExplorer';
-import TraceDetail from './pages/TraceDetail';
-import ServiceMap from './pages/ServiceMap';
-import DbAnalytics from './pages/DbAnalytics';
-import LiveStream from './pages/LiveStream';
-import Login from './pages/Login';
-import Dependencies from './pages/Dependencies';
-import Admin from './pages/Admin';
+import { useTranslation } from './utils/i18n';
 
+const Dashboard = React.lazy(() => import('./pages/Dashboard'));
+const TraceExplorer = React.lazy(() => import('./pages/TraceExplorer'));
+const TraceDetail = React.lazy(() => import('./pages/TraceDetail'));
+const ServiceMap = React.lazy(() => import('./pages/ServiceMap'));
+const DbAnalytics = React.lazy(() => import('./pages/DbAnalytics'));
+const LiveStream = React.lazy(() => import('./pages/LiveStream'));
+const Login = React.lazy(() => import('./pages/Login'));
+const Dependencies = React.lazy(() => import('./pages/Dependencies'));
+const Admin = React.lazy(() => import('./pages/Admin'));
+const Alerts = React.lazy(() => import('./pages/Alerts'));
+const Services = React.lazy(() => import('./pages/Services'));
+
+function PageFallback() {
+  return <div style={{ minHeight: '240px' }} />;
+}
 
 export default function App() {
+  const { t } = useTranslation();
   const [authChecking, setAuthChecking] = useState(true);
   const [user, setUser] = useState<any | null>(null);
   const [namespaces, setNamespaces] = useState<NamespaceStats[]>([]);
@@ -24,7 +33,7 @@ export default function App() {
   const [selectedCluster, setSelectedCluster] = useState(() => {
     return localStorage.getItem('selectedCluster') || '';
   });
-  const [clusters, setClusters] = useState<string[]>([]);
+  const [clusters, setClusters] = useState<any[]>([]);
 
   const handleNamespaceChange = useCallback((ns: string) => {
     setSelectedNamespace(ns);
@@ -48,7 +57,6 @@ export default function App() {
     });
   }, []);
 
-  const [connected, setConnected] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const navigate = useNavigate();
 
@@ -80,11 +88,14 @@ export default function App() {
     setUser(null);
   }, []);
 
+  const [statsLoaded, setStatsLoaded] = useState(false);
+
   const loadStats = useCallback(async () => {
     try {
+      const clusterQuery = selectedCluster || undefined;
       const [statsData, nsData, clustersData] = await Promise.all([
         api.getStats(),
-        api.getNamespaces().catch(() => ({ namespaces: [] as string[] })),
+        api.getNamespaces(clusterQuery).catch(() => ({ namespaces: [] as string[] })),
         api.getClusters().catch(() => ({ clusters: [] as string[] })),
       ]);
       const statsNs = statsData.namespaces || [];
@@ -107,11 +118,11 @@ export default function App() {
 
       setNamespaces(statsNs);
       setClusters(clustersData.clusters || []);
-      setConnected(true);
+      setStatsLoaded(true);
     } catch {
-      setConnected(false);
+      setStatsLoaded(true);
     }
-  }, []);
+  }, [selectedCluster]);
 
   useEffect(() => {
     if (!user) return;
@@ -174,7 +185,7 @@ export default function App() {
             fontWeight: 500,
             letterSpacing: '0.02em',
           }}>
-            Authenticating…
+            {t('Authenticating…')}
           </span>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
@@ -184,7 +195,60 @@ export default function App() {
 
   // Show login page when not authenticated
   if (!user) {
-    return <Login onLogin={handleLogin} />;
+    return (
+      <Suspense fallback={<PageFallback />}>
+        <Login onLogin={handleLogin} />
+      </Suspense>
+    );
+  }
+
+  // A non-admin user with zero visible namespaces has not been granted
+  // access yet — show a clear full-page notice instead of empty dashboards.
+  if (statsLoaded && user.role !== 'admin' && namespaces.length === 0) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', width: '100vw', background: 'var(--bg-primary)', padding: '24px' }}>
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '18px',
+          maxWidth: '460px', padding: '48px 44px', borderRadius: '20px',
+          background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)',
+          boxShadow: '0 24px 60px -20px rgba(0, 0, 0, 0.45)',
+        }}>
+          <div style={{
+            width: '72px', height: '72px', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(139, 92, 246, 0.12))',
+            border: '1px solid rgba(99, 102, 241, 0.3)',
+          }}>
+            <svg viewBox="0 0 24 24" width="32" height="32" stroke="var(--accent-indigo, #6366f1)" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          </div>
+          <h1 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
+            {t('No access yet')}
+          </h1>
+          <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>
+            {t('Your account has no namespaces assigned yet.')}
+          </p>
+          <div style={{
+            fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.6,
+            background: 'rgba(99, 102, 241, 0.07)', border: '1px solid rgba(99, 102, 241, 0.2)',
+            borderRadius: '10px', padding: '12px 16px', width: '100%',
+          }}>
+            {t('Contact your DevOps team to request access for')}
+            <span className="mono" style={{ fontFamily: 'var(--font-mono)' }}> {user.username}</span>.
+          </div>
+          <button
+            onClick={handleLogout}
+            style={{
+              marginTop: '4px', padding: '9px 22px', borderRadius: '10px', border: '1px solid var(--border-primary)',
+              background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            {t('Sign out')}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -199,20 +263,21 @@ export default function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={handleToggleSidebar}
         user={user}
+        onLogout={handleLogout}
       />
       <div className="app-main">
         <header className="app-header">
           <div className="header-title">
             {selectedNamespace ? (
-              <><span className="badge badge-ns">{selectedNamespace}</span> Trace Overview</>
+              <><span className="badge badge-ns">{selectedNamespace}</span> {t("Trace Overview")}</>
             ) : (
-              'All Namespaces'
+              t('All Namespaces')
             )}
           </div>
           <div className="header-actions">
             {/* Cluster Selector */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px', position: 'relative' }}>
-              <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-tertiary)' }}>Cluster:</span>
+              <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-tertiary)' }}>{t('Cluster:')}</span>
               <select
                 value={selectedCluster}
                 onChange={(e) => {
@@ -241,16 +306,16 @@ export default function App() {
                 onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--border-secondary)'}
                 onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-primary)'}
               >
-                <option value="">All Clusters</option>
-                {clusters.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                <option value="">{t('All Clusters')}</option>
+                {clusters.map((c: any) => (
+                  <option key={c.name} value={c.name}>{c.displayName || c.name}</option>
                 ))}
               </select>
             </div>
 
             {/* Namespace Selector */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px', position: 'relative' }}>
-              <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-tertiary)' }}>Namespace:</span>
+              <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-tertiary)' }}>{t('Namespace:')}</span>
               <select
                 value={selectedNamespace}
                 onChange={(e) => handleNamespaceChange(e.target.value)}
@@ -275,7 +340,7 @@ export default function App() {
                 onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--border-secondary)'}
                 onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-primary)'}
               >
-                <option value="">All Namespaces</option>
+                <option value="">{t('All Namespaces')}</option>
                 {namespaces
                   .filter(ns => !selectedCluster || ns.cluster === selectedCluster)
                   .map((ns) => (
@@ -285,29 +350,16 @@ export default function App() {
                   ))}
               </select>
             </div>
+
+
+
             <button
-              className="btn btn-ghost"
+              className="header-icon-btn"
               onClick={toggleTheme}
-              style={{
-                borderRadius: '50%',
-                width: '36px',
-                height: '36px',
-                padding: 0,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--text-secondary)',
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border-primary)',
-                boxShadow: 'var(--shadow-sm)',
-                transition: 'all 0.2s',
-              }}
-              title="Toggle Theme"
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              title={isDark ? t('Switch to light mode') : t('Switch to dark mode')}
             >
               {isDark ? (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="5" />
                   <line x1="12" y1="1" x2="12" y2="3" />
                   <line x1="12" y1="21" x2="12" y2="23" />
@@ -319,63 +371,37 @@ export default function App() {
                   <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
                 </svg>
               ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
                 </svg>
               )}
             </button>
-            <div className="header-user" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 14px', background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '20px', fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', boxShadow: 'var(--shadow-sm)' }}>
-              <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-violet) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: 'auto' }}>
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
+            <div className="header-user-chip" title={`${user?.name || user?.username || 'User'}${user?.email ? ` · ${user.email}` : ''}`}>
+              <div className="header-user-avatar">
+                {String(user?.name || user?.username || 'U').trim().split(/\s+/).slice(0, 2).map((w: string) => w[0]?.toUpperCase() || '').join('') || 'U'}
               </div>
-              <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{user?.username || user?.name || 'User'}</span>
+              <div className="header-user-meta">
+                <span className="header-user-name">{user?.name || user?.username || 'User'}</span>
+                <span className="header-user-role">{user?.role === 'admin' ? t('Administrator') : t('Viewer')}</span>
+              </div>
             </div>
-            <button
-              className="btn btn-ghost"
-              onClick={handleLogout}
-              title="Logout"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '13px',
-                color: 'var(--text-secondary, #94a3b8)',
-                opacity: 0.85,
-                transition: 'opacity 0.2s, color 0.2s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.opacity = '1';
-                e.currentTarget.style.color = 'var(--accent-rose, #f43f5e)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.opacity = '0.85';
-                e.currentTarget.style.color = 'var(--text-secondary, #94a3b8)';
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-              Logout
-            </button>
           </div>
         </header>
         <main className="app-content">
-          <Routes>
-             <Route path="/" element={<Dashboard namespaces={namespaces} selectedNamespace={selectedNamespace} onSelectNamespace={handleNamespaceChange} />} />
-            <Route path="/traces" element={<TraceExplorer namespace={selectedNamespace} cluster={selectedCluster} />} />
-            <Route path="/traces/:traceId" element={<TraceDetail />} />
-            <Route path="/servicemap" element={<ServiceMap namespace={selectedNamespace} collapsed={sidebarCollapsed} />} />
-            <Route path="/dependencies" element={<Dependencies namespace={selectedNamespace} />} />
-            <Route path="/database" element={<DbAnalytics namespace={selectedNamespace} />} />
-            <Route path="/live" element={<LiveStream namespace={selectedNamespace} />} />
-            <Route path="/admin" element={user?.role === 'admin' ? <Admin /> : <Navigate to="/" replace />} />
-
-          </Routes>
+          <Suspense fallback={<PageFallback />}>
+            <Routes>
+              <Route path="/" element={<Dashboard namespaces={namespaces} selectedNamespace={selectedNamespace} onSelectNamespace={handleNamespaceChange} />} />
+              <Route path="/services" element={<Services namespace={selectedNamespace} />} />
+              <Route path="/traces" element={<TraceExplorer namespace={selectedNamespace} cluster={selectedCluster} />} />
+              <Route path="/traces/:traceId" element={<TraceDetail />} />
+              <Route path="/servicemap" element={<ServiceMap namespace={selectedNamespace} collapsed={sidebarCollapsed} />} />
+              <Route path="/dependencies" element={<Dependencies namespace={selectedNamespace} />} />
+              <Route path="/database" element={<DbAnalytics namespace={selectedNamespace} />} />
+              <Route path="/live" element={<LiveStream namespace={selectedNamespace} />} />
+              <Route path="/alerts" element={<Alerts namespace={selectedNamespace} />} />
+              <Route path="/admin" element={user?.role === 'admin' ? <Admin /> : <Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </div>

@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { api, type NamespaceStats, type DatabaseQueryMetric } from '../api/client';
+import { api } from '../api/client';
+import type { DatabaseQueryMetric, NamespaceStats, TimeseriesData } from '../entities';
+import { LoadingState, NoDataState } from '../components/DataState';
+import { useTranslation } from '../utils/i18n';
 
 interface DashboardProps {
   namespaces: NamespaceStats[];
@@ -8,7 +11,9 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ namespaces, selectedNamespace, onSelectNamespace }: DashboardProps) {
+  const { t } = useTranslation();
   const [dbMetrics, setDbMetrics] = useState<DatabaseQueryMetric[]>([]);
+  const [timeseries, setTimeseries] = useState<TimeseriesData | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [hoverLatencyIndex, setHoverLatencyIndex] = useState<number | null>(null);
   const [hoverDbIndex, setHoverDbIndex] = useState<number | null>(null);
@@ -29,6 +34,24 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
   useEffect(() => {
     loadDbMetrics();
   }, [loadDbMetrics]);
+
+  // Load real time-series chart data (never mock) and refresh every 30s
+  const loadTimeseries = useCallback(async () => {
+    try {
+      const data = await api.getTimeseries(selectedNamespace || undefined, 60);
+      setTimeseries(data);
+    } catch (err) {
+      console.error('load timeseries:', err);
+      setTimeseries({ buckets: [], serviceErrors: [], windowMinutes: 60 });
+    }
+  }, [selectedNamespace]);
+
+  useEffect(() => {
+    setTimeseries(null); // show loading when switching namespace
+    loadTimeseries();
+    const interval = setInterval(loadTimeseries, 30000);
+    return () => clearInterval(interval);
+  }, [loadTimeseries]);
 
   // Filter namespaces based on selection
   const filteredNamespaces = selectedNamespace
@@ -55,47 +78,27 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
   const avgDbLatency = dbMetrics.length > 0 ? dbMetrics.reduce((sum, q) => sum + q.avgDurationMs, 0) / dbMetrics.length : 0;
   const avgResponseTime = filteredNamespaces.length > 0 ? filteredNamespaces.reduce((a, b) => a + b.avgDurationMs, 0) / filteredNamespaces.length : 0;
 
-  // Generate dynamic time-series datasets that scale with selected namespace
-  const volumeMultiplier = Math.max(0.15, totalTraces / 80);
-  const latencyMultiplier = Math.max(0.2, avgResponseTime / 180);
+  // Real time-series data from ClickHouse — no synthetic curves.
+  const tsLoading = timeseries === null;
+  const buckets = timeseries?.buckets || [];
+  const serviceErrors = timeseries?.serviceErrors || [];
+  const hasChartData = buckets.some(b => b.spans > 0);
 
-  const baseVolumeData = [45, 62, 58, 75, 90, 82, 95, 110, 105, 88, 72, 65];
-  const baseErrorData = [2, 4, 3, 5, 8, 12, 6, 8, 15, 10, 5, 3];
-  
-  const volumeData = baseVolumeData.map(v => Math.round(v * volumeMultiplier));
-  const errorData = baseErrorData.map(e => Math.round(e * volumeMultiplier * (errRate > 0 ? Math.min(2.5, errRate / 10) : 0.4)));
+  const volumeData = buckets.map(b => b.spans);
+  const errorData = buckets.map(b => b.errors);
+  const maxVolume = Math.max(...volumeData.map((v, i) => v + errorData[i]), 1);
 
-  const maxVolume = Math.max(...volumeData.map((v, i) => v + errorData[i])) || 10;
+  const avgLatencyData = buckets.map(b => b.avgMs);
+  const p99LatencyData = buckets.map(b => b.p99Ms);
+  const maxLatency = Math.max(...p99LatencyData, 1);
 
-  const baseAvgLatency = [120, 135, 125, 142, 160, 185, 155, 168, 210, 175, 148, 138];
-  const baseP99Latency = [280, 310, 290, 360, 480, 520, 390, 410, 680, 490, 350, 310];
+  const timeLabels = buckets.map(b => b.label);
 
-  const avgLatencyData = baseAvgLatency.map(l => l * latencyMultiplier);
-  const p99LatencyData = baseP99Latency.map(p => p * latencyMultiplier);
+  const dbVolumeData = buckets.map(b => b.dbCalls);
+  const dbLatencyData = buckets.map(b => b.dbAvgMs);
+  const maxDbVolume = Math.max(...dbVolumeData, 1);
+  const maxDbLatency = Math.max(...dbLatencyData, 1);
 
-  const maxLatency = Math.max(...p99LatencyData) || 100;
-
-  const timeLabels = ['02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '00:00'];
-
-  // DB Analytics chart data
-  const dbVolumeData = volumeData.map(v => Math.round(v * 2.4));
-  const dbLatencyData = avgLatencyData.map(l => l * 0.45);
-  const maxDbVolume = Math.max(...dbVolumeData) || 10;
-  const maxDbLatency = Math.max(...dbLatencyData) || 100;
-
-  // Gather unique services for Error Heatmap
-  const uniqueServices: string[] = [];
-  filteredNamespaces.forEach(ns => {
-    ns.services?.forEach(s => {
-      if (!uniqueServices.includes(s.serviceName)) {
-        uniqueServices.push(s.serviceName);
-      }
-    });
-  });
-  if (uniqueServices.length === 0) {
-    uniqueServices.push('api-backend', 'app-frontend', 'ingestor', 'postgres-db');
-  }
-  
   // Helper to generate coordinates for line/area chart paths
   const getLinePath = (data: number[], width: number, height: number, maxVal: number) => {
     const points = data.map((val, idx) => {
@@ -125,9 +128,9 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
       <div className="visibility-header-bar" style={{ paddingBottom: '12px', borderBottom: '1px solid var(--border-primary)', justifyContent: 'flex-start' }}>
         <div className="visibility-title-container">
           <div className="visibility-breadcrumbs" style={{ fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-            <span className="breadcrumb-parent" style={{ color: 'var(--text-tertiary)' }}>Dashboards</span>
+            <span className="breadcrumb-parent" style={{ color: 'var(--text-tertiary)' }}>{t('Dashboards')}</span>
             <span className="breadcrumb-separator" style={{ margin: '0 8px', color: 'var(--text-muted)' }}>&gt;</span>
-            <span className="breadcrumb-active" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>Telemetry Visibility</span>
+            <span className="breadcrumb-active" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{t('Telemetry Visibility')}</span>
           </div>
         </div>
       </div>
@@ -138,7 +141,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
         <div className="card visibility-gauge-card">
           <div className="card-header" style={{ paddingBottom: 0, justifyContent: 'center' }}>
             <div className="card-title" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-secondary)', textAlign: 'center' }}>
-              Global Health Score
+              {t('Global Health Score')}
             </div>
           </div>
           <div className="gauge-chart-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px 0' }}>
@@ -179,7 +182,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
                   {healthScore.toFixed(1)}%
                 </text>
                 <text x="100" y="125" textAnchor="middle" fill="var(--text-tertiary)" style={{ fontSize: '9px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                  System Health
+                  {t('System Health')}
                 </text>
               </svg>
             </div>
@@ -195,7 +198,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
                 borderRadius: '12px',
                 fontWeight: 700
               }}>
-                {healthScore > 95 ? 'Optimal' : healthScore > 90 ? 'Healthy' : 'Degraded'}
+                {healthScore > 95 ? t('Optimal') : healthScore > 90 ? t('Healthy') : t('Degraded')}
               </span>
             </div>
           </div>
@@ -214,7 +217,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             </div>
             <div className="grid-item-content">
               <div className="grid-item-value">{activeServicesCount}</div>
-              <div className="grid-item-label">Active Services</div>
+              <div className="grid-item-label">{t('Active Services')}</div>
             </div>
           </div>
 
@@ -228,7 +231,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             </div>
             <div className="grid-item-content">
               <div className="grid-item-value">{namespacesCount}</div>
-              <div className="grid-item-label">Namespaces</div>
+              <div className="grid-item-label">{t('Namespaces')}</div>
             </div>
           </div>
 
@@ -240,7 +243,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             </div>
             <div className="grid-item-content">
               <div className="grid-item-value">{formatMetric(totalTraces * 8, 'traces')}</div>
-              <div className="grid-item-label">Total Spans</div>
+              <div className="grid-item-label">{t('Total Spans')}</div>
             </div>
           </div>
 
@@ -255,7 +258,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             </div>
             <div className="grid-item-content">
               <div className="grid-item-value">{totalPods}</div>
-              <div className="grid-item-label">Active Pods</div>
+              <div className="grid-item-label">{t('Active Pods')}</div>
             </div>
           </div>
 
@@ -269,7 +272,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             </div>
             <div className="grid-item-content">
               <div className="grid-item-value">{formatMetric(totalTraces, 'traces')}</div>
-              <div className="grid-item-label">Trace Ingestions</div>
+              <div className="grid-item-label">{t('Trace Ingestions')}</div>
             </div>
           </div>
 
@@ -283,7 +286,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             </div>
             <div className="grid-item-content">
               <div className="grid-item-value" style={{ color: totalErrors > 0 ? 'var(--accent-rose)' : 'inherit' }}>{formatMetric(totalErrors, 'errors')}</div>
-              <div className="grid-item-label">Failed Traces</div>
+              <div className="grid-item-label">{t('Failed Traces')}</div>
             </div>
           </div>
 
@@ -296,7 +299,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             </div>
             <div className="grid-item-content">
               <div className="grid-item-value">{formatMetric(avgResponseTime, 'latency')}</div>
-              <div className="grid-item-label">Avg Response Time</div>
+              <div className="grid-item-label">{t('Avg Response Time')}</div>
             </div>
           </div>
 
@@ -308,7 +311,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             </div>
             <div className="grid-item-content">
               <div className="grid-item-value" style={{ color: 'var(--accent-emerald)' }}>{apdexScore.toFixed(2)}</div>
-              <div className="grid-item-label">Apdex Score</div>
+              <div className="grid-item-label">{t('Apdex Score')}</div>
             </div>
           </div>
 
@@ -322,7 +325,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             </div>
             <div className="grid-item-content">
               <div className="grid-item-value">{formatMetric(dbCalls, 'dbCalls')}</div>
-              <div className="grid-item-label">DB Operations</div>
+              <div className="grid-item-label">{t('DB Operations')}</div>
             </div>
           </div>
 
@@ -338,7 +341,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             </div>
             <div className="grid-item-content">
               <div className="grid-item-value" style={{ color: dbErrors > 0 ? 'var(--accent-rose)' : 'inherit' }}>{formatMetric(dbErrors, 'dbErrors')}</div>
-              <div className="grid-item-label">DB Query Errors</div>
+              <div className="grid-item-label">{t('DB Query Errors')}</div>
             </div>
           </div>
 
@@ -350,7 +353,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             </div>
             <div className="grid-item-content">
               <div className="grid-item-value">{formatMetric(avgDbLatency, 'dbLatency')}</div>
-              <div className="grid-item-label">Mean DB Latency</div>
+              <div className="grid-item-label">{t('Mean DB Latency')}</div>
             </div>
           </div>
 
@@ -365,7 +368,7 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             </div>
             <div className="grid-item-content">
               <div className="grid-item-value">{Math.max(2, filteredNamespaces.length * 2 - 1)}</div>
-              <div className="grid-item-label">System Nodes</div>
+              <div className="grid-item-label">{t('System Nodes')}</div>
             </div>
           </div>
         </div>
@@ -378,23 +381,28 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
         <div className="card visibility-chart-card">
           <div className="chart-header">
             <div>
-              <span className="chart-title-main">Trace Ingestion Volume</span>
-              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>Ingested span throughput</div>
+              <span className="chart-title-main">{t('Trace Ingestion Volume')}</span>
+              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{t('Trace Ingestion Rate')}</div>
             </div>
             <div className="chart-legend">
               <div className="legend-item">
                 <span className="legend-dot" style={{ background: '#6366f1' }} />
-                <span>Success</span>
+                <span>{t('Healthy')}</span>
               </div>
               <div className="legend-item">
                 <span className="legend-dot" style={{ background: '#ef4444' }} />
-                <span>Errors</span>
+                <span>{t('Errors')}</span>
               </div>
             </div>
           </div>
           <div className="chart-svg-container" style={{ position: 'relative' }}>
-            <svg 
-              viewBox="0 0 500 180" 
+            {(tsLoading || !hasChartData) && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', zIndex: 5, borderRadius: '8px' }}>
+                {tsLoading ? <LoadingState height={160} label={t("Loading telemetry…")} /> : <NoDataState height={160} title={t("No traffic in the last hour")} hint={t("Appears once services send traces.")} />}
+              </div>
+            )}
+            <svg
+              viewBox="0 0 500 180"
               className="chart-svg" 
               preserveAspectRatio="none"
               onMouseLeave={() => setHoverIndex(null)}
@@ -443,9 +451,9 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
 
                 return (
                   <g 
-                    key={idx}
-                    onMouseEnter={() => setHoverIndex(idx)}
-                    style={{ cursor: 'pointer' }}
+                     key={idx}
+                     onMouseEnter={() => setHoverIndex(idx)}
+                     style={{ cursor: 'pointer' }}
                   >
                     {/* Background hover guide bar */}
                     <rect 
@@ -527,12 +535,12 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
                 <div className="tooltip-time">{timeLabels[hoverIndex]} UTC</div>
                 <div className="tooltip-row">
                   <span className="tooltip-dot" style={{ background: '#6366f1' }} />
-                  <span className="tooltip-label">Success:</span>
+                  <span className="tooltip-label">{t('Healthy')}:</span>
                   <span className="tooltip-value">{volumeData[hoverIndex]}</span>
                 </div>
                 <div className="tooltip-row">
                   <span className="tooltip-dot" style={{ background: '#ef4444' }} />
-                  <span className="tooltip-label">Errors:</span>
+                  <span className="tooltip-label">{t('Errors')}:</span>
                   <span className="tooltip-value" style={{ color: errorData[hoverIndex] > 0 ? '#ef4444' : 'inherit' }}>{errorData[hoverIndex]}</span>
                 </div>
                 <div className="tooltip-divider" />
@@ -549,23 +557,28 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
         <div className="card visibility-chart-card">
           <div className="chart-header">
             <div>
-              <span className="chart-title-main">Latency & Percentiles</span>
-              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>Response latency trends</div>
+              <span className="chart-title-main">{t('Avg Latency')}</span>
+              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{t('Avg Latency')}</div>
             </div>
             <div className="chart-legend">
               <div className="legend-item">
                 <span style={{ display: 'inline-block', width: '12px', height: '3px', background: '#22d3ee', marginRight: '4px', borderRadius: '1px' }} />
-                <span>Avg (P50)</span>
+                <span>{t('Avg (P50)')}</span>
               </div>
               <div className="legend-item">
                 <span style={{ display: 'inline-block', width: '12px', height: '3px', borderTop: '2px dashed #f59e0b', marginRight: '4px' }} />
-                <span>Tail (P99)</span>
+                <span>{t('Tail (P99)')}</span>
               </div>
             </div>
           </div>
           <div className="chart-svg-container" style={{ position: 'relative' }}>
-            <svg 
-              viewBox="0 0 500 180" 
+            {(tsLoading || !hasChartData) && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', zIndex: 5, borderRadius: '8px' }}>
+                {tsLoading ? <LoadingState height={160} label={t("Loading telemetry…")} /> : <NoDataState height={160} title={t("No traffic in the last hour")} hint={t("Appears once services send traces.")} />}
+              </div>
+            )}
+            <svg
+              viewBox="0 0 500 180"
               className="chart-svg" 
               preserveAspectRatio="none"
               onMouseLeave={() => setHoverLatencyIndex(null)}
@@ -699,23 +712,28 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
         <div className="card visibility-chart-card">
           <div className="chart-header">
             <div>
-              <span className="chart-title-main">Database Operations & Latency</span>
-              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>Query throughput and latency</div>
+              <span className="chart-title-main">{t('Database Operations & Latency')}</span>
+              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{t('Query Performance')}</div>
             </div>
             <div className="chart-legend">
               <div className="legend-item">
                 <span className="legend-dot" style={{ background: '#a78bfa' }} />
-                <span>Queries</span>
+                <span>{t('Queries')}</span>
               </div>
               <div className="legend-item">
                 <span style={{ display: 'inline-block', width: '12px', height: '3px', background: '#10b981', marginRight: '4px', borderRadius: '1px' }} />
-                <span>DB Latency</span>
+                <span>{t('DB Latency')}</span>
               </div>
             </div>
           </div>
           <div className="chart-svg-container" style={{ position: 'relative' }}>
-            <svg 
-              viewBox="0 0 500 180" 
+            {(tsLoading || !hasChartData) && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', zIndex: 5, borderRadius: '8px' }}>
+                {tsLoading ? <LoadingState height={160} label={t("Loading telemetry…")} /> : <NoDataState height={160} title={t("No traffic in the last hour")} hint={t("Appears once services send traces.")} />}
+              </div>
+            )}
+            <svg
+              viewBox="0 0 500 180"
               className="chart-svg" 
               preserveAspectRatio="none"
               onMouseLeave={() => setHoverDbIndex(null)}
@@ -847,12 +865,12 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
                 <div className="tooltip-time">{timeLabels[hoverDbIndex]} UTC</div>
                 <div className="tooltip-row">
                   <span className="tooltip-dot" style={{ background: '#a78bfa' }} />
-                  <span className="tooltip-label">Operations:</span>
-                  <span className="tooltip-value">{dbVolumeData[hoverDbIndex]} queries</span>
+                  <span className="tooltip-label">{t('DB Operations')}:</span>
+                  <span className="tooltip-value">{dbVolumeData[hoverDbIndex]} {t('queries')}</span>
                 </div>
                 <div className="tooltip-row">
                   <span className="tooltip-dot" style={{ background: '#10b981' }} />
-                  <span className="tooltip-label">Avg Latency:</span>
+                  <span className="tooltip-label">{t('Avg Latency')}:</span>
                   <span className="tooltip-value">{dbLatencyData[hoverDbIndex].toFixed(1)} ms</span>
                 </div>
               </div>
@@ -864,18 +882,18 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
         <div className="card visibility-chart-card">
           <div className="chart-header">
             <div>
-              <span className="chart-title-main">Service Error Heatmap</span>
-              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>Error status over the last 24 hours</div>
+              <span className="chart-title-main">{t('Error Rate')}</span>
+              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{t('Error Rate')}</div>
             </div>
             <div className="chart-legend" style={{ gap: '6px' }}>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Healthy</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{t('Healthy')}</span>
               <div style={{ display: 'flex', gap: '2px' }}>
                 <span style={{ width: '10px', height: '10px', background: 'rgba(16, 185, 129, 0.15)', borderRadius: '2px' }} />
                 <span style={{ width: '10px', height: '10px', background: 'rgba(16, 185, 129, 0.45)', borderRadius: '2px' }} />
                 <span style={{ width: '10px', height: '10px', background: '#fbbf24', borderRadius: '2px' }} />
                 <span style={{ width: '10px', height: '10px', background: '#ef4444', borderRadius: '2px' }} />
               </div>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Critical</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{t('Critical')}</span>
             </div>
           </div>
           <div 
@@ -895,40 +913,41 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
               setHeatmapTooltipPos(null);
             }}
           >
-            {uniqueServices.map((svcName, svcIdx) => {
-              // Generate custom error profile per service index
+            {tsLoading && <LoadingState height={130} label="Loading service health…" />}
+            {!tsLoading && serviceErrors.length === 0 && (
+              <NoDataState height={130} title="No service activity" hint="Per-service errors appear once traffic flows." />
+            )}
+            {!tsLoading && serviceErrors.map((svc, svcIdx) => {
+              const svcName = svc.service;
               return (
                 <div key={svcIdx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div 
-                    className="truncate" 
-                    style={{ 
-                      width: '100px', 
-                      fontSize: '11px', 
-                      fontWeight: 600, 
+                  <div
+                    className="truncate"
+                    style={{
+                      width: '100px',
+                      fontSize: '11px',
+                      fontWeight: 600,
                       color: 'var(--text-secondary)',
                       textAlign: 'right'
                     }}
-                    title={svcName}
+                    title={`${svc.namespace}/${svcName}`}
                   >
                     {svcName}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '4px', flex: 1 }}>
                     {timeLabels.map((time, timeIdx) => {
-                      // Determine error cell weight dynamically
-                      const hash = (svcIdx * 7 + timeIdx * 13) % 100;
-                      let cellVal = 0; // healthy
-                      if (errRate > 0) {
-                        if (hash > 88) cellVal = 3; // critical red
-                        else if (hash > 70) cellVal = 2; // warning amber
-                        else if (hash > 35) cellVal = 1; // minor green
-                      } else {
-                        if (hash > 93) cellVal = 1; // minor green
-                      }
+                      // Real per-bucket health: color by error count/rate
+                      const spansInCell = svc.spans[timeIdx] || 0;
+                      const errsInCell = svc.errors[timeIdx] || 0;
+                      const cellErrRate = spansInCell > 0 ? errsInCell / spansInCell : 0;
 
-                      let bg = 'rgba(16, 185, 129, 0.15)';
-                      if (cellVal === 1) bg = 'rgba(16, 185, 129, 0.45)';
-                      if (cellVal === 2) bg = 'rgba(251, 191, 36, 0.85)';
-                      if (cellVal === 3) bg = 'rgba(239, 68, 68, 0.9)';
+                      let bg = 'var(--bg-tertiary)'; // no traffic
+                      if (spansInCell > 0) {
+                        bg = 'rgba(16, 185, 129, 0.18)'; // healthy
+                        if (errsInCell > 0) bg = 'rgba(16, 185, 129, 0.5)'; // minor
+                        if (errsInCell >= 3 || cellErrRate >= 0.05) bg = 'rgba(251, 191, 36, 0.85)'; // degraded
+                        if (errsInCell >= 10 || cellErrRate >= 0.2) bg = 'rgba(239, 68, 68, 0.9)'; // critical
+                      }
 
                       const isCellHovered = hoverHeatmapCell?.svcIdx === svcIdx && hoverHeatmapCell?.timeIdx === timeIdx;
 
@@ -966,23 +985,24 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
               );
             })}
 
-            {/* Hover Tooltip Overlay for Heatmap */}
-            {hoverHeatmapCell !== null && heatmapTooltipPos !== null && (() => {
-              const svcName = uniqueServices[hoverHeatmapCell.svcIdx];
-              const time = timeLabels[hoverHeatmapCell.timeIdx];
-              const hash = (hoverHeatmapCell.svcIdx * 7 + hoverHeatmapCell.timeIdx * 13) % 100;
-              let cellStatus = 'Optimal';
-              let count = 0;
-              if (errRate > 0) {
-                if (hash > 88) { cellStatus = 'Critical'; count = Math.round(hash / 8); }
-                else if (hash > 70) { cellStatus = 'Degraded'; count = Math.round(hash / 15); }
-                else if (hash > 35) { cellStatus = 'Minor errors'; count = 1; }
-              } else {
-                if (hash > 93) { cellStatus = 'Minor anomalies'; count = 1; }
+            {/* Hover Tooltip Overlay for Heatmap (real per-bucket counts) */}
+            {hoverHeatmapCell !== null && heatmapTooltipPos !== null && serviceErrors[hoverHeatmapCell.svcIdx] && (() => {
+              const svc = serviceErrors[hoverHeatmapCell.svcIdx];
+              const time = timeLabels[hoverHeatmapCell.timeIdx] || '';
+              const spansInCell = svc.spans[hoverHeatmapCell.timeIdx] || 0;
+              const errsInCell = svc.errors[hoverHeatmapCell.timeIdx] || 0;
+              const cellErrRate = spansInCell > 0 ? (errsInCell / spansInCell) * 100 : 0;
+
+              let cellStatus = 'No traffic';
+              if (spansInCell > 0) {
+                cellStatus = 'Healthy';
+                if (errsInCell > 0) cellStatus = 'Minor errors';
+                if (errsInCell >= 3 || cellErrRate >= 5) cellStatus = 'Degraded';
+                if (errsInCell >= 10 || cellErrRate >= 20) cellStatus = 'Critical';
               }
 
               return (
-                <div 
+                <div
                   className="chart-tooltip animate-fade-in"
                   style={{
                     position: 'absolute',
@@ -992,22 +1012,26 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
                     pointerEvents: 'none',
                   }}
                 >
-                  <div className="tooltip-time">{svcName} @ {time} UTC</div>
+                  <div className="tooltip-time">{svc.service} @ {time}</div>
                   <div className="tooltip-row">
-                    <span className="tooltip-label">Status:</span>
-                    <span 
-                      className="tooltip-value" 
-                      style={{ 
-                        color: cellStatus === 'Critical' ? '#ef4444' : cellStatus === 'Degraded' ? '#fbbf24' : '#10b981',
+                    <span className="tooltip-label">{t('Status')}:</span>
+                    <span
+                      className="tooltip-value"
+                      style={{
+                        color: cellStatus === 'Critical' ? '#ef4444' : cellStatus === 'Degraded' ? '#fbbf24' : cellStatus === 'No traffic' ? 'var(--text-muted)' : '#10b981',
                         fontWeight: 700
                       }}
                     >
-                      {cellStatus}
+                      {t(cellStatus)}
                     </span>
                   </div>
                   <div className="tooltip-row">
-                    <span className="tooltip-label">Error Rate:</span>
-                    <span className="tooltip-value">{count > 0 ? `${(count * 1.5).toFixed(1)}%` : '0.00%'}</span>
+                    <span className="tooltip-label">{t('Spans')}:</span>
+                    <span className="tooltip-value">{spansInCell.toLocaleString()}</span>
+                  </div>
+                  <div className="tooltip-row">
+                    <span className="tooltip-label">{t('Errors')}:</span>
+                    <span className="tooltip-value" style={{ color: errsInCell > 0 ? '#ef4444' : undefined }}>{errsInCell.toLocaleString()} ({cellErrRate.toFixed(1)}%)</span>
                   </div>
                 </div>
               );

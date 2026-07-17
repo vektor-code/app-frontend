@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, type Trace, type Span, type DiagnosticReport, isSpanError } from '../api/client';
+import { api } from '../api/client';
+import type { DiagnosticReport, Span, Trace } from '../entities';
+import { isSpanError } from '../utils/spanStatus';
+import { useTranslation } from '../utils/i18n';
 import { createPortal } from 'react-dom';
 import SpanTimeline, { getSpanDestination } from '../components/SpanTimeline';
+import { explainSpanError } from '../utils/errorAnalysis';
 
 const SERVICE_COLORS: Record<string, string> = {};
 const PALETTE = [
@@ -792,6 +796,7 @@ function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan }: Flam
 interface TopologyNode {
   id: string;
   name: string;
+  namespace?: string;
   type: 'service' | 'infra' | '3rdparty';
   errorCount: number;
   durationMs: number;
@@ -812,24 +817,27 @@ interface TopologyEdge {
 }
 
 const TOPO_ICONS: Record<string, string> = {
-  redis: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/redis/redis-original.svg',
-  kafka: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/apachekafka/apachekafka-original.svg',
-  rabbitmq: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/rabbitmq/rabbitmq-original.svg',
-  vault: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/vault/vault-original.svg',
-  elasticsearch: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/elasticsearch/elasticsearch-original.svg',
-  minio: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/minio/minio-original.svg',
-  postgres: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/postgresql/postgresql-original.svg',
-  mysql: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mysql/mysql-original.svg',
-  mongodb: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mongodb/mongodb-original.svg',
-  liquibase: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/liquibase/liquibase-original.svg',
-  nginx: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nginx/nginx-original.svg',
-  kong: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/kong.svg',
+  redis: '/logos/redis.svg',
+  kafka: '/logos/kafka.svg',
+  rabbitmq: '/logos/rabbitmq.svg',
+  vault: '/logos/vault.svg',
+  elasticsearch: '/logos/elasticsearch.svg',
+  minio: '/logos/minio.svg',
+  postgres: '/logos/postgres.svg',
+  mysql: '/logos/mysql.svg',
+  mongodb: '/logos/mongodb.svg',
+  liquibase: '/logos/liquibase.svg',
+  nginx: '/logos/nginx.svg',
+  kong: '/logos/kong.svg',
   mygov: '/mygov-id.svg',
   vm: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linux.svg',
   bridge: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linkerd.svg',
   frontend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg',
   backend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg',
-  clickhouse: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/clickhouse/clickhouse-original.svg',
+  clickhouse: '/logos/clickhouse.svg',
+  apm: '/logos/apm.svg',
+  dns: '/logos/dns.svg',
+  database: '/logos/database.svg',
   // Technology language backends
   go: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg',
   php: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/php/php-original.svg',
@@ -844,10 +852,14 @@ const TOPO_ICONS: Record<string, string> = {
 const getServiceLanguage = (serviceName: string, serviceSpans: Span[]): string => {
   const sName = serviceName.toLowerCase();
   if (sName.includes('php')) return 'php';
-  if (sName.includes('java') || sName.includes('spring') || sName.includes('boot')) return 'java';
+  if (
+    sName.includes('java') || 
+    sName.includes('spring') || 
+    sName.includes('boot')
+  ) return 'java';
   if (sName.includes('go') || sName.includes('golang') || sName.includes('gopkg')) return 'go';
-  if (sName.includes('node') || sName.includes('express') || sName.includes('nestjs') || sName.includes('javascript') || sName.includes('typescript')) return 'node';
-  if (sName.includes('python') || sName.includes('django') || sName.includes('flask') || sName.includes('fastapi')) return 'python';
+  if (sName.includes('node') || sName.includes('express') || sName.includes('nestjs') || sName.includes('javascript') || sName.includes('typescript') || sName.includes('external')) return 'node';
+  if (sName.includes('python') || sName.includes('django') || sName.includes('flask') || sName.includes('fastapi') || sName.includes('adapter')) return 'python';
   if (sName.includes('dotnet') || sName.includes('csharp') || sName.includes('aspnet')) return 'dotnet';
   if (sName.includes('ruby') || sName.includes('rails')) return 'ruby';
   if (sName.includes('rust')) return 'rust';
@@ -868,32 +880,92 @@ const getServiceLanguage = (serviceName: string, serviceSpans: Span[]): string =
       }
     }
   }
-  return 'go';
+  return 'unknown';
 };
 
 const getTopoIconKey = (name: string, spans: Span[] = []): string => {
   const n = name.toLowerCase();
-  if (n.includes('frontend') || n.includes('ui') || n.includes('client')) return 'frontend';
-  if (n.includes('postgres')) return 'postgres';
-  if (n.includes('mysql')) return 'mysql';
+
+  // 1. Check if it's a frontend service
+  if (n.includes('frontend') || n.includes('ui') || n.includes('client')) {
+    return 'frontend';
+  }
+
+  // 2. Check if it's a known database / infrastructure system
+  if (n.includes('mygov')) return 'mygov';
   if (n.includes('redis')) return 'redis';
   if (n.includes('kafka')) return 'kafka';
   if (n.includes('rabbitmq') || n.includes('message_bus')) return 'rabbitmq';
-  if (n.includes('minio')) return 'minio';
-  if (n.includes('clickhouse')) return 'clickhouse';
-  if (n.includes('mongo')) return 'mongodb';
+  if (n.includes('apm')) return 'apm';
   if (n.includes('vault')) return 'vault';
   if (n.includes('elastic')) return 'elasticsearch';
+  if (n.includes('minio')) return 'minio';
+  if (n.includes('postgres') || n.includes('postgresql')) return 'postgres';
+  if (n.includes('mysql')) return 'mysql';
+  if (n.includes('mongo') || n.includes('mongodb')) return 'mongodb';
+  if (n.includes('liqui') || n.includes('liquid') || n.includes('liquibase')) return 'liquibase';
   if (n.includes('nginx')) return 'nginx';
   if (n.includes('kong')) return 'kong';
-  if (n.includes('mygov')) return 'mygov';
-  if (n.includes('vm')) return 'vm';
+  if (n.includes('clickhouse')) return 'clickhouse';
+  if (n.includes('dns')) return 'dns';
+  if (n.includes('database') || n.includes('db')) return 'database';
+  if (n.includes('vm') || n.includes('virtual machine') || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(n)) return 'vm';
   if (n.includes('bridge') || n.includes('gov.az')) return 'bridge';
-  
-  if (n.includes('api') || n.includes('ingestor') || n.includes('agent') || n.includes('backend') || n.includes('service') || spans.length > 0) {
-    return getServiceLanguage(name, spans);
+
+  // 3. Dynamic lookup: Scan spans of this service to find dynamic language
+  let detectedLang = '';
+  for (const span of spans) {
+    if (span.serviceName === name && span.attributes) {
+      const lang = span.attributes['telemetry.sdk.language'] || span.attributes['process.runtime.name'];
+      if (lang) {
+        const l = lang.toLowerCase();
+        if (l.includes('go') || l.includes('golang')) detectedLang = 'go';
+        else if (l.includes('php')) detectedLang = 'php';
+        else if (l.includes('java') || l.includes('jvm')) detectedLang = 'java';
+        else if (l.includes('node') || l.includes('javascript') || l.includes('typescript') || l.includes('js')) detectedLang = 'node';
+        else if (l.includes('python')) detectedLang = 'python';
+        else if (l.includes('dotnet') || l.includes('c#') || l.includes('csharp')) detectedLang = 'dotnet';
+        else if (l.includes('ruby')) detectedLang = 'ruby';
+        else if (l.includes('rust')) detectedLang = 'rust';
+      }
+    }
   }
-  return '';
+
+  if (detectedLang) {
+    return detectedLang;
+  }
+
+  // 4. Name-based heuristics fallback
+  if (n.includes('php')) return 'php';
+  if (n.includes('java') || n.includes('spring') || n.includes('boot')) return 'java';
+  if (n.includes('go') || n.includes('golang') || n.includes('gopkg')) return 'go';
+  if (n.includes('node') || n.includes('express') || n.includes('nestjs') || n.includes('javascript') || n.includes('typescript') || n.includes('external')) return 'node';
+  if (n.includes('python') || n.includes('django') || n.includes('flask') || n.includes('fastapi') || n.includes('adapter')) return 'python';
+  if (n.includes('dotnet') || n.includes('csharp') || n.includes('aspnet')) return 'dotnet';
+  if (n.includes('ruby') || n.includes('rails')) return 'ruby';
+  if (n.includes('rust')) return 'rust';
+
+  // 5. Default fallback to backend (go) as in ServiceMap
+  return 'backend';
+};
+
+const getNamespaceColor = (namespace: string): string => {
+  const colors = [
+    '#6366f1', // Indigo
+    '#10b981', // Emerald
+    '#f59e0b', // Amber
+    '#ec4899', // Pink
+    '#8b5cf6', // Violet
+    '#06b6d4', // Cyan
+    '#f43f5e', // Rose
+    '#3b82f6', // Blue
+  ];
+  let hash = 0;
+  for (let i = 0; i < namespace.length; i++) {
+    hash = namespace.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % colors.length;
+  return colors[index];
 };
 
 function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (span: Span) => void }) {
@@ -918,13 +990,15 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
     const spanMap = new Map(spans.map(s => [s.spanId, s]));
 
     spans.forEach(span => {
-      const svcId = `svc:${span.serviceName}`;
+      const namespace = span.namespace || 'default';
+      const svcId = `svc:${namespace}/${span.serviceName}`;
       const isErr = isSpanError(span);
 
       if (!nodeMap.has(svcId)) {
         nodeMap.set(svcId, { 
           id: svcId, 
           name: span.serviceName, 
+          namespace: namespace,
           type: 'service', 
           errorCount: 0, 
           durationMs: 0, 
@@ -946,9 +1020,21 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
       if (span.kind !== 'SERVER') {
         const dest = getSpanDestination(span);
         if (dest.type && dest.type !== 'service') {
-          const destId = `${dest.type}:${dest.name}`;
-          if (!nodeMap.has(destId)) {
-            nodeMap.set(destId, { id: destId, name: dest.name, type: dest.type === 'infra' ? 'infra' : '3rdparty', errorCount: 0, durationMs: 0, callCount: 0, spanIds: [], x: 0, y: 0 });
+          const destId = `${dest.type}:${namespace}/${dest.name}`;
+           if (!nodeMap.has(destId)) {
+            nodeMap.set(destId, { 
+              id: destId, 
+              name: dest.name, 
+              namespace: namespace,
+              type: dest.type === 'infra' ? 'infra' : '3rdparty', 
+              errorCount: 0, 
+              durationMs: 0, 
+              callCount: 0, 
+              spanIds: [], 
+              x: 0, 
+              y: 0,
+              iconKey: getTopoIconKey(dest.name, spans)
+            });
           }
           const destNode = nodeMap.get(destId)!;
           if (isErr) destNode.errorCount++;
@@ -969,8 +1055,9 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
 
       if (span.parentSpanId) {
         const parent = spanMap.get(span.parentSpanId);
-        if (parent && parent.serviceName !== span.serviceName) {
-          const pId = `svc:${parent.serviceName}`;
+        if (parent && (parent.serviceName !== span.serviceName || parent.namespace !== span.namespace)) {
+          const pNs = parent.namespace || 'default';
+          const pId = `svc:${pNs}/${parent.serviceName}`;
           const cId = svcId;
           const eId = `${pId}->${cId}`;
           if (!edgeMap.has(eId)) {
@@ -1043,6 +1130,42 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
     });
   }, [nodes, layoutPositions, nodePositions]);
 
+  // Compute bounding boxes for each namespace zone
+  const namespaceZones = useMemo(() => {
+    const groups: Record<string, typeof finalNodes> = {};
+    finalNodes.forEach(node => {
+      const ns = node.namespace || 'default';
+      if (!groups[ns]) groups[ns] = [];
+      groups[ns].push(node);
+    });
+
+    return Object.entries(groups).map(([ns, nsNodes]) => {
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+
+      nsNodes.forEach(node => {
+        if (node.x < minX) minX = node.x;
+        if (node.x > maxX) maxX = node.x;
+        if (node.y < minY) minY = node.y;
+        if (node.y > maxY) maxY = node.y;
+      });
+
+      // Bounding box padding
+      const paddingX = 90;
+      const paddingY = 40;
+
+      return {
+        namespace: ns,
+        x: minX - paddingX,
+        y: minY - paddingY,
+        width: (maxX - minX) + paddingX * 2,
+        height: (maxY - minY) + paddingY * 2,
+      };
+    });
+  }, [finalNodes]);
+
   const handleMouseDownNode = (e: React.MouseEvent, nodeId: string) => {
     e.stopPropagation();
     e.preventDefault();
@@ -1113,9 +1236,9 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
       style={{ 
         position: 'relative', 
         width: '100%', 
-        background: 'var(--bg-secondary)', 
+        background: '#090d16', 
         borderRadius: '12px', 
-        border: '1px solid var(--border-primary)', 
+        border: '1px solid rgba(99, 102, 241, 0.15)', 
         overflow: 'hidden', 
         minHeight: '420px',
         cursor: isPanning ? 'grabbing' : 'grab'
@@ -1135,9 +1258,9 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
           display: 'flex', 
           gap: '6px', 
           zIndex: 10,
-          background: 'rgba(15, 23, 42, 0.6)',
+          background: 'rgba(15, 23, 42, 0.75)',
           backdropFilter: 'blur(12px)',
-          border: '1px solid var(--border-primary)',
+          border: '1px solid rgba(99, 102, 241, 0.2)',
           borderRadius: '8px',
           padding: '4px'
         }}
@@ -1145,21 +1268,21 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
       >
         <button 
           onClick={() => setZoom(z => Math.min(z * 1.15, 3))}
-          style={{ width: '28px', height: '28px', border: 'none', background: 'transparent', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: '6px', transition: 'all 0.2s' }}
+          style={{ width: '28px', height: '28px', border: 'none', background: 'transparent', color: '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: '6px', transition: 'all 0.2s' }}
           title="Zoom In"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         </button>
         <button 
           onClick={() => setZoom(z => Math.max(z / 1.15, 0.4))}
-          style={{ width: '28px', height: '28px', border: 'none', background: 'transparent', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: '6px', transition: 'all 0.2s' }}
+          style={{ width: '28px', height: '28px', border: 'none', background: 'transparent', color: '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: '6px', transition: 'all 0.2s' }}
           title="Zoom Out"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         </button>
         <button 
           onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setNodePositions({}); }}
-          style={{ padding: '0 8px', height: '28px', border: 'none', background: 'transparent', color: 'var(--text-secondary)', fontSize: '11px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: '6px', transition: 'all 0.2s' }}
+          style={{ padding: '0 8px', height: '28px', border: 'none', background: 'transparent', color: '#94a3b8', fontSize: '11px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: '6px', transition: 'all 0.2s' }}
           title="Reset layout and zoom"
         >
           Reset
@@ -1168,8 +1291,11 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
 
       <svg viewBox="0 0 840 380" style={{ width: '100%', height: '100%', display: 'block', minHeight: '380px' }}>
         <defs>
+          <pattern id="topo-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1" fill="rgba(255, 255, 255, 0.08)" />
+          </pattern>
           <marker id="topo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 2 L 10 5 L 0 8 z" fill="var(--text-muted)" opacity="0.6" />
+            <path d="M 0 2 L 10 5 L 0 8 z" fill="#6366f1" opacity="0.8" />
           </marker>
           <marker id="topo-arrow-err" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
             <path d="M 0 2 L 10 5 L 0 8 z" fill="#f43f5e" />
@@ -1180,7 +1306,45 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
           </filter>
         </defs>
 
+        {/* Dynamic Grid Background */}
+        <rect x="-5000" y="-5000" width="10000" height="10000" fill="url(#topo-grid)" />
+
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+          {/* Namespace Zones */}
+          {namespaceZones.map(zone => {
+            const nsColor = getNamespaceColor(zone.namespace);
+            return (
+              <g key={`zone-${zone.namespace}`}>
+                <rect
+                  x={zone.x}
+                  y={zone.y}
+                  width={zone.width}
+                  height={zone.height}
+                  rx="12"
+                  ry="12"
+                  fill={`${nsColor}05`}
+                  stroke={nsColor}
+                  strokeWidth="1.5"
+                  strokeDasharray="4 4"
+                />
+                <text
+                  x={zone.x + 12}
+                  y={zone.y + 22}
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                    fill: nsColor,
+                    fontFamily: 'var(--font-mono, monospace)',
+                    letterSpacing: '0.5px',
+                    opacity: 0.85
+                  }}
+                >
+                  {zone.namespace.toUpperCase()} ZONE
+                </text>
+              </g>
+            );
+          })}
+
           {/* Edges */}
           {edges.map(edge => {
             const src = finalNodes.find(n => n.id === edge.source);
@@ -1211,8 +1375,19 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
                 <circle r="3" fill={edge.hasError ? '#f43f5e' : '#818cf8'} opacity="0.8">
                   <animateMotion dur="3s" repeatCount="indefinite" path={pathD} />
                 </circle>
-                <foreignObject x={mx - 36} y={(y1 + y2) / 2 - 10} width="72" height="20" style={{ pointerEvents: 'none' }}>
-                  <div style={{ background: 'rgba(15, 23, 42, 0.88)', border: '1px solid rgba(148, 163, 184, 0.15)', borderRadius: '4px', fontSize: '8.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', textAlign: 'center', lineHeight: '18px' }}>
+                <foreignObject x={mx - 45} y={(y1 + y2) / 2 - 12} width="90" height="24" style={{ pointerEvents: 'none' }}>
+                  <div style={{ 
+                    background: '#131a26', 
+                    border: '1px solid rgba(99, 102, 241, 0.4)', 
+                    borderRadius: '6px', 
+                    fontSize: '9.5px', 
+                    fontFamily: 'var(--font-mono, monospace)', 
+                    fontWeight: 'bold',
+                    color: '#fbbf24', 
+                    textAlign: 'center', 
+                    lineHeight: '22px',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.5)'
+                  }}>
                     x{edge.callCount} · {formatDuration(edge.avgDurationMs)}
                   </div>
                 </foreignObject>
@@ -1236,7 +1411,7 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
                 onMouseLeave={() => setHoveredNode(null)}
               >
                 <rect x="-70" y="-24" width="140" height="48" rx="10" ry="10"
-                  fill="var(--bg-primary, #0f172a)"
+                  fill="#131b2e"
                   stroke={borderCol}
                   strokeWidth={isHov || hasErr ? 2 : 1.2}
                   filter={hasErr ? 'url(#glow-err)' : undefined}
@@ -1247,7 +1422,9 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
                   const iconKey = node.iconKey || getTopoIconKey(node.name, spans);
                   const iconUrl = iconKey ? TOPO_ICONS[iconKey] : '';
                   return iconUrl ? (
-                    <image href={iconUrl} x="-58" y="-12" width="24" height="24" />
+                    <foreignObject x="-58" y="-12" width="24" height="24">
+                      <img src={iconUrl} alt={node.name} style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
+                    </foreignObject>
                   ) : (
                     <text x="-56" y="5" style={{ fontSize: '15px', userSelect: 'none' }}>
                       ⚙️
@@ -1255,11 +1432,11 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
                   );
                 })()}
                 {/* Name */}
-                <text x={node.iconKey || getTopoIconKey(node.name, spans) ? "-26" : "-34"} y="-5" style={{ fontSize: '10.5px', fontWeight: 700, fill: 'var(--text-primary)', fontFamily: 'var(--font-sans)', pointerEvents: 'none' }}>
+                <text x={node.iconKey || getTopoIconKey(node.name, spans) ? "-26" : "-34"} y="-5" style={{ fontSize: '10.5px', fontWeight: 700, fill: '#f8fafc', fontFamily: 'var(--font-sans)', pointerEvents: 'none' }}>
                   {node.name.length > 14 ? `${node.name.slice(0, 12)}…` : node.name}
                 </text>
                 {/* Duration */}
-                <text x={node.iconKey || getTopoIconKey(node.name, spans) ? "-26" : "-34"} y="12" style={{ fontSize: '9.5px', fontWeight: 500, fill: hasErr ? '#f43f5e' : 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', pointerEvents: 'none' }}>
+                <text x={node.iconKey || getTopoIconKey(node.name, spans) ? "-26" : "-34"} y="12" style={{ fontSize: '9.5px', fontWeight: 500, fill: hasErr ? '#f43f5e' : '#94a3b8', fontFamily: 'var(--font-mono)', pointerEvents: 'none' }}>
                   {formatDuration(node.durationMs)} · x{node.callCount}
                 </text>
                 {/* Error badge */}
@@ -1393,190 +1570,120 @@ interface PayloadDetails {
   };
 }
 
-function getSpanPayloadDetails(span: Span, traceDuration: number): PayloadDetails {
+// getSpanPayloadDetails extracts ONLY real, captured telemetry from the span
+// attributes — no fabricated payloads. When instrumentation did not record a
+// body (the common case for auto-instrumentation), the UI says so honestly.
+function getSpanPayloadDetails(span: Span, _traceDuration: number): PayloadDetails {
   const attrs = span.attributes || {};
   const dbSystem = attrs['db.system'] || attrs['db.type'];
-  const dbStatement = attrs['db.statement'] || attrs['db.query'] || (span.name.includes('SELECT') || span.name.includes('INSERT') || span.name.includes('UPDATE') || span.name.includes('DELETE') ? span.name : '');
-  
+  const dbStatement = attrs['db.statement'] || attrs['db.query'] || '';
+
+  const parseMaybeJson = (raw: string | undefined | null): any => {
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return raw; }
+  };
+
   if (dbSystem || dbStatement) {
-    let stmt = dbStatement || 'SELECT * FROM users WHERE id = $1 LIMIT 1;';
+    let parameters: any = null;
+    if (attrs['db.query.parameters']) {
+      parameters = parseMaybeJson(attrs['db.query.parameters']);
+    }
+    const rows = attrs['db.response.returned_rows'] || attrs['db.rows_affected'] || '';
     return {
       type: 'db',
       title: `${dbSystem || 'Database'} Client Query`,
       request: {
-        method: 'QUERY',
-        url: attrs['db.name'] || 'postgres-db',
-        statement: stmt,
-        parameters: attrs['db.query.parameters'] ? JSON.parse(attrs['db.query.parameters']) : ['item-102']
+        method: (attrs['db.operation'] || attrs['db.operation.name'] || 'QUERY').toUpperCase(),
+        url: attrs['db.name'] || attrs['db.namespace'] || String(dbSystem || 'database'),
+        statement: dbStatement || undefined,
+        parameters,
       },
       response: {
         status: span.status === 'ERROR' ? 'FAILED' : 'SUCCESS',
-        body: span.status === 'ERROR' ? { error: span.error || 'Query failed' } : [
-          { id: 'item-102', name: 'Premium Cloud Widget', sku: 'WIDG-9988', stock: 45, price: 64.99, updated_at: '2026-06-25T10:14:29Z' }
-        ]
+        body: span.status === 'ERROR' && span.error ? { error: span.error } : null,
+        result: rows ? `${rows} rows` : undefined,
       },
       contextPropagation: {
         carrier: 'none',
-        currentSpanId: span.spanId
-      }
+        currentSpanId: span.spanId,
+      },
     };
   }
 
-  const httpMethod = attrs['http.method'] || attrs['http.request.method'] || (span.kind === 'SERVER' || span.kind === 'CLIENT' ? 'POST' : 'GET');
-  const httpUrl = attrs['http.url'] || attrs['http.request.url'] || attrs['http.target'] || '/api/v1/checkout';
+  const httpMethod = attrs['http.request.method'] || attrs['http.method'] || span.kind;
+  let httpUrl = attrs['url.full'] || attrs['http.url'] || '';
+  if (!httpUrl) {
+    const host = attrs['server.address'] || attrs['net.peer.name'] || attrs['http.host'] || '';
+    const target = attrs['url.path'] || attrs['http.target'] || attrs['http.route'] || '';
+    httpUrl = host ? `${attrs['url.scheme'] || 'http'}://${host}${target}` : (target || span.name);
+  }
+
+  // Real headers only: OTel-captured header attributes plus metadata the
+  // instrumentation actually recorded.
+  const reqHeaders: Record<string, string> = {};
+  Object.entries(attrs).forEach(([k, v]) => {
+    if (k.startsWith('http.request.header.')) {
+      reqHeaders[k.slice('http.request.header.'.length).replace(/_/g, '-')] = String(v);
+    }
+  });
+  const ua = attrs['user_agent.original'] || attrs['http.user_agent'];
+  if (ua && !reqHeaders['user-agent']) reqHeaders['user-agent'] = ua;
+  const reqSize = attrs['http.request.body.size'] || attrs['http.request_content_length'];
+  if (reqSize && !reqHeaders['content-length']) reqHeaders['content-length'] = `${reqSize} bytes`;
+
+  // The W3C trace context this span actually carries/propagates.
   const traceparent = `00-${span.traceId}-${span.spanId}-01`;
+  reqHeaders['traceparent'] = traceparent;
 
-  const svc = span.serviceName.toLowerCase();
-  const name = span.name.toLowerCase();
-
-  let reqHeaders: Record<string, string> = {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-    'traceparent': traceparent,
-    'x-request-id': `req-${span.traceId.slice(0, 8)}`
-  };
-
-  if (span.parentSpanId) {
-    reqHeaders['x-parent-span-id'] = span.parentSpanId;
+  // Bodies only when the instrumentation actually captured them (rare).
+  const reqBody = parseMaybeJson(attrs['http.request.body'] || attrs['request.body']);
+  let respBody = parseMaybeJson(attrs['http.response.body'] || attrs['response.body']);
+  if (respBody === null && span.status === 'ERROR' && span.error) {
+    respBody = { error: span.error };
   }
 
-  let reqBody: any = null;
-  let respBody: any = null;
-  let respStatus: string | number = span.statusCode || 200;
-
-  if (svc.includes('gateway') || svc.includes('frontend') || svc.includes('proxy')) {
-    reqBody = {
-      action: 'checkout',
-      cartId: 'cart-88772',
-      items: [
-        { sku: 'WIDG-9988', quantity: 2, price: 64.99 }
-      ],
-      paymentMethod: 'stripe_token_99182',
-      shippingAddress: {
-        street: '100 Infinite Loop',
-        city: 'Cupertino',
-        state: 'CA',
-        zip: '95014'
-      }
-    };
-    respBody = span.status === 'ERROR' ? {
-      error: 'payment_failed',
-      message: 'Failed to process payment with 3rd party stripe gateway',
-      requestId: reqHeaders['x-request-id']
-    } : {
-      orderId: 'ord-20260625-10298',
-      transactionId: 'ch_3M2h21LkdJ8x1a',
-      amount: 129.98,
-      status: 'completed',
-      estimatedDelivery: '2026-06-28T18:00:00Z'
-    };
-  } else if (svc.includes('auth') || svc.includes('iam') || name.includes('auth') || name.includes('login') || name.includes('token')) {
-    reqHeaders['Authorization'] = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
-    reqBody = {
-      token: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-      resource: '/api/v1/checkout',
-      action: 'POST',
-      scope: 'write:orders'
-    };
-    respBody = {
-      authenticated: true,
-      userId: 'usr-44102',
-      roles: ['customer', 'premium'],
-      expiresIn: 3600,
-      permissions: ['read:inventory', 'write:orders', 'read:orders']
-    };
-  } else if (svc.includes('payment') || name.includes('charge') || name.includes('pay') || svc.includes('stripe')) {
-    reqBody = {
-      amount: 12998,
-      currency: 'usd',
-      payment_method: 'pm_card_visa',
-      confirm: true,
-      description: `Charge for order checkout trace ${span.traceId.slice(0, 8)}`
-    };
-    respBody = span.status === 'ERROR' ? {
-      error: {
-        type: 'card_error',
-        code: 'card_declined',
-        decline_code: 'insufficient_funds',
-        message: 'Your card has insufficient funds.'
-      }
-    } : {
-      id: 'ch_3M2h21LkdJ8x1a',
-      object: 'charge',
-      amount: 12998,
-      captured: true,
-      status: 'succeeded',
-      receipt_url: 'https://receipt.stripe.com/acct_1032/ch_3M2h/receipt'
-    };
-  } else if (svc.includes('inventory') || name.includes('stock') || name.includes('warehouse')) {
-    reqBody = {
-      items: [
-        { sku: 'WIDG-9988', requestedQty: 2 }
-      ],
-      warehouseId: 'wh-east-01'
-    };
-    respBody = {
-      inStock: true,
-      availableItems: [
-        { sku: 'WIDG-9988', available: 45, binLocation: 'A-12-C' }
-      ]
-    };
-  } else if (svc.includes('notification') || svc.includes('email') || name.includes('mail') || name.includes('sms')) {
-    reqBody = {
-      recipient: 'customer@vektor.dev',
-      channel: 'email',
-      template: 'order_confirmation',
-      vars: {
-        customerName: 'Alice Smith',
-        orderId: 'ord-20260625-10298',
-        amount: '$129.98'
-      }
-    };
-    respBody = {
-      messageId: 'msg-992211aa88b',
-      status: 'queued',
-      provider: 'sendgrid'
-    };
-  } else {
-    reqBody = {
-      traceId: span.traceId,
-      spanId: span.spanId,
-      timestamp: span.startTime,
-      payload: {
-        service: span.serviceName,
-        action: span.name
-      }
-    };
-    respBody = span.status === 'ERROR' ? {
-      error: span.error || 'Internal process error',
-      code: 'internal_error'
-    } : {
-      success: true,
-      durationMs: span.durationMs,
-      processedBy: span.podName || 'unknown-pod'
-    };
-  }
+  const respStatus = attrs['http.response.status_code'] || attrs['http.status_code'] || (span.status === 'ERROR' ? 'ERROR' : 'OK');
+  const respSize = attrs['http.response.body.size'] || attrs['http.response_content_length'] || '';
 
   return {
     type: 'http',
     title: `${httpMethod} Request to ${span.serviceName}`,
     request: {
       url: httpUrl,
-      method: httpMethod,
+      method: String(httpMethod),
       headers: reqHeaders,
-      body: reqBody
+      body: reqBody,
     },
     response: {
       status: respStatus,
-      body: respBody
+      body: respBody,
+      result: respSize ? `${respSize} bytes` : undefined,
     },
     contextPropagation: {
       carrier: 'headers',
-      traceparent: `00-${span.traceId}-${span.parentSpanId || '0000000000000000'}-01`,
+      traceparent,
       parentSpanId: span.parentSpanId,
-      currentSpanId: span.spanId
-    }
+      currentSpanId: span.spanId,
+    },
   };
+}
+
+// Honest placeholder for payloads the instrumentation did not record.
+function NotCaptured({ label }: { label: string }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px 14px', borderRadius: '8px',
+      border: '1px dashed var(--border-primary)', background: 'var(--bg-tertiary)',
+      fontSize: '11.5px', color: 'var(--text-muted)', lineHeight: 1.55,
+    }}>
+      <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: '1px', opacity: 0.7 }}>
+        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+        <line x1="1" y1="1" x2="23" y2="23" />
+      </svg>
+      <span>{label}</span>
+    </div>
+  );
 }
 
 interface SpanDrawerContentProps {
@@ -1586,6 +1693,7 @@ interface SpanDrawerContentProps {
 }
 
 function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentProps) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'overview' | 'attributes' | 'payload' | 'json' | 'error'>(
     isSpanError(span) ? 'error' : 'overview'
   );
@@ -1644,37 +1752,6 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
       }
       return <div key={idx} style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', lineHeight: '1.4', color: '#cbd5e1' }}>{line}</div>;
     });
-  }, [span]);
-
-  // Extract stack trace and error message
-  const errorMsg = useMemo(() => {
-    if (span.error) return span.error;
-    
-    // Check main attributes
-    const attrs = span.attributes || {};
-    const directMsg = (
-      attrs['error.message'] ||
-      attrs['error.msg'] ||
-      attrs['exception.message'] ||
-      attrs['status.message'] ||
-      attrs['message'] ||
-      attrs['errorMessage'] ||
-      attrs['error_message'] ||
-      attrs['err'] ||
-      attrs['msg']
-    );
-    if (directMsg) return String(directMsg);
-
-    // Check events for exceptions
-    if (span.events) {
-      const excEvent = span.events.find(e => e.name === 'exception' || e.name === 'error');
-      if (excEvent && excEvent.attributes) {
-        const evMsg = excEvent.attributes['exception.message'] || excEvent.attributes['error.message'] || excEvent.attributes['message'];
-        if (evMsg) return String(evMsg);
-      }
-    }
-
-    return 'Unknown operation failure.';
   }, [span]);
 
   const stackTrace = useMemo(() => {
@@ -1772,19 +1849,19 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
           className={`drawer-tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
           onClick={() => setActiveTab('overview')}
         >
-          Overview
+          {t('Overview')}
         </button>
         <button 
           className={`drawer-tab-btn ${activeTab === 'attributes' ? 'active' : ''}`}
           onClick={() => setActiveTab('attributes')}
         >
-          Attributes ({span.attributes ? Object.keys(span.attributes).length : 0})
+          {t('Attributes')} ({span.attributes ? Object.keys(span.attributes).length : 0})
         </button>
         <button 
           className={`drawer-tab-btn ${activeTab === 'payload' ? 'active' : ''}`}
           onClick={() => setActiveTab('payload')}
         >
-          Request & Response
+          {t('Request & Response')}
         </button>
         {hasError && (
           <button 
@@ -1792,14 +1869,14 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
             onClick={() => setActiveTab('error')}
             style={{ color: 'var(--accent-rose, #f43f5e)' }}
           >
-            Failure Details
+            {t('Failure Details')}
           </button>
         )}
         <button 
           className={`drawer-tab-btn ${activeTab === 'json' ? 'active' : ''}`}
           onClick={() => setActiveTab('json')}
         >
-          JSON Payload
+          {t('JSON Payload')}
         </button>
       </div>
 
@@ -1813,12 +1890,12 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
             {/* Grid metrics */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div className="overview-metric-card duration">
-                <span className="metric-card-label">Duration</span>
+                <span className="metric-card-label">{t('Duration')}</span>
                 <span className="metric-card-val">{formatDuration(span.durationMs)}</span>
-                <span className="metric-card-sub">{(span.durationMs / traceDuration * 100).toFixed(1)}% of trace</span>
+                <span className="metric-card-sub">{(span.durationMs / traceDuration * 100).toFixed(1)}% {t('of trace')}</span>
               </div>
               <div className="overview-metric-card status">
-                <span className="metric-card-label">Status</span>
+                <span className="metric-card-label">{t('Status')}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
                   <span className={`badge ${isSpanError(span) ? 'badge-error' : 'badge-ok'}`} style={{ fontSize: '11px', padding: '3px 8px' }}>
                     {isSpanError(span) ? 'ERROR' : 'OK'}
@@ -1829,11 +1906,11 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
 
             {/* Infrastructure Details Card */}
             <div className="attr-group-card">
-              <h4 className="attr-group-title">Infrastructure Info</h4>
+              <h4 className="attr-group-title">{t('Infrastructure Info')}</h4>
               <div className="attr-group-list">
                 {dest.type && (
                   <div className="attr-row">
-                    <span className="attr-row-label">Destination</span>
+                    <span className="attr-row-label">{t('Destination')}</span>
                     <div style={{ display: 'flex', alignItems: 'center', marginTop: '2px' }}>
                       <span className="destination-badge" style={{
                         display: 'inline-flex',
@@ -1847,23 +1924,23 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                         border: dest.type === '3rdparty' ? '1px dashed rgba(245, 158, 11, 0.3)' : '1px solid rgba(14, 165, 233, 0.15)',
                         textTransform: dest.type === 'infra' ? 'lowercase' : 'none'
                       }}>
-                        {dest.name} ({dest.type === '3rdparty' ? '3rd party' : dest.type})
+                        {dest.name} ({dest.type === '3rdparty' ? t('3rd party') : dest.type})
                       </span>
                     </div>
                   </div>
                 )}
                 
                 <div className="attr-row">
-                  <span className="attr-row-label">Namespace</span>
+                  <span className="attr-row-label">{t('Namespace')}</span>
                   <div style={{ marginTop: '2px' }}>
-                    <span className="badge badge-ns" style={{ padding: '2px 8px' }}>{span.namespace || 'unknown'}</span>
+                    <span className="badge badge-ns" style={{ padding: '2px 8px' }}>{span.namespace || t('unknown')}</span>
                   </div>
                 </div>
 
                 {span.podName && (
                   <div className="attr-row">
                     <div className="attr-row-header">
-                      <span className="attr-row-label">Pod Name</span>
+                      <span className="attr-row-label">{t('Pod Name')}</span>
                       <button className="attr-copy-btn" onClick={() => handleCopy('pod', span.podName!)}>
                         {copiedKey === 'pod' ? (
                           <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
@@ -1880,14 +1957,14 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
 
                 {span.nodeName && (
                   <div className="attr-row">
-                    <span className="attr-row-label">Node Name</span>
+                    <span className="attr-row-label">{t('Node Name')}</span>
                     <div className="attr-row-value-mini">{span.nodeName}</div>
                   </div>
                 )}
 
                 <div className="attr-row">
                   <div className="attr-row-header">
-                    <span className="attr-row-label">Span ID</span>
+                    <span className="attr-row-label">{t('Span ID')}</span>
                     <button className="attr-copy-btn" onClick={() => handleCopy('spanId', span.spanId)}>
                       {copiedKey === 'spanId' ? (
                         <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
@@ -1904,7 +1981,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                 {span.parentSpanId && (
                   <div className="attr-row">
                     <div className="attr-row-header">
-                      <span className="attr-row-label">Parent ID</span>
+                      <span className="attr-row-label">{t('Parent ID')}</span>
                       <button className="attr-copy-btn" onClick={() => handleCopy('parentSpanId', span.parentSpanId!)}>
                         {copiedKey === 'parentSpanId' ? (
                           <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
@@ -1920,7 +1997,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                 )}
 
                 <div className="attr-row">
-                  <span className="attr-row-label">Start Time</span>
+                  <span className="attr-row-label">{t('Start Time')}</span>
                   <div className="attr-row-value-mini">{formattedStartTime}</div>
                 </div>
               </div>
@@ -1930,7 +2007,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
             {hasEvents && (
               <div>
                 <h3 style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '8px', letterSpacing: '0.5px' }}>
-                  Logs / Events ({span.events!.length})
+                  {t('Logs / Events')} ({span.events!.length})
                 </h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {span.events!.map((ev, i) => (
@@ -1968,7 +2045,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
               </svg>
               <input
                 type="text"
-                placeholder="Filter attributes..."
+                placeholder={t('Filter attributes...')}
                 value={filterQuery}
                 onChange={(e) => setFilterQuery(e.target.value)}
                 className="filter-select"
@@ -1978,7 +2055,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
             
             {groupedAttributes.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)', fontSize: '12px' }}>
-                No matching attributes.
+                {t('No matching attributes.')}
               </div>
             ) : (
               groupedAttributes.map(([groupName, attrsList]) => (
@@ -2017,7 +2094,9 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
         )}
 
         {/* Tab: Failure details */}
-        {activeTab === 'error' && (
+        {activeTab === 'error' && (() => {
+          const explanation = explainSpanError(span);
+          return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div className="failure-banner">
               <div className="failure-icon-wrapper">
@@ -2027,22 +2106,55 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                   <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                <span className="failure-title">Error Exception</span>
-                <span className="failure-msg">{errorMsg}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: '3px' }}>
+                <span className="failure-title">{explanation.title}</span>
+                <span className="failure-msg" style={{ whiteSpace: 'normal', lineHeight: 1.5 }}>{explanation.what}</span>
               </div>
             </div>
+
+
+
+            {/* {t('Evidence')} — the concrete facts from the span */}
+            {explanation.evidence.length > 0 && (
+              <div className="attr-group-card">
+                <h4 className="attr-group-title">Evidence</h4>
+                <div className="attr-group-list">
+                  {explanation.evidence.map(([k, v]) => (
+                    <div key={k} className="attr-row" style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'baseline' }}>
+                      <span className="attr-row-label" style={{ flexShrink: 0 }}>{k}</span>
+                      <span
+                        style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-primary)', wordBreak: 'break-all', textAlign: 'right', cursor: 'pointer' }}
+                        title="Click to copy"
+                        onClick={() => handleCopy('ev-' + k, v)}
+                      >
+                        {copiedKey === 'ev-' + k ? '✓ copied' : v}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* {t('Raw error message')} from instrumentation */}
+            {explanation.rawMessage && explanation.rawMessage !== explanation.title && (
+              <div className="attr-group-card">
+                <h4 className="attr-group-title">Raw error message</h4>
+                <pre style={{ margin: 0, padding: '8px 10px', background: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '11px', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--accent-rose, #f43f5e)' }}>
+                  {explanation.rawMessage}
+                </pre>
+              </div>
+            )}
 
             {stackTrace && (
               <div className="stacktrace-container">
                 <div className="stacktrace-header">
-                  <span>Stack Trace</span>
+                  <span>{t('Stack Trace')}</span>
                   <button 
                     className="btn btn-ghost btn-sm"
                     style={{ fontSize: '9px', padding: '2px 8px', height: '20px', border: '1px solid rgba(255,255,255,0.15)', color: '#94a3b8' }}
                     onClick={() => handleCopy('stacktrace', stackTrace)}
                   >
-                    {copiedKey === 'stacktrace' ? 'Copied ✓' : 'Copy Stack Trace'}
+                    {copiedKey === 'stacktrace' ? t('Copied ✓') : t('Copy Stack Trace')}
                   </button>
                 </div>
                 <pre className="stacktrace-pre">
@@ -2051,7 +2163,8 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {/* Tab: Request & Response Payloads */}
         {activeTab === 'payload' && (() => {
@@ -2065,13 +2178,13 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                   <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '6px' }}>
                     <path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3zM6 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3z" />
                   </svg>
-                  Trace Context Propagation (W3C)
+                  {t('Trace Context Propagation (W3C)')}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px' }}>
                   <div className="context-flow-row">
                     <div className="context-node parent">
-                      <span className="node-label">Parent Span ID</span>
-                      <span className="node-val">{span.parentSpanId ? span.parentSpanId : 'None (Root Span)'}</span>
+                      <span className="node-label">{t('Parent Span ID')}</span>
+                      <span className="node-val">{span.parentSpanId ? span.parentSpanId : t('None (Root Span)')}</span>
                     </div>
                     <div className="context-arrow">
                       <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.5" fill="none">
@@ -2080,7 +2193,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                       </svg>
                     </div>
                     <div className="context-node current">
-                      <span className="node-label">Current Span ID</span>
+                      <span className="node-label">{t('Current Span ID')}</span>
                       <span className="node-val">{span.spanId}</span>
                     </div>
                   </div>
@@ -2088,7 +2201,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                   {details.contextPropagation?.traceparent && (
                     <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: '10px', marginTop: '4px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-tertiary)' }}>PROPAGATED traceparent HEADER</span>
+                        <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-tertiary)' }}>{t('PROPAGATED traceparent HEADER')}</span>
                         <button className="attr-copy-btn" onClick={() => handleCopy('traceparent', details.contextPropagation!.traceparent!)}>
                           {copiedKey === 'traceparent' ? (
                             <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
@@ -2112,7 +2225,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                     <span className={`method-badge ${details.request.method?.toLowerCase()}`}>
                       {details.request.method}
                     </span>
-                    <span className="payload-section-title">Request Payload</span>
+                    <span className="payload-section-title">{t('Request Payload')}</span>
                   </div>
                   <span className="payload-target-url" title={details.request.url}>{details.request.url}</span>
                 </div>
@@ -2122,7 +2235,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                   {details.request.headers && (
                     <div style={{ marginBottom: '12px' }}>
                       <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        Transport Headers
+                        {t('Transport Headers')}
                       </div>
                       <div className="headers-grid">
                         {Object.entries(details.request.headers).map(([k, v]) => (
@@ -2139,26 +2252,32 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                   {details.type === 'db' ? (
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Database Statement</span>
-                        <button className="attr-copy-btn" onClick={() => handleCopy('sql', details.request.statement!)}>
-                          {copiedKey === 'sql' ? (
-                            <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
-                          ) : (
-                            <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
-                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                            </svg>
-                          )}
-                        </button>
+                        <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('Database Statement')}</span>
+                        {details.request.statement && (
+                          <button className="attr-copy-btn" onClick={() => handleCopy('sql', details.request.statement!)}>
+                            {copiedKey === 'sql' ? (
+                              <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
+                            ) : (
+                              <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                              </svg>
+                            )}
+                          </button>
+                        )}
                       </div>
-                      <pre className="query-code-block">
-                        <code>{details.request.statement}</code>
-                      </pre>
-                      {details.request.parameters && (
+                      {details.request.statement ? (
+                        <pre className="query-code-block">
+                          <code>{details.request.statement}</code>
+                        </pre>
+                      ) : (
+                        <NotCaptured label={t("Query text not captured — enable db.statement capture in the client's tracing settings.")} />
+                      )}
+                      {Array.isArray(details.request.parameters) && details.request.parameters.length > 0 && (
                         <div style={{ marginTop: '8px' }}>
-                          <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Query Parameters</div>
+                          <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>{t('Query Parameters')}</div>
                           <div className="parameters-list">
                             {details.request.parameters.map((p: any, idx: number) => (
-                              <span key={idx} className="param-badge">${idx + 1}: "{p}"</span>
+                              <span key={idx} className="param-badge">${idx + 1}: "{String(p)}"</span>
                             ))}
                           </div>
                         </div>
@@ -2167,20 +2286,26 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                   ) : (
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Body Content</span>
-                        <button className="attr-copy-btn" onClick={() => handleCopy('reqBody', JSON.stringify(details.request.body, null, 2))}>
-                          {copiedKey === 'reqBody' ? (
-                            <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
-                          ) : (
-                            <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
-                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                            </svg>
-                          )}
-                        </button>
+                        <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('Body Content')}</span>
+                        {details.request.body != null && (
+                          <button className="attr-copy-btn" onClick={() => handleCopy('reqBody', JSON.stringify(details.request.body, null, 2))}>
+                            {copiedKey === 'reqBody' ? (
+                              <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
+                            ) : (
+                              <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                              </svg>
+                            )}
+                          </button>
+                        )}
                       </div>
-                      <pre className="payload-code-block">
-                        <code>{JSON.stringify(details.request.body, null, 2)}</code>
-                      </pre>
+                      {details.request.body != null ? (
+                        <pre className="payload-code-block">
+                          <code>{typeof details.request.body === 'string' ? details.request.body : JSON.stringify(details.request.body, null, 2)}</code>
+                        </pre>
+                      ) : (
+                        <NotCaptured label={t("Body not captured — instrumentation records metadata only (URL, headers, size, timing).")} />
+                      )}
                     </div>
                   )}
                 </div>
@@ -2193,27 +2318,38 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                     <span className={`status-badge ${span.status === 'ERROR' ? 'error' : 'ok'}`}>
                       {details.response.status}
                     </span>
-                    <span className="payload-section-title">Response Payload</span>
+                    <span className="payload-section-title">{t('Response Payload')}</span>
                   </div>
-                  <span className="payload-duration-tag">in {formatDuration(span.durationMs)}</span>
+                  <span className="payload-duration-tag">{t('in')} {formatDuration(span.durationMs)}</span>
                 </div>
                 
                 <div style={{ padding: '14px' }}>
+                  {details.response.result && (
+                    <div style={{ marginBottom: '10px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      {t('Recorded response size:')} <strong className="mono" style={{ color: 'var(--text-primary)' }}>{details.response.result}</strong>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                     <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Body Content</span>
-                    <button className="attr-copy-btn" onClick={() => handleCopy('respBody', JSON.stringify(details.response.body, null, 2))}>
-                      {copiedKey === 'respBody' ? (
-                        <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
-                      ) : (
-                        <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                        </svg>
-                      )}
-                    </button>
+                    {details.response.body != null && (
+                      <button className="attr-copy-btn" onClick={() => handleCopy('respBody', JSON.stringify(details.response.body, null, 2))}>
+                        {copiedKey === 'respBody' ? (
+                          <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
+                        ) : (
+                          <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
                   </div>
-                  <pre className="payload-code-block">
-                    <code>{JSON.stringify(details.response.body, null, 2)}</code>
-                  </pre>
+                  {details.response.body != null ? (
+                    <pre className="payload-code-block">
+                      <code>{typeof details.response.body === 'string' ? details.response.body : JSON.stringify(details.response.body, null, 2)}</code>
+                    </pre>
+                  ) : (
+                    <NotCaptured label={t("Body not captured — the status, size and timing above are real.")} />
+                  )}
                 </div>
               </div>
 
@@ -2246,6 +2382,7 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
 }
 
 export default function TraceDetail() {
+  const { t } = useTranslation();
   const { traceId } = useParams<{ traceId: string }>();
   const [trace, setTrace] = useState<Trace | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2339,6 +2476,39 @@ export default function TraceDetail() {
     return Array.from(map.entries());
   }, [trace]);
 
+  // All namespaces this trace crosses, in first-seen (time) order
+  const traceNamespaces = useMemo(() => {
+    if (!trace || !trace.spans) return [];
+    const seen = new Set<string>();
+    const list: string[] = [];
+    [...trace.spans]
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+      .forEach(s => {
+        const ns = s.namespace || 'default';
+        if (!seen.has(ns)) { seen.add(ns); list.push(ns); }
+      });
+    return list;
+  }, [trace]);
+
+  // Spans whose parent was never captured (uninstrumented hop / sampling /
+  // disabled namespace) — the flow renders but with a visible gap.
+  const brokenLinkSpans = useMemo(() => {
+    if (!trace || !trace.spans) return [];
+    const ids = new Set(trace.spans.map(s => s.spanId));
+    return trace.spans.filter(s =>
+      s.parentSpanId && !/^0*$/.test(s.parentSpanId) && !ids.has(s.parentSpanId)
+    );
+  }, [trace]);
+
+  // Error spans with human-readable explanations for the problems panel
+  const errorSpans = useMemo(() => {
+    if (!trace || !trace.spans) return [];
+    return trace.spans
+      .filter(s => isSpanError(s))
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+      .map(span => ({ span, explanation: explainSpanError(span) }));
+  }, [trace]);
+
   const uniqueDestinations = useMemo(() => {
     if (!trace || !trace.spans) return [];
     const destMap = new Map<string, { name: string; type: string; count: number }>();
@@ -2357,16 +2527,16 @@ export default function TraceDetail() {
     return Array.from(destMap.values());
   }, [trace]);
 
-  if (loading) return <div className="empty-state"><div className="empty-state-title">Loading trace...</div></div>;
-  if (!trace) return <div className="empty-state"><div className="empty-state-icon">❌</div><div className="empty-state-title">Trace not found</div></div>;
+  if (loading) return <div className="empty-state"><div className="empty-state-title">{t('Loading trace...')}</div></div>;
+  if (!trace) return <div className="empty-state"><div className="empty-state-icon">❌</div><div className="empty-state-title">{t('Trace not found')}</div></div>;
 
   const startMs = new Date(trace.startTime).getTime();
 
   return (
     <div className="animate-fade-in trace-detail">
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)}>← Back</button>
-        <h1 className="page-title" style={{ marginBottom: 0 }}>Trace Detail</h1>
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)}>← {t('Back to Explorer')}</button>
+        <h1 className="page-title" style={{ marginBottom: 0 }}>{t('Trace Details')}</h1>
       </div>
 
       <div className="trace-detail-layout">
@@ -2375,7 +2545,7 @@ export default function TraceDetail() {
           {/* Metadata Overview Panel */}
           <div className="trace-meta">
             <div className="trace-meta-item">
-              <span className="trace-meta-label">Trace ID</span>
+              <span className="trace-meta-label">{t('Trace ID')}</span>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
                 <span className="trace-meta-value mono" style={{ color: 'var(--accent-indigo-light)', fontSize: '11.5px' }} title={trace.traceId}>
                   {trace.traceId.slice(0, 16)}...
@@ -2383,7 +2553,7 @@ export default function TraceDetail() {
                 <button 
                   className="attr-copy-btn" 
                   onClick={handleCopyTraceId}
-                  title={copiedTraceId ? "Copied!" : "Copy Full Trace ID"}
+                  title={copiedTraceId ? t("Copied!") : t("Copy Full Trace ID")}
                   style={{ padding: '2px', height: '20px', width: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   {copiedTraceId ? (
@@ -2397,25 +2567,30 @@ export default function TraceDetail() {
               </div>
             </div>
             <div className="trace-meta-item">
-              <span className="trace-meta-label">Root Service</span>
+              <span className="trace-meta-label">{t('Root Service')}</span>
               <span className="trace-meta-value" style={{ fontWeight: 600, marginTop: '2px' }}>{trace.serviceName}</span>
             </div>
             <div className="trace-meta-item">
-              <span className="trace-meta-label">Namespace</span>
-              <div style={{ marginTop: '2px' }}>
-                <span className="badge badge-ns">{trace.namespace}</span>
+              <span className="trace-meta-label">{traceNamespaces.length > 1 ? `${t('Namespaces')} (${traceNamespaces.length})` : t('Namespace')}</span>
+              <div style={{ marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                {(traceNamespaces.length > 0 ? traceNamespaces : [trace.namespace]).map((ns, idx) => (
+                  <React.Fragment key={ns}>
+                    {idx > 0 && <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>→</span>}
+                    <span className="badge badge-ns">{ns}</span>
+                  </React.Fragment>
+                ))}
               </div>
             </div>
             <div className="trace-meta-item">
-              <span className="trace-meta-label">Duration</span>
+              <span className="trace-meta-label">{t('Duration')}</span>
               <span className="trace-meta-value" style={{ color: 'var(--accent-cyan)', fontWeight: 600, marginTop: '2px' }}>{trace.durationMs.toFixed(2)}ms</span>
             </div>
             <div className="trace-meta-item">
-              <span className="trace-meta-label">Spans</span>
+              <span className="trace-meta-label">{t('Spans')}</span>
               <span className="trace-meta-value" style={{ fontWeight: 600, marginTop: '2px' }}>{trace.spanCount}</span>
             </div>
             <div className="trace-meta-item">
-              <span className="trace-meta-label">Status</span>
+              <span className="trace-meta-label">{t('Status')}</span>
               <div style={{ marginTop: '2px' }}>
                 <span className={`badge ${trace.hasError ? 'badge-error' : 'badge-ok'}`}>
                   {trace.hasError ? 'ERROR' : 'OK'}
@@ -2424,10 +2599,63 @@ export default function TraceDetail() {
             </div>
           </div>
 
+          {/* Flow completeness notice — visible gaps in the causal chain */}
+          {brokenLinkSpans.length > 0 && (
+            <div style={{ marginTop: '12px', display: 'flex', alignItems: 'flex-start', gap: '10px', background: 'rgba(245, 158, 11, 0.07)', border: '1px solid rgba(245, 158, 11, 0.3)', borderLeft: '3px solid var(--accent-amber, #f59e0b)', borderRadius: '10px', padding: '10px 14px' }}>
+              <svg viewBox="0 0 24 24" width="15" height="15" stroke="var(--accent-amber, #f59e0b)" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: '2px' }}>
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <div style={{ fontSize: '12px', lineHeight: 1.55, color: 'var(--text-primary)' }}>
+                <strong style={{ color: 'var(--accent-amber, #f59e0b)' }}>Incomplete flow:</strong>{' '}
+                {brokenLinkSpans.length} span{brokenLinkSpans.length > 1 ? 's' : ''} reference{brokenLinkSpans.length > 1 ? '' : 's'} a parent span that was not captured
+                ({[...new Set(brokenLinkSpans.map(s => `${s.namespace || 'default'}/${s.serviceName}`))].slice(0, 3).join(', ')}).
+                A hop was not recorded — uninstrumented gateway, disabled namespace, or sampling.
+              </div>
+            </div>
+          )}
+
+          {/* Detected Problems Panel — the error, explained, front and center */}
+          {errorSpans.length > 0 && (
+            <div className="problems-panel">
+              <div className="problems-panel-header">
+                <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <span>{t('Trace Error Summary')} ({errorSpans.length})</span>
+              </div>
+              {errorSpans.map(({ span, explanation }) => (
+                <div
+                  key={span.spanId}
+                  className={`problem-card ${selectedSpan?.spanId === span.spanId ? 'selected' : ''}`}
+                  onClick={() => setSelectedSpan(span)}
+                  title="Click to open full failure details"
+                >
+                  <div className="problem-card-top">
+                    <span className="problem-service" style={{ color: getSvcColor(span.serviceName) }}>
+                      <span className="problem-service-dot" style={{ background: getSvcColor(span.serviceName) }} />
+                      {span.serviceName}
+                    </span>
+                    {explanation.target && (
+                      <>
+                        <span className="problem-arrow">→</span>
+                        <span className="problem-target" title={explanation.target}>{explanation.target}</span>
+                      </>
+                    )}
+                    <span className="problem-title-badge">{t(explanation.title)}</span>
+                  </div>
+                  <div className="problem-what">{explanation.what}</div>
+
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Trace Connections / Destinations Row */}
           {uniqueDestinations.length > 0 && (
             <div className="tags-container" style={{ marginTop: '12px', borderLeft: '3px solid var(--accent-indigo)' }}>
-              <div className="tags-title" style={{ color: 'var(--accent-indigo-light)' }}>Trace Connections & Destinations ({uniqueDestinations.length})</div>
+              <div className="tags-title" style={{ color: 'var(--accent-indigo-light)' }}>{t('Trace Connections & Destinations')} ({uniqueDestinations.length})</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                 {uniqueDestinations.map(d => (
                   <div key={d.name} className="tag-pill" style={{ borderColor: 'rgba(99, 102, 241, 0.2)' }} title={`${d.count} call(s) to ${d.name}`}>
@@ -2438,7 +2666,7 @@ export default function TraceDetail() {
                       fontSize: '10px',
                       textTransform: d.type === 'infra' ? 'lowercase' : 'capitalize'
                     }}>
-                      {d.type === '3rdparty' ? '3rd party' : d.type}
+                      {d.type === '3rdparty' ? t('3rd party') : d.type}
                     </span>
                     <span className="tag-val" style={{ fontSize: '11px', color: 'var(--text-primary)' }}>
                       {d.name}
@@ -2970,6 +3198,101 @@ export default function TraceDetail() {
           color: var(--accent-indigo);
           background: var(--bg-active);
           transform: scale(1.1);
+        }
+
+        /* Detected Problems Panel */
+        .problems-panel {
+          margin-top: 12px;
+          background: var(--bg-secondary);
+          border: 1px solid rgba(244, 63, 94, 0.35);
+          border-left: 3px solid var(--accent-rose, #f43f5e);
+          border-radius: 10px;
+          padding: 12px 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .problems-panel-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: var(--accent-rose, #f43f5e);
+          font-size: 12px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .problem-card {
+          background: rgba(244, 63, 94, 0.05);
+          border: 1px solid rgba(244, 63, 94, 0.15);
+          border-radius: 8px;
+          padding: 10px 12px;
+          cursor: pointer;
+          transition: border-color 0.15s, background 0.15s;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .problem-card:hover, .problem-card.selected {
+          border-color: rgba(244, 63, 94, 0.5);
+          background: rgba(244, 63, 94, 0.09);
+        }
+        .problem-card-top {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .problem-service {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-weight: 700;
+          font-size: 12px;
+        }
+        .problem-service-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          display: inline-block;
+        }
+        .problem-arrow { color: var(--text-muted); font-size: 12px; }
+        .problem-target {
+          font-family: var(--font-mono);
+          font-size: 11px;
+          color: var(--text-secondary);
+          max-width: 340px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .problem-title-badge {
+          margin-left: auto;
+          background: rgba(244, 63, 94, 0.12);
+          color: var(--accent-rose, #f43f5e);
+          border: 1px solid rgba(244, 63, 94, 0.3);
+          font-size: 10.5px;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 5px;
+          white-space: nowrap;
+        }
+        .problem-what {
+          font-size: 12px;
+          line-height: 1.5;
+          color: var(--text-primary);
+        }
+        .problem-cause {
+          font-size: 11.5px;
+          line-height: 1.5;
+          color: var(--text-secondary);
+          background: var(--bg-tertiary);
+          border-radius: 6px;
+          padding: 6px 9px;
+        }
+        .problem-cause-label {
+          font-weight: 700;
+          color: var(--accent-amber, #f59e0b);
         }
 
         /* Failure Details Diagnostic Card Styles */

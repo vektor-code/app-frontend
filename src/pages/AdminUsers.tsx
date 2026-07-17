@@ -1,0 +1,415 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { api } from '../api/client';
+import type { PermissionTemplate, UserPermission } from '../entities';
+import { useTranslation } from '../utils/i18n';
+
+// Users & Access tab: SonarQube-style permission management for LDAP users.
+// Each user has a role (admin/viewer) and a set of visible namespaces.
+// Templates are reusable presets; the default template is applied to new
+// LDAP users on their first login.
+
+const ALL_NS = '*';
+
+function NamespacePicker({ selected, options, onChange }: {
+  selected: string[];
+  options: string[];
+  onChange: (ns: string[]) => void;
+}) {
+  const allSelected = selected.includes(ALL_NS);
+  const toggle = (ns: string) => {
+    if (ns === ALL_NS) {
+      onChange(allSelected ? [] : [ALL_NS]);
+      return;
+    }
+    const withoutAll = selected.filter(n => n !== ALL_NS);
+    if (withoutAll.includes(ns)) {
+      onChange(withoutAll.filter(n => n !== ns));
+    } else {
+      onChange([...withoutAll, ns]);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+      <button
+        type="button"
+        onClick={() => toggle(ALL_NS)}
+        className="ns-chip"
+        style={{
+          background: allSelected ? 'rgba(99, 102, 241, 0.18)' : 'var(--bg-tertiary)',
+          borderColor: allSelected ? 'var(--accent-indigo)' : 'var(--border-primary)',
+          color: allSelected ? 'var(--accent-indigo-light)' : 'var(--text-secondary)',
+          fontWeight: 700,
+        }}
+      >
+        ✳ All namespaces
+      </button>
+      {options.map(ns => {
+        const active = !allSelected && selected.includes(ns);
+        return (
+          <button
+            key={ns}
+            type="button"
+            onClick={() => toggle(ns)}
+            className="ns-chip"
+            disabled={allSelected}
+            style={{
+              background: active ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-tertiary)',
+              borderColor: active ? 'var(--accent-emerald, #10b981)' : 'var(--border-primary)',
+              color: active ? 'var(--accent-emerald, #10b981)' : 'var(--text-secondary)',
+              opacity: allSelected ? 0.45 : 1,
+            }}
+          >
+            {ns}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function RoleBadge({ role }: { role: string }) {
+  const isAdmin = role === 'admin';
+  return (
+    <span style={{
+      fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase',
+      background: isAdmin ? 'rgba(244, 63, 94, 0.12)' : 'rgba(14, 165, 233, 0.12)',
+      color: isAdmin ? 'var(--accent-rose, #f43f5e)' : 'var(--accent-cyan, #0ea5e9)',
+      border: `1px solid ${isAdmin ? 'rgba(244, 63, 94, 0.3)' : 'rgba(14, 165, 233, 0.3)'}`,
+    }}>{role}</span>
+  );
+}
+
+function nsSummary(namespaces: string[]): string {
+  if (namespaces && namespaces.includes(ALL_NS)) return 'All namespaces';
+  if (!namespaces || namespaces.length === 0) return 'No access';
+  return namespaces.join(', ');
+}
+
+export default function AdminUsers() {
+  const { t } = useTranslation();
+  const [users, setUsers] = useState<UserPermission[]>([]);
+  const [templates, setTemplates] = useState<PermissionTemplate[]>([]);
+  const [namespaceOptions, setNamespaceOptions] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  const [editUser, setEditUser] = useState<UserPermission | null>(null);
+  const [editTemplate, setEditTemplate] = useState<PermissionTemplate | null>(null);
+
+  const notify = (kind: 'ok' | 'err', text: string) => {
+    setMessage({ kind, text });
+    setTimeout(() => setMessage(null), 3500);
+  };
+
+  const load = useCallback(async () => {
+    try {
+      const [usersRes, tplRes, nsRes] = await Promise.all([
+        api.getUsers(),
+        api.getPermissionTemplates(),
+        api.getNamespaces(),
+      ]);
+      setUsers(usersRes.users || []);
+      setTemplates(tplRes.templates || []);
+      setNamespaceOptions(nsRes.namespaces || []);
+    } catch (e: any) {
+      notify('err', `Failed to load users: ${e?.message || e}`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const saveUser = async (u: UserPermission) => {
+    try {
+      await api.saveUser(u);
+      notify('ok', `Permissions updated for ${u.username}`);
+      setEditUser(null);
+      load();
+    } catch (e: any) {
+      notify('err', `Save failed: ${e?.message || e}`);
+    }
+  };
+
+  const removeUser = async (username: string) => {
+    if (!window.confirm(`Remove "${username}"? Default template applies on next login.`)) return;
+    try {
+      await api.deleteUser(username);
+      notify('ok', `Removed ${username}`);
+      load();
+    } catch (e: any) {
+      notify('err', `Delete failed: ${e?.message || e}`);
+    }
+  };
+
+  const saveTemplate = async (t: PermissionTemplate) => {
+    if (!t.name.trim()) { notify('err', 'Template name is required'); return; }
+    try {
+      await api.savePermissionTemplate(t);
+      notify('ok', `Template "${t.name}" saved`);
+      setEditTemplate(null);
+      load();
+    } catch (e: any) {
+      notify('err', `Save failed: ${e?.message || e}`);
+    }
+  };
+
+  const removeTemplate = async (name: string) => {
+    if (!window.confirm(`Delete template "${name}"? Existing users keep their current permissions.`)) return;
+    try {
+      await api.deletePermissionTemplate(name);
+      notify('ok', `Template "${name}" deleted`);
+      load();
+    } catch (e: any) {
+      notify('err', `Delete failed: ${e?.message || e}`);
+    }
+  };
+
+  const applyTemplateToUser = (u: UserPermission, tplName: string) => {
+    const tpl = templates.find(t => t.name === tplName);
+    if (!tpl) return u;
+    return { ...u, role: tpl.role, namespaces: [...tpl.namespaces], template: tpl.name };
+  };
+
+  if (loading) {
+    return <div className="empty-state"><div className="empty-state-title">{t('Loading users & permissions…')}</div></div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px', animation: 'fadeIn 0.2s' }}>
+      {message && (
+        <div style={{
+          padding: '10px 14px', borderRadius: '8px', fontSize: '12.5px', fontWeight: 600,
+          background: message.kind === 'ok' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
+          border: `1px solid ${message.kind === 'ok' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'}`,
+          color: message.kind === 'ok' ? 'var(--accent-emerald, #10b981)' : 'var(--accent-rose, #f43f5e)',
+        }}>{message.text}</div>
+      )}
+
+      {/* ==== Permission Templates ==== */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', margin: 0 }}>{t('Permission Templates')}</h2>
+            <p className="text-muted" style={{ fontSize: '13px', marginTop: '6px', maxWidth: '680px' }}>
+              {t('The ★ default template is applied to new users on first login.')}
+            </p>
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={() => setEditTemplate({ name: '', description: '', role: 'viewer', namespaces: [ALL_NS], isDefault: templates.length === 0 })}>
+            + {t('New Template')}
+          </button>
+        </div>
+
+        {templates.length === 0 ? (
+          <div className="card" style={{ padding: '20px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            {t('No templates. New users start with no access — mark a template as default to grant a baseline automatically.')}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '14px', marginTop: '10px' }}>
+            {templates.map(tpl => (
+              <div key={tpl.name} className="card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                    <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tpl.name}</span>
+                    {tpl.isDefault && (
+                      <span style={{ fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.15)', color: 'var(--accent-amber, #f59e0b)', border: '1px solid rgba(245, 158, 11, 0.35)', whiteSpace: 'nowrap' }}>★ {t('DEFAULT')}</span>
+                    )}
+                  </div>
+                  <RoleBadge role={tpl.role} />
+                </div>
+                {tpl.description && <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{tpl.description}</div>}
+                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                  {t('Visibility')}: <span className="mono" style={{ color: 'var(--text-primary)' }}>{nsSummary(tpl.namespaces)}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '10px' }}>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditTemplate({ ...tpl, namespaces: [...tpl.namespaces] })}>{t('Edit')}</button>
+                  <button className="btn btn-ghost btn-sm" style={{ color: 'var(--accent-rose, #f43f5e)' }} onClick={() => removeTemplate(tpl.name)}>{t('Delete')}</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ==== Users ==== */}
+      <div>
+        <h2 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', margin: 0 }}>{t('Users')}</h2>
+        <p className="text-muted" style={{ fontSize: '13px', marginTop: '6px', maxWidth: '680px' }}>
+          {t('Users appear after first login. Namespace changes apply in seconds; role changes on next login.')}
+        </p>
+
+        {users.length === 0 ? (
+          <div className="card" style={{ padding: '20px', fontSize: '13px', color: 'var(--text-secondary)', marginTop: '10px' }}>
+            {t('No LDAP logins yet.')}
+          </div>
+        ) : (
+          <div className="card" style={{ marginTop: '10px', overflow: 'auto' }}>
+            <table className="data-table" style={{ width: '100%' }}>
+              <thead>
+                <tr>
+                  <th>{t('User')}</th>
+                  <th>{t('Role')}</th>
+                  <th>{t('Namespace visibility')}</th>
+                  <th>{t('Template')}</th>
+                  <th>{t('Last login')}</th>
+                  <th style={{ textAlign: 'right' }}>{t('Actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map(u => (
+                  <tr key={u.username} className="hover-row">
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)' }}>{u.displayName || u.username}</span>
+                        <span className="mono" style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>{u.username}{u.email ? ` · ${u.email}` : ''}</span>
+                      </div>
+                    </td>
+                    <td><RoleBadge role={u.role} /></td>
+                    <td style={{ maxWidth: '340px' }}>
+                      <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>{nsSummary(u.namespaces)}</span>
+                    </td>
+                    <td>
+                      <span className="mono" style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{u.template || '—'}</span>
+                    </td>
+                    <td>
+                      <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                        {u.lastLogin && !u.lastLogin.startsWith('1970') ? new Date(u.lastLogin).toLocaleString() : '—'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditUser({ ...u, namespaces: [...(u.namespaces || [ALL_NS])] })}>Edit</button>
+                      <button className="btn btn-ghost btn-sm" style={{ color: 'var(--accent-rose, #f43f5e)' }} onClick={() => removeUser(u.username)}>Remove</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ==== Edit User Modal ==== */}
+      {editUser && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10, 14, 23, 0.75)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '16px', width: '620px', maxWidth: '92%', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '85vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ fontSize: '17px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                Permissions — {editUser.displayName || editUser.username}
+              </h3>
+              <button className="btn btn-ghost" onClick={() => setEditUser(null)} style={{ fontSize: '18px', padding: '4px 8px' }}>✕</button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Role</label>
+                <select className="form-select" value={editUser.role} onChange={e => setEditUser({ ...editUser, role: e.target.value })}>
+                  <option value="viewer">Viewer (read-only, namespace-scoped)</option>
+                  <option value="admin">Admin (full access + settings)</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Apply template</label>
+                <select className="form-select" value="" onChange={e => { if (e.target.value) setEditUser(applyTemplateToUser(editUser, e.target.value)); }}>
+                  <option value="">— pick a template —</option>
+                  {templates.map(t => <option key={t.name} value={t.name}>{t.name}{t.isDefault ? ' ★' : ''}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                Namespace visibility {editUser.role === 'admin' && <span style={{ color: 'var(--accent-amber, #f59e0b)', textTransform: 'none' }}>(admins always see everything)</span>}
+              </label>
+              <NamespacePicker
+                selected={editUser.namespaces || []}
+                options={namespaceOptions}
+                onChange={ns => setEditUser({ ...editUser, namespaces: ns })}
+              />
+              {(editUser.namespaces || []).length === 0 && (
+                <span style={{ fontSize: '11px', color: 'var(--accent-rose, #f43f5e)' }}>No namespaces selected — user sees nothing.</span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border-primary)', paddingTop: '16px' }}>
+              <button className="btn btn-ghost" onClick={() => setEditUser(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => saveUser(editUser)}>Save Permissions</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ==== Edit Template Modal ==== */}
+      {editTemplate && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10, 14, 23, 0.75)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '16px', width: '620px', maxWidth: '92%', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '85vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ fontSize: '17px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                {templates.some(t => t.name === editTemplate.name) ? `Edit Template — ${editTemplate.name}` : 'New Permission Template'}
+              </h3>
+              <button className="btn btn-ghost" onClick={() => setEditTemplate(null)} style={{ fontSize: '18px', padding: '4px 8px' }}>✕</button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Template name</label>
+                <input type="text" className="form-input" value={editTemplate.name} placeholder="e.g. econtract-team"
+                  disabled={templates.some(t => t.name === editTemplate.name)}
+                  onChange={e => setEditTemplate({ ...editTemplate, name: e.target.value })} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Role</label>
+                <select className="form-select" value={editTemplate.role} onChange={e => setEditTemplate({ ...editTemplate, role: e.target.value })}>
+                  <option value="viewer">Viewer</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Description</label>
+              <input type="text" className="form-input" value={editTemplate.description} placeholder="Who is this template for?"
+                onChange={e => setEditTemplate({ ...editTemplate, description: e.target.value })} />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Namespace visibility</label>
+              <NamespacePicker
+                selected={editTemplate.namespaces || []}
+                options={namespaceOptions}
+                onChange={ns => setEditTemplate({ ...editTemplate, namespaces: ns })}
+              />
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={editTemplate.isDefault} onChange={e => setEditTemplate({ ...editTemplate, isDefault: e.target.checked })} style={{ accentColor: 'var(--accent-indigo)' }} />
+              Default template — applied to new LDAP users on first login
+            </label>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border-primary)', paddingTop: '16px' }}>
+              <button className="btn btn-ghost" onClick={() => setEditTemplate(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => saveTemplate(editTemplate)}>Save Template</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      <style>{`
+        .ns-chip {
+          font-size: 11px;
+          font-weight: 600;
+          padding: 4px 10px;
+          border-radius: 6px;
+          border: 1px solid var(--border-primary);
+          cursor: pointer;
+          transition: all 0.15s;
+          font-family: var(--font-mono);
+        }
+        .ns-chip:hover:not(:disabled) { transform: translateY(-1px); }
+      `}</style>
+    </div>
+  );
+}

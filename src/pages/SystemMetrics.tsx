@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { api, type PodMetricInfo } from '../api/client';
+import { api } from '../api/client';
+import type { PodMetricInfo } from '../entities';
 
 interface SystemMetricsProps {
   namespace: string;
