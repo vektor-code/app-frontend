@@ -46,14 +46,6 @@ const tailLatencyColor = '#d97706';
 const dbColor = '#7c3aed';
 const dbLatencyColor = '#059669';
 
-const DASHBOARD_ICON_ASSETS: Partial<Record<IconName, string>> = {
-  shield: '/dashboard-icons/opentelemetry.svg',
-  traffic: '/dashboard-icons/opentelemetry.svg',
-  latency: '/dashboard-icons/grafana.svg',
-  apdex: '/dashboard-icons/prometheus.svg',
-  database: '/dashboard-icons/postgresql.svg',
-};
-
 export default function Dashboard({ namespaces, selectedNamespace, onSelectNamespace }: DashboardProps) {
   const { t } = useTranslation();
   const [dbMetrics, setDbMetrics] = useState<DatabaseQueryMetric[]>([]);
@@ -940,24 +932,19 @@ function ChartTooltip({ leftPercent, children }: { leftPercent: number; children
 }
 
 function DashboardIcon({ name }: { name: IconName }) {
-  const asset = DASHBOARD_ICON_ASSETS[name];
-  if (asset) {
-    return <img src={asset} alt="" className="apm-real-icon" aria-hidden="true" loading="lazy" />;
-  }
-
-  const common = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  const common = { width: 21, height: 21, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
 
   switch (name) {
     case 'activity':
-      return <svg {...common}><path d="M3 12h4l3-8 4 16 3-8h4" /></svg>;
+      return <svg {...common}><path d="M3 12h4l3-8 4 16 3-8h4" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /></svg>;
     case 'apdex':
-      return <svg {...common}><path d="M4 14a8 8 0 0 1 16 0" /><path d="M12 14l4-5" /><path d="M7 14h10" /><path d="M12 4v2" /></svg>;
+      return <svg {...common}><path d="M4 15a8 8 0 0 1 16 0" /><path d="M7 15h10" /><path d="M12 15l4.5-5.5" /><path d="M12 4v2" /><path d="M5.6 8.6 7 10" /><path d="m17 10 1.4-1.4" /></svg>;
     case 'database':
-      return <svg {...common}><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 10c0 1.7 3.6 3 8 3s8-1.3 8-3" /><path d="m9 19 2 2 4-4" /></svg>;
+      return <svg {...common}><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 10c0 1.7 3.6 3 8 3s8-1.3 8-3" /><path d="M4 15c0 1.7 3.6 3 8 3s8-1.3 8-3" /></svg>;
     case 'errors':
       return <svg {...common}><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.3 3.6 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z" /></svg>;
     case 'latency':
-      return <svg {...common}><path d="M9 2h6" /><path d="M12 6v5l3 2" /><circle cx="12" cy="14" r="8" /></svg>;
+      return <svg {...common}><path d="M9 2h6" /><path d="M12 6v6l3 2" /><circle cx="12" cy="14" r="8" /><path d="M18.4 7.6 20 6" /></svg>;
     case 'namespace':
       return <svg {...common}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>;
     case 'pods':

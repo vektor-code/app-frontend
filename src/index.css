@@ -3052,19 +3052,6 @@ body.dark-theme .flowing-line {
   background: rgba(37, 99, 235, 0.08);
 }
 
-.apm-real-icon {
-  width: 22px;
-  height: 22px;
-  display: block;
-  object-fit: contain;
-}
-
-.apm-panel-topline .apm-real-icon {
-  width: 24px;
-  height: 24px;
-  opacity: 0.9;
-}
-
 .apm-signal-card.healthy .apm-signal-icon {
   color: var(--accent-emerald);
   background: rgba(5, 150, 105, 0.08);
