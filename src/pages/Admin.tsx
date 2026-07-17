@@ -194,6 +194,12 @@ export default function Admin() {
   const [isEditingClusters, setIsEditingClusters] = useState(false);
   const [editableClusters, setEditableClusters] = useState<ClusterInventoryItem[]>([]);
   const [testingClusterId, setTestingClusterId] = useState<string | null>(null);
+  const [clusterTestResult, setClusterTestResult] = useState<{
+    kind: 'success' | 'error';
+    title: string;
+    message: string;
+    details?: string;
+  } | null>(null);
 
   // Instrumentations Tab State
   const [instrumentations, setInstrumentations] = useState<{ name: string; namespace: string; endpoint: string; sampler: string }[]>([]);
@@ -438,12 +444,27 @@ export default function Admin() {
         apiServer: cluster.apiServer
       });
       if (res.success) {
-        alert(`Successfully connected to ${cluster.displayName || cluster.id}! Kubernetes API Server version: ${res.serverVersion || 'unknown'}`);
+        setClusterTestResult({
+          kind: 'success',
+          title: 'Cluster connection healthy',
+          message: `${cluster.displayName || cluster.id} is reachable.`,
+          details: `Kubernetes API server: ${res.serverVersion || 'unknown'}`,
+        });
       } else {
-        alert(`Connection failed: ${res.error || res.message || 'unknown error'}`);
+        setClusterTestResult({
+          kind: 'error',
+          title: 'Cluster connection failed',
+          message: `${cluster.displayName || cluster.id} could not be reached.`,
+          details: res.error || res.message || 'Unknown error',
+        });
       }
     } catch (err: any) {
-      alert(`Connection failed: ${err.message || 'unknown error'}`);
+      setClusterTestResult({
+        kind: 'error',
+        title: 'Cluster test failed',
+        message: `${cluster.displayName || cluster.id} could not be tested.`,
+        details: err.message || 'Unknown error',
+      });
     } finally {
       setTestingClusterId(null);
     }
@@ -542,6 +563,11 @@ export default function Admin() {
     infraConfig?.prometheus?.url,
     infraConfig?.elasticsearch?.url,
   ].filter(Boolean).length;
+  const retentionPolicyLabel = retentionHours === 0
+    ? t('Forever')
+    : retentionHours < 24
+      ? `${retentionHours}h`
+      : `${Math.round(retentionHours / 24)}d`;
 
   if (loading && !infraConfig) {
     return (
@@ -653,6 +679,26 @@ export default function Admin() {
             }
           `}</style>
         </div>
+      )}
+
+      {clusterTestResult && createPortal(
+        <div className="admin-modal-backdrop">
+          <div className={`admin-test-dialog ${clusterTestResult.kind}`}>
+            <div className="admin-test-dialog-icon">
+              {clusterTestResult.kind === 'success' ? <AdminIcon name="shield" /> : <AdminIcon name="alerts" />}
+            </div>
+            <div className="admin-test-dialog-body">
+              <span>{clusterTestResult.kind === 'success' ? t('Connection test') : t('Test failed')}</span>
+              <h3>{clusterTestResult.title}</h3>
+              <p>{clusterTestResult.message}</p>
+              {clusterTestResult.details && <code>{clusterTestResult.details}</code>}
+            </div>
+            <button type="button" className="btn btn-primary" onClick={() => setClusterTestResult(null)}>
+              {t('Close')}
+            </button>
+          </div>
+        </div>,
+        document.body
       )}
 
       <div className="admin-tab-rail">
@@ -1581,9 +1627,9 @@ export default function Admin() {
           <div className="admin-section-heading">
             <div>
               <span>{t('OpenTelemetry')}</span>
-              <h2>{t('Instrumentation CRDs')}</h2>
+              <h2>{t('Auto-Instrumentation Rules')}</h2>
             </div>
-            <p>{t('Resources created for namespaces enabled in ingestion control.')}</p>
+            <p>{t('Kubernetes rules that inject OpenTelemetry libraries into selected workloads.')}</p>
           </div>
           
           <div className="admin-instrumentation-grid">
@@ -1591,7 +1637,7 @@ export default function Admin() {
               <div className="admin-instrumentation-card animate-fade-in" key={`${inst.namespace}/${inst.name}`}>
                 <div className="admin-instrumentation-top">
                   <div className="admin-instrumentation-icon">
-                    <AdminIcon name="plug" />
+                    <img src="/logos/opentelemetry.svg" alt="" />
                   </div>
                   <div className="admin-instrumentation-title">
                     <strong>{inst.name}</strong>
@@ -1601,25 +1647,25 @@ export default function Admin() {
                 </div>
 
                 <div className="admin-instrumentation-flow">
-                  <span>Workload</span>
+                  <span>App</span>
                   <i />
-                  <span>Collector</span>
+                  <span>OTel SDK</span>
                   <i />
-                  <span>Exporter</span>
+                  <span>OTLP endpoint</span>
                 </div>
 
                 <div className="admin-instrumentation-meta-grid">
                   <div>
-                    <span>Endpoint</span>
+                    <span>OTLP endpoint</span>
                     <code>{inst.endpoint || 'Not set'}</code>
                   </div>
                   <div>
-                    <span>Sampler</span>
+                    <span>Sampling</span>
                     <code>{inst.sampler || 'default'}</code>
                   </div>
                   <div>
-                    <span>Resource</span>
-                    <code>Instrumentation</code>
+                    <span>Kubernetes resource</span>
+                    <code>Instrumentation CRD</code>
                   </div>
                 </div>
               </div>
@@ -1641,51 +1687,92 @@ export default function Admin() {
               <span>{t('Storage')}</span>
               <h2>{t('Storage & Retention')}</h2>
             </div>
-            <p>{t('Set trace expiry and manage storage cleanup. 0 keeps traces forever.')}</p>
+            <p>{t('Control how long traces stay queryable and clear stored trace data when needed.')}</p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
-            <div style={{ padding: '28px', border: '1px solid var(--border-primary)', borderRadius: '14px', background: 'linear-gradient(145deg, var(--bg-secondary) 0%, var(--bg-primary) 100%)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div>
-                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>Retention Policy</div>
-                <h3 style={{ fontSize: '15px', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Automatic trace expiry</h3>
-                <p className="text-muted" style={{ fontSize: '12px', lineHeight: 1.6, marginTop: '8px' }}>
-                  ClickHouse deletes spans older than this window. Set to <span className="mono" style={{ color: 'var(--text-primary)' }}>0</span> to keep every trace forever (tiered to MinIO).
-                </p>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Duration</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input type="number" min="0" value={retentionInput} onChange={(e) => setRetentionInput(e.target.value)} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '8px', color: 'var(--text-primary)', padding: '10px 14px', fontSize: '14px', fontFamily: 'var(--font-mono)', width: '88px' }} />
-                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>hours</span>
-                  </div>
+          <div className="admin-storage-grid">
+            <div className="admin-storage-card primary">
+              <div className="admin-storage-head">
+                <div>
+                  <span>{t('Current policy')}</span>
+                  <strong>{retentionPolicyLabel}</strong>
                 </div>
-                <button type="button" onClick={handleSaveRetention} disabled={savingRetention} className="btn btn-primary" style={{ fontSize: '13px', padding: '10px 20px', borderRadius: '8px' }}>
-                  {savingRetention ? 'Saving…' : 'Apply policy'}
-                </button>
+                <img src="/logos/clickhouse.svg" alt="" />
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Current policy: <span className="mono" style={{ color: 'var(--text-primary)' }}>{retentionHours === 0 ? 'Keep forever' : `${retentionHours}h`}</span></div>
+
+              <div className="admin-retention-ring">
+                <strong>{retentionHours === 0 ? '∞' : retentionHours}</strong>
+                <span>{retentionHours === 0 ? t('hours limit off') : t('hours')}</span>
+              </div>
+
+              <div className="admin-retention-controls">
+                <label>{t('Retention window')}</label>
+                <div>
+                  <input type="number" min="0" value={retentionInput} onChange={(e) => setRetentionInput(e.target.value)} />
+                  <span>{t('hours')}</span>
+                </div>
+              </div>
+
+              <div className="admin-retention-presets">
+                {[
+                  { label: '24h', value: '24' },
+                  { label: '7d', value: '168' },
+                  { label: '30d', value: '720' },
+                  { label: t('Forever'), value: '0' },
+                ].map(option => (
+                  <button key={option.value} type="button" className={retentionInput === option.value ? 'active' : ''} onClick={() => setRetentionInput(option.value)}>
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              <button type="button" onClick={handleSaveRetention} disabled={savingRetention} className="btn btn-primary">
+                {savingRetention ? t('Saving…') : t('Apply policy')}
+              </button>
+
               {retentionSuccess && (
-                <div style={{ padding: '12px 16px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '8px', color: 'var(--accent-emerald)', fontSize: '12px' }}>Retention policy saved.</div>
+                <div className="admin-inline-success">{t('Retention policy saved.')}</div>
               )}
             </div>
 
-            <div style={{ padding: '28px', border: '1px solid rgba(244, 63, 94, 0.2)', borderRadius: '14px', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div>
-                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--accent-rose)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>Destructive action</div>
-                <h3 style={{ fontSize: '15px', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Purge all trace data</h3>
-                <p className="text-muted" style={{ fontSize: '12px', lineHeight: 1.6, marginTop: '8px' }}>
-                  Permanently deletes every trace and span object in MinIO. Dashboard statistics will reset.
-                </p>
+            <div className="admin-storage-card">
+              <div className="admin-storage-head">
+                <div>
+                  <span>{t('Trace payloads')}</span>
+                  <strong>MinIO</strong>
+                </div>
+                <img src="/logos/minio.svg" alt="" />
               </div>
-              <div style={{ marginTop: 'auto' }}>
-                <button type="button" onClick={handleClearTraces} disabled={clearingTraces} style={{ background: 'transparent', color: 'var(--accent-rose)', border: '1px solid rgba(244, 63, 94, 0.4)', borderRadius: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: 600, cursor: clearingTraces ? 'not-allowed' : 'pointer', opacity: clearingTraces ? 0.6 : 1 }}>
-                  {clearingTraces ? 'Purging…' : 'Purge storage'}
-                </button>
+              <div className="admin-storage-facts">
+                <div>
+                  <span>{t('Endpoint')}</span>
+                  <code>{infraConfig?.minio?.endpoint || t('Not set')}</code>
+                </div>
+                <div>
+                  <span>{t('Bucket')}</span>
+                  <code>{infraConfig?.minio?.bucket || t('Not set')}</code>
+                </div>
+                <div>
+                  <span>{t('SSL')}</span>
+                  <code>{infraConfig?.minio?.useSSL === 'true' ? t('Enabled') : t('Disabled')}</code>
+                </div>
               </div>
+            </div>
+
+            <div className="admin-storage-card danger">
+              <div className="admin-storage-head">
+                <div>
+                  <span>{t('Danger zone')}</span>
+                  <strong>{t('Purge traces')}</strong>
+                </div>
+                <AdminIcon name="alerts" />
+              </div>
+              <p>{t('Deletes stored trace data and resets dashboard statistics.')}</p>
+              <button type="button" onClick={handleClearTraces} disabled={clearingTraces}>
+                {clearingTraces ? t('Purging…') : t('Purge storage')}
+              </button>
               {clearedMessage && (
-                <div style={{ padding: '12px 16px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '8px', color: 'var(--accent-emerald)', fontSize: '12px' }}>{clearedMessage}</div>
+                <div className="admin-inline-success">{clearedMessage}</div>
               )}
             </div>
           </div>

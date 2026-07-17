@@ -136,8 +136,9 @@ export default function AdminUsers() {
   useEffect(() => { load(); }, [load]);
 
   const saveUser = async (u: UserPermission) => {
+    const payload = u.role === 'admin' ? { ...u, namespaces: [ALL_NS] } : u;
     try {
-      await api.saveUser(u);
+      await api.saveUser(payload);
       notify('ok', `Permissions updated for ${u.username}`);
       setEditUser(null);
       load();
@@ -159,8 +160,9 @@ export default function AdminUsers() {
 
   const saveTemplate = async (t: PermissionTemplate) => {
     if (!t.name.trim()) { notify('err', 'Template name is required'); return; }
+    const payload = t.role === 'admin' ? { ...t, namespaces: [ALL_NS] } : t;
     try {
-      await api.savePermissionTemplate(t);
+      await api.savePermissionTemplate(payload);
       notify('ok', `Template "${t.name}" saved`);
       setEditTemplate(null);
       load();
@@ -183,7 +185,7 @@ export default function AdminUsers() {
   const applyTemplateToUser = (u: UserPermission, tplName: string) => {
     const tpl = templates.find(t => t.name === tplName);
     if (!tpl) return u;
-    return { ...u, role: tpl.role, namespaces: [...tpl.namespaces], template: tpl.name };
+    return { ...u, role: tpl.role, namespaces: tpl.role === 'admin' ? [ALL_NS] : [...tpl.namespaces], template: tpl.name };
   };
 
   if (loading) {
@@ -191,14 +193,9 @@ export default function AdminUsers() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px', animation: 'fadeIn 0.2s' }}>
+    <div className="admin-users-page">
       {message && (
-        <div style={{
-          padding: '10px 14px', borderRadius: '8px', fontSize: '12.5px', fontWeight: 600,
-          background: message.kind === 'ok' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
-          border: `1px solid ${message.kind === 'ok' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'}`,
-          color: message.kind === 'ok' ? 'var(--accent-emerald, #10b981)' : 'var(--accent-rose, #f43f5e)',
-        }}>{message.text}</div>
+        <div className={`admin-users-message ${message.kind}`}>{message.text}</div>
       )}
 
       <div>
@@ -208,33 +205,37 @@ export default function AdminUsers() {
             <h2>{t('Permission Templates')}</h2>
             <p>{t('The default template is applied to new users on first login.')}</p>
           </div>
-          <button className="btn btn-primary btn-sm" onClick={() => setEditTemplate({ name: '', description: '', role: 'viewer', namespaces: [ALL_NS], isDefault: templates.length === 0 })}>
-            + {t('New Template')}
+          <button className="admin-new-template-btn" onClick={() => setEditTemplate({ name: '', description: '', role: 'viewer', namespaces: [ALL_NS], isDefault: templates.length === 0 })}>
+            {t('New Template')}
           </button>
         </div>
 
         {templates.length === 0 ? (
-          <div className="card" style={{ padding: '20px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          <div className="admin-empty-card">
             {t('No templates. New users start with no access — mark a template as default to grant a baseline automatically.')}
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '14px', marginTop: '10px' }}>
+          <div className="admin-access-grid">
             {templates.map(tpl => (
-              <div key={tpl.name} className="card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                    <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tpl.name}</span>
-                    {tpl.isDefault && (
-                      <span style={{ fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.15)', color: 'var(--accent-amber, #f59e0b)', border: '1px solid rgba(245, 158, 11, 0.35)', whiteSpace: 'nowrap' }}>★ {t('DEFAULT')}</span>
-                    )}
+              <div key={tpl.name} className={`admin-access-card ${tpl.role === 'admin' ? 'admin-role' : ''}`}>
+                <div className="admin-access-card-top">
+                  <div className="admin-access-avatar">{tpl.role === 'admin' ? 'A' : 'V'}</div>
+                  <div className="admin-access-title">
+                    <strong>{tpl.name}</strong>
+                    <span>{tpl.description || (tpl.role === 'admin' ? t('Full platform access') : t('Namespace access preset'))}</span>
                   </div>
                   <RoleBadge role={tpl.role} />
                 </div>
-                {tpl.description && <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{tpl.description}</div>}
-                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                  {t('Visibility')}: <span className="mono" style={{ color: 'var(--text-primary)' }}>{nsSummary(tpl.namespaces)}</span>
+
+                <div className="admin-access-meta">
+                  <span>{t('Access')}</span>
+                  <code>{tpl.role === 'admin' ? t('Full platform access') : nsSummary(tpl.namespaces)}</code>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '10px' }}>
+                <div className="admin-access-flags">
+                  {tpl.isDefault && <span>{t('Default')}</span>}
+                  <span>{tpl.role === 'admin' ? t('No namespace filter') : t('Namespace scoped')}</span>
+                </div>
+                <div className="admin-access-actions">
                   <button className="btn btn-ghost btn-sm" onClick={() => setEditTemplate({ ...tpl, namespaces: [...tpl.namespaces] })}>{t('Edit')}</button>
                   <button className="btn btn-ghost btn-sm" style={{ color: 'var(--accent-rose, #f43f5e)' }} onClick={() => removeTemplate(tpl.name)}>{t('Delete')}</button>
                 </div>
@@ -254,12 +255,12 @@ export default function AdminUsers() {
         </div>
 
         {users.length === 0 ? (
-          <div className="card" style={{ padding: '20px', fontSize: '13px', color: 'var(--text-secondary)', marginTop: '10px' }}>
+          <div className="admin-empty-card">
             {t('No LDAP logins yet.')}
           </div>
         ) : (
-          <div className="card" style={{ marginTop: '10px', overflow: 'auto' }}>
-            <table className="data-table" style={{ width: '100%' }}>
+          <div className="admin-users-table-card">
+            <table className="admin-users-table">
               <thead>
                 <tr>
                   <th>{t('User')}</th>
@@ -281,7 +282,9 @@ export default function AdminUsers() {
                     </td>
                     <td><RoleBadge role={u.role} /></td>
                     <td style={{ maxWidth: '340px' }}>
-                      <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>{nsSummary(u.namespaces)}</span>
+                      <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                        {u.role === 'admin' ? t('Full platform access') : nsSummary(u.namespaces)}
+                      </span>
                     </td>
                     <td>
                       <span className="mono" style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{u.template || '—'}</span>
@@ -304,9 +307,9 @@ export default function AdminUsers() {
       </div>
 
       {editUser && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10, 14, 23, 0.75)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '16px', width: '620px', maxWidth: '92%', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '85vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="admin-modal-backdrop">
+          <div className="admin-modal-panel admin-access-modal">
+            <div className="admin-modal-header">
               <h3 style={{ fontSize: '17px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
                 Permissions — {editUser.displayName || editUser.username}
               </h3>
@@ -321,7 +324,11 @@ export default function AdminUsers() {
                 </div>
                 <AccessSwitch
                   checked={editUser.role === 'admin'}
-                  onChange={() => setEditUser({ ...editUser, role: editUser.role === 'admin' ? 'viewer' : 'admin' })}
+                  onChange={() => setEditUser({
+                    ...editUser,
+                    role: editUser.role === 'admin' ? 'viewer' : 'admin',
+                    namespaces: [ALL_NS],
+                  })}
                 />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -342,19 +349,26 @@ export default function AdminUsers() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                Namespace visibility {editUser.role === 'admin' && <span style={{ color: 'var(--accent-amber, #f59e0b)', textTransform: 'none' }}>(admins always see everything)</span>}
-              </label>
-              <NamespacePicker
-                selected={editUser.namespaces || []}
-                options={namespaceOptions}
-                onChange={ns => setEditUser({ ...editUser, namespaces: ns })}
-              />
-              {(editUser.namespaces || []).length === 0 && (
-                <span style={{ fontSize: '11px', color: 'var(--accent-rose, #f43f5e)' }}>No namespaces selected — user sees nothing.</span>
-              )}
-            </div>
+            {editUser.role === 'admin' ? (
+              <div className="admin-access-full-card">
+                <strong>{t('Full platform access')}</strong>
+                <span>{t('Namespace filters are not needed for administrators.')}</span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                  Namespace visibility
+                </label>
+                <NamespacePicker
+                  selected={editUser.namespaces || []}
+                  options={namespaceOptions}
+                  onChange={ns => setEditUser({ ...editUser, namespaces: ns })}
+                />
+                {(editUser.namespaces || []).length === 0 && (
+                  <span style={{ fontSize: '11px', color: 'var(--accent-rose, #f43f5e)' }}>No namespaces selected — user sees nothing.</span>
+                )}
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border-primary)', paddingTop: '16px' }}>
               <button className="btn btn-ghost" onClick={() => setEditUser(null)}>Cancel</button>
@@ -366,9 +380,9 @@ export default function AdminUsers() {
       )}
 
       {editTemplate && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10, 14, 23, 0.75)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '16px', width: '620px', maxWidth: '92%', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '85vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="admin-modal-backdrop">
+          <div className="admin-modal-panel admin-access-modal">
+            <div className="admin-modal-header">
               <h3 style={{ fontSize: '17px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
                 {templates.some(t => t.name === editTemplate.name) ? `Edit Template — ${editTemplate.name}` : 'New Permission Template'}
               </h3>
@@ -389,7 +403,11 @@ export default function AdminUsers() {
                 </div>
                 <AccessSwitch
                   checked={editTemplate.role === 'admin'}
-                  onChange={() => setEditTemplate({ ...editTemplate, role: editTemplate.role === 'admin' ? 'viewer' : 'admin' })}
+                  onChange={() => setEditTemplate({
+                    ...editTemplate,
+                    role: editTemplate.role === 'admin' ? 'viewer' : 'admin',
+                    namespaces: [ALL_NS],
+                  })}
                 />
               </div>
             </div>
@@ -400,14 +418,21 @@ export default function AdminUsers() {
                 onChange={e => setEditTemplate({ ...editTemplate, description: e.target.value })} />
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Namespace visibility</label>
-              <NamespacePicker
-                selected={editTemplate.namespaces || []}
-                options={namespaceOptions}
-                onChange={ns => setEditTemplate({ ...editTemplate, namespaces: ns })}
-              />
-            </div>
+            {editTemplate.role === 'admin' ? (
+              <div className="admin-access-full-card">
+                <strong>{t('Full platform access')}</strong>
+                <span>{t('Admin templates apply to the whole platform, so namespace selection is hidden.')}</span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Namespace visibility</label>
+                <NamespacePicker
+                  selected={editTemplate.namespaces || []}
+                  options={namespaceOptions}
+                  onChange={ns => setEditTemplate({ ...editTemplate, namespaces: ns })}
+                />
+              </div>
+            )}
 
             <div className="admin-setting-row">
               <div>
