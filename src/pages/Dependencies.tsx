@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { ServiceMapData } from '../entities';
 import { useTranslation } from '../utils/i18n';
-import { useColumnResize } from '../utils/useColumnResize';
+import { LoadingState, NoDataState } from '../components/DataState';
 
 interface DependenciesProps {
   namespace: string;
@@ -33,10 +33,12 @@ interface AccumulatedDependency extends DependencyItem {
 
 // Sparkline SVG renderer
 function Sparkline({ data, color }: { data: number[]; color: string }) {
+  const gradId = `spark-grad-${color.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+
   if (!data || data.length < 2) {
     return (
-      <svg width="50" height="18" viewBox="0 0 50 18" style={{ opacity: 0.3, marginRight: '8px' }}>
-        <line x1="0" y1="9" x2="50" y2="9" stroke="var(--text-muted)" strokeWidth="1.5" strokeDasharray="2,2" />
+      <svg className="dependency-sparkline" width="68" height="24" viewBox="0 0 68 24" style={{ opacity: 0.35 }}>
+        <line x1="2" y1="12" x2="66" y2="12" stroke="var(--text-muted)" strokeWidth="1.5" strokeDasharray="2 3" />
       </svg>
     );
   }
@@ -45,9 +47,9 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
   const min = Math.min(...data);
   const range = max - min || 1;
   
-  const width = 50;
-  const height = 18;
-  const padding = 2;
+  const width = 68;
+  const height = 24;
+  const padding = 3;
   
   const points = data.map((val, idx) => {
     const x = (idx / (data.length - 1)) * width;
@@ -59,14 +61,14 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
   const areaD = `${pathD} L ${width} ${height} L 0 ${height} Z`;
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible', marginRight: '8px' }}>
+    <svg className="dependency-sparkline" width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
       <defs>
-        <linearGradient id={`spark-grad-${color}`} x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.25" />
           <stop offset="100%" stopColor={color} stopOpacity="0.0" />
         </linearGradient>
       </defs>
-      <path d={areaD} fill={`url(#spark-grad-${color})`} />
+      <path d={areaD} fill={`url(#${gradId})`} />
       <path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -259,32 +261,6 @@ const getDependencyType = (name: string): 'database' | 'messaging' | '3rdparty' 
   return 'other';
 };
 
-const getDependencyEmoji = (name: string): string => {
-  const n = name.toLowerCase();
-  if (n.includes('postgres')) return '🐘';
-  if (n.includes('mysql')) return '🐬';
-  if (n.includes('redis')) return '⚡';
-  if (n.includes('kafka')) return '🦫';
-  if (n.includes('rabbitmq')) return '🐇';
-  if (n.includes('mygov')) return '🏛️';
-  if (n.includes('egov')) return '🏢';
-  if (n.includes('stripe')) return '💳';
-  if (n.includes('openai')) return '🤖';
-  if (n.includes('slack')) return '💬';
-  if (n.includes('discord')) return '🎮';
-  if (n.includes('github')) return '🐙';
-  if (n.includes('minio')) return '📦';
-  if (n.includes('clickhouse')) return '📈';
-  if (n.includes('cassandra')) return '👁️';
-  if (n.includes('mongo')) return '🍃';
-  if (n.includes('db-') || n.endsWith('-db') || n.includes('database') || n.includes('db') || n.includes('sqlite')) return '🗄️';
-  if (n.includes('mail') || n.includes('smtp')) return '📧';
-  if (n.includes('dns')) return '🌐';
-  if (n.includes('vm') || n.includes('virtual machine') || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(n)) return '📟';
-  if (n.includes('bridge') || n.includes('.gov.az') || n.includes('.az')) return '🌉';
-  return '⚙️';
-};
-
 const BRAND_LOGOS: Record<string, string> = {
   redis: '/logos/redis.svg',
   kafka: '/logos/kafka.svg',
@@ -299,13 +275,13 @@ const BRAND_LOGOS: Record<string, string> = {
   nginx: '/logos/nginx.svg',
   kong: '/logos/kong.svg',
   mygov: '/mygov-id.svg',
-  stripe: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/stripe.svg',
-  openai: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/openai.svg',
+  stripe: '',
+  openai: '',
   slack: '/logos/slack.svg',
-  discord: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/discord.svg',
-  github: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/github.svg',
-  vm: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linux.svg',
-  bridge: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linkerd.svg',
+  discord: '',
+  github: '',
+  vm: '',
+  bridge: '',
   apm: '/logos/apm.svg',
   clickhouse: '/logos/clickhouse.svg',
   dns: '/logos/dns.svg',
@@ -339,6 +315,98 @@ const getDependencyLogo = (name: string): string | null => {
   if (n.includes('bridge') || n.includes('.gov.az') || n.includes('.az')) return BRAND_LOGOS.bridge;
   if (n.includes('database') || n.includes('db')) return BRAND_LOGOS.database;
   return null;
+};
+
+type DependencyIconName =
+  | 'database'
+  | 'queue'
+  | 'external'
+  | 'server'
+  | 'cache'
+  | 'shield'
+  | 'network'
+  | 'box';
+
+const getDependencyIconName = (name: string, type: DependencyItem['type']): DependencyIconName => {
+  const n = name.toLowerCase();
+  if (n.includes('redis')) return 'cache';
+  if (n.includes('vault') || n.includes('auth')) return 'shield';
+  if (n.includes('dns') || n.includes('bridge') || n.includes('.az') || n.includes('.gov')) return 'network';
+  if (type === 'database') return 'database';
+  if (type === 'messaging') return 'queue';
+  if (type === '3rdparty') return 'external';
+  if (n.includes('vm') || n.includes('virtual machine') || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(n)) return 'server';
+  return 'box';
+};
+
+function DependencyIcon({ name }: { name: DependencyIconName }) {
+  const common = {
+    width: 20,
+    height: 20,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+
+  switch (name) {
+    case 'database':
+      return <svg {...common}><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 10c0 1.7 3.6 3 8 3s8-1.3 8-3" /></svg>;
+    case 'queue':
+      return <svg {...common}><path d="M4 7h5" /><path d="M15 7h5" /><circle cx="12" cy="7" r="3" /><path d="M12 10v4" /><path d="M7 17h10" /><circle cx="5" cy="17" r="2" /><circle cx="19" cy="17" r="2" /></svg>;
+    case 'external':
+      return <svg {...common}><path d="M7 17 17 7" /><path d="M8 7h9v9" /><path d="M5 5v14h14" /></svg>;
+    case 'server':
+      return <svg {...common}><rect x="3" y="4" width="18" height="6" rx="2" /><rect x="3" y="14" width="18" height="6" rx="2" /><path d="M7 7h.01" /><path d="M7 17h.01" /></svg>;
+    case 'cache':
+      return <svg {...common}><path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3Z" /><path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7" /><path d="m8 13 3 3 5-6" /></svg>;
+    case 'shield':
+      return <svg {...common}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-5" /></svg>;
+    case 'network':
+      return <svg {...common}><circle cx="6" cy="6" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="12" cy="18" r="3" /><path d="m8.4 8.2 2.4 6.1" /><path d="m15.6 8.2-2.4 6.1" /><path d="M9 6h6" /></svg>;
+    default:
+      return <svg {...common}><path d="M12 2 4 6.5v9L12 20l8-4.5v-9L12 2Z" /><path d="m4.5 7 7.5 4.2L19.5 7" /><path d="M12 20v-8.8" /></svg>;
+  }
+}
+
+function DependencyLogo({ item }: { item: AccumulatedDependency }) {
+  const logoUrl = getDependencyLogo(item.rawName);
+  const iconName = getDependencyIconName(item.rawName, item.type);
+
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        className="dependency-logo-img"
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).style.display = 'none';
+        }}
+      />
+    );
+  }
+
+  return <DependencyIcon name={iconName} />;
+}
+
+const formatDependencyNumber = (value: number) => {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return Math.round(value).toLocaleString();
+};
+
+const formatDependencyLatency = (ms: number) => {
+  if (!Number.isFinite(ms) || ms <= 0) return '0ms';
+  if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`;
+  return `${ms.toFixed(ms >= 100 ? 0 : 1)}ms`;
+};
+
+const formatDependencyRate = (value: number) => {
+  if (!Number.isFinite(value) || value <= 0) return '0.0%';
+  return `${value.toFixed(value >= 10 ? 1 : 2)}%`;
 };
 
 // Infrastructure parser with production-focused naming details.
@@ -429,15 +497,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
     }
     return !enabledNamespaces || enabledNamespaces.has(n);
   }, [namespace, enabledNamespaces]);
-
-  const { widths: colWidths, startResize } = useColumnResize({
-    health: 100,
-    backend: 240,
-    latency: 180,
-    traffic: 180,
-    errors: 180,
-    impact: 140,
-  });
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -620,8 +679,8 @@ export default function Dependencies({ namespace }: DependenciesProps) {
   }, [dependencyItems, loading]);
 
   const accumulatedList = useMemo(() => {
-    return Object.values(accumulated);
-  }, [accumulated]);
+    return Object.values(accumulated).filter(item => isNamespaceActive(item.namespace));
+  }, [accumulated, isNamespaceActive]);
 
   // Filtered and searched items based on accumulated list
   const filteredItems = useMemo(() => {
@@ -671,17 +730,17 @@ export default function Dependencies({ namespace }: DependenciesProps) {
     return { maxLatency, maxThroughput };
   }, [accumulated]);
 
-  const getHealthBadge = (errorRate: number, isActive: boolean) => {
+  const getHealthMeta = (errorRate: number, isActive: boolean) => {
     if (!isActive) {
-      return <span className="health-badge health-unknown">Unknown</span>;
+      return { label: 'Idle', className: 'health-unknown' };
     }
     if (errorRate === 0) {
-      return <span className="health-badge health-ok">Healthy</span>;
+      return { label: 'Healthy', className: 'health-ok' };
     }
     if (errorRate < 10) {
-      return <span className="health-badge health-warning">Warning</span>;
+      return { label: 'Warning', className: 'health-warning' };
     }
-    return <span className="health-badge health-critical">Critical</span>;
+    return { label: 'Critical', className: 'health-critical' };
   };
 
   const namespaceOptions = [
@@ -698,175 +757,68 @@ export default function Dependencies({ namespace }: DependenciesProps) {
   ];
 
   return (
-    <div className="animate-fade-in dependencies-page" style={{ paddingBottom: '40px' }}>
-      
-      {/* Header View link */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '20px' }}>
+    <div className="animate-fade-in dependencies-page">
+      <section className="dependencies-hero">
         <div>
-          <h1 className="page-title">{t('Dependencies')}</h1>
-          <p className="page-subtitle">
-            {t('Overview of databases, queues, caches, and third-party tools called by your services.')}
-          </p>
+          <span className="dependencies-eyebrow">
+            <DependencyIcon name="network" />
+            {t('Dependency Visibility')}
+          </span>
+          <h1>{t('Dependencies')}</h1>
+          <p>{t('Databases, queues, caches, infrastructure, and third-party systems called by active services.')}</p>
         </div>
-        <button
-          onClick={() => navigate('/servicemap')}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: 'var(--accent-indigo)',
-            cursor: 'pointer',
-            fontSize: '13px',
-            fontWeight: 600,
-            textDecoration: 'none'
-          }}
-          onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
-          onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
-        >
-          View service map
-        </button>
-      </div>
-
-      {/* Overview stats cards grid */}
-      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '24px' }}>
-        <div className="card" style={{
-          position: 'relative',
-          padding: '24px 20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          borderLeft: '4px solid var(--accent-indigo)',
-          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(99, 102, 241, 0.03) 100%)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>{t('Total Dependencies')}</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-indigo)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-              </svg>
-            </div>
-          </div>
-          <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
-            {summaryMetrics.count}
-          </div>
+        <div className="dependencies-hero-actions">
+          <span className="dependencies-scope-chip">
+            {namespace ? namespace : t('All Namespaces')}
+          </span>
+          <button className="dependencies-map-link" onClick={() => navigate('/servicemap')}>
+            <DependencyIcon name="network" />
+            {t('Service Map')}
+          </button>
         </div>
+      </section>
 
-        <div className="card" style={{
-          position: 'relative',
-          padding: '24px 20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          borderLeft: '4px solid var(--accent-emerald)',
-          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(16, 185, 129, 0.03) 100%)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>{t('Avg Connection Latency')}</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
-              </svg>
-            </div>
-          </div>
-          <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
-            {summaryMetrics.avgLatency.toFixed(1)} <span style={{ fontSize: '13px', fontWeight: 400, color: 'var(--text-secondary)' }}>ms</span>
-          </div>
+      <section className="dependency-metric-grid">
+        <div className="dependency-metric-card indigo">
+          <span>{t('Total Dependencies')}</span>
+          <strong>{formatDependencyNumber(summaryMetrics.count)}</strong>
+          <em>{formatDependencyNumber(filteredItems.filter(item => item.isActive).length)} {t('active')}</em>
+        </div>
+        <div className="dependency-metric-card emerald">
+          <span>{t('Avg Connection Latency')}</span>
+          <strong>{formatDependencyLatency(summaryMetrics.avgLatency)}</strong>
+          <em>{t('weighted by calls')}</em>
+        </div>
+        <div className="dependency-metric-card cyan">
+          <span>{t('Total Throughput')}</span>
+          <strong>{formatDependencyNumber(summaryMetrics.calls)}</strong>
+          <em>{t('requests in scope')}</em>
+        </div>
+        <div className={`dependency-metric-card ${summaryMetrics.errorRate > 0 ? 'rose' : 'emerald'}`}>
+          <span>{t('System Error Rate')}</span>
+          <strong>{formatDependencyRate(summaryMetrics.errorRate)}</strong>
+          <em>{summaryMetrics.errorRate > 0 ? t('needs attention') : t('no dependency errors')}</em>
+        </div>
+      </section>
+
+      <section className="dependencies-toolbar">
+        <div className="dependency-search">
+          <DependencyIcon name="external" />
+          <input
+            type="text"
+            placeholder={t('Search dependencies or consumers...')}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
 
-        <div className="card" style={{
-          position: 'relative',
-          padding: '24px 20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          borderLeft: '4px solid var(--accent-cyan)',
-          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(14, 165, 233, 0.03) 100%)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>{t('Total Throughput')}</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(14, 165, 233, 0.1)', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-              </svg>
-            </div>
-          </div>
-          <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
-            {summaryMetrics.calls.toLocaleString()}
-          </div>
-        </div>
-
-        <div className="card" style={{
-          position: 'relative',
-          padding: '24px 20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          borderLeft: `4px solid ${summaryMetrics.errorRate > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)'}`,
-          background: `linear-gradient(135deg, var(--bg-secondary) 0%, ${summaryMetrics.errorRate > 0 ? 'rgba(244, 63, 94, 0.03)' : 'rgba(16, 185, 129, 0.03)'} 100%)`
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>{t('System Error Rate')}</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: summaryMetrics.errorRate > 0 ? 'rgba(244, 63, 94, 0.1)' : 'rgba(16, 185, 129, 0.1)', color: summaryMetrics.errorRate > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-              </svg>
-            </div>
-          </div>
-          <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: summaryMetrics.errorRate > 0 ? 'var(--accent-rose)' : 'var(--text-primary)' }}>
-            {summaryMetrics.errorRate.toFixed(2)}%
-          </div>
-        </div>
-      </div>
-
-      {/* Filter Toolbar */}
-      <div className="card" style={{ marginBottom: '16px', overflow: 'visible' }}>
-        <div className="card-body filter-bar" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', overflow: 'visible' }}>
-          <div style={{ flex: 1, minWidth: '220px', position: 'relative' }}>
-            <input
-              type="text"
-              placeholder={t("Search dependencies or consumers...")}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px 12px 8px 36px',
-                background: 'var(--bg-tertiary)',
-                color: 'var(--text-primary)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: '8px',
-                fontSize: '13px',
-                outline: 'none',
-                transition: 'all 0.15s ease-out'
-              }}
-              onFocus={e => {
-                e.currentTarget.style.borderColor = 'var(--accent-indigo)';
-                e.currentTarget.style.boxShadow = '0 0 0 2px rgba(99, 102, 241, 0.15)';
-              }}
-              onBlur={e => {
-                e.currentTarget.style.borderColor = 'var(--border-primary)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            />
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-              fill="none"
-              stroke="var(--text-secondary)"
-              strokeWidth="2.5"
-              style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-          </div>
-
+        <div className="dependencies-filter-group">
           {!namespace && (
             <CustomDropdown
               options={namespaceOptions}
               value={activeNamespaceFilter}
               onChange={setActiveNamespaceFilter}
-              placeholder={t("All Namespaces")}
+              placeholder={t('All Namespaces')}
             />
           )}
 
@@ -874,251 +826,125 @@ export default function Dependencies({ namespace }: DependenciesProps) {
             options={typeOptions}
             value={selectedType}
             onChange={setSelectedType}
-            placeholder={t("All Types")}
+            placeholder={t('All Types')}
           />
         </div>
-      </div>
+      </section>
 
-      {/* Main Dependencies Table */}
-      <div className="card">
-        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="card-title">{t("Dependency Metrics")}</div>
-          <span className="text-sm text-muted">{filteredItems.length} connection targets</span>
+      <section className="dependency-list-panel">
+        <div className="dependency-list-header">
+          <div>
+            <span>{t('Dependency Metrics')}</span>
+            <h2>{formatDependencyNumber(filteredItems.length)} {t('connection targets')}</h2>
+          </div>
+          <p>{t('Real dependencies discovered from service-map edges and captured infrastructure spans.')}</p>
         </div>
-        <div className="table-wrapper" style={{ overflowX: 'auto' }}>
-          {filteredItems.length === 0 ? (
-            <div className="empty-state" style={{ padding: '60px 0' }}>
-              <div className="empty-state-title">
-                {loading ? t("Loading APM dependencies...") : t("No dependencies found")}
-              </div>
-              <div className="empty-state-text">
-                {loading ? t("Fetching latest connection maps...") : t("Try adjusting your filters or search terms.")}
-              </div>
+
+        {loading && filteredItems.length === 0 ? (
+          <LoadingState height={280} label={t('Loading dependencies...')} />
+        ) : filteredItems.length === 0 ? (
+          <NoDataState
+            height={280}
+            title={t('No dependencies found')}
+            hint={t('Dependencies appear after services call databases, queues, caches, or external systems.')}
+          />
+        ) : (
+          <div className="dependency-list">
+            <div className="dependency-list-labels">
+              <span>{t('Dependency')}</span>
+              <span>{t('Health')}</span>
+              <span>{t('Latency')}</span>
+              <span>{t('Traffic')}</span>
+              <span>{t('Errors')}</span>
+              <span>{t('Impact')}</span>
             </div>
-          ) : (
-            <table className="db-table" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
-              <thead>
-                <tr>
-                  <th style={{ width: colWidths.health, position: 'relative', textAlign: 'center' }}>
-                    Health
-                    <div className="resize-handle" onMouseDown={e => startResize(e, 'health')} />
-                  </th>
-                  <th style={{ width: colWidths.backend, position: 'relative' }}>
-                    Backend
-                    <div className="resize-handle" onMouseDown={e => startResize(e, 'backend')} />
-                  </th>
-                  <th style={{ width: colWidths.latency, position: 'relative' }}>
-                    Latency (avg.)
-                    <div className="resize-handle" onMouseDown={e => startResize(e, 'latency')} />
-                  </th>
-                  <th style={{ width: colWidths.traffic, position: 'relative' }}>
-                    Traffic
-                    <div className="resize-handle" onMouseDown={e => startResize(e, 'traffic')} />
-                  </th>
-                  <th style={{ width: colWidths.errors, position: 'relative' }}>
-                    Errors
-                    <div className="resize-handle" onMouseDown={e => startResize(e, 'errors')} />
-                  </th>
-                  <th style={{ width: colWidths.impact, position: 'relative' }}>
-                    Impact
-                    <div className="resize-handle" onMouseDown={e => startResize(e, 'impact')} />
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredItems.map(item => {
-                  const impactPct = maxValues.maxThroughput > 0 ? (item.requestCount / maxValues.maxThroughput) * 100 : 0;
-                  const tpmVal = item.isActive ? (item.requestCount / 60).toFixed(1) : '0.0';
 
-                  return (
-                    <tr key={item.id} className="hover-row" style={{ cursor: 'pointer', transition: 'background 0.2s' }}>
-                      
-                      {/* 1. Health Badge */}
-                      <td data-label="Health" style={{ width: colWidths.health, textAlign: 'center' }}>
-                        {getHealthBadge(item.errorRate, item.isActive)}
-                      </td>
+            {filteredItems.map(item => {
+              const health = getHealthMeta(item.errorRate, item.isActive);
+              const impactPct = maxValues.maxThroughput > 0 ? (item.requestCount / maxValues.maxThroughput) * 100 : 0;
+              const latencyPct = maxValues.maxLatency > 0 ? (item.avgDurationMs / maxValues.maxLatency) * 100 : 0;
+              const tpmVal = item.isActive ? item.requestCount / 60 : 0;
+              const topConsumer = item.consumers[0];
+              const rowTone = !item.isActive
+                ? 'idle'
+                : item.errorRate >= 10
+                  ? 'critical'
+                  : item.errorRate > 0 || item.avgDurationMs >= 1000
+                    ? 'warning'
+                    : 'healthy';
 
-                      {/* 2. Backend details */}
-                      <td data-label="Backend" style={{ width: colWidths.backend, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <span style={{ 
-                            height: '24px', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center',
-                            width: '44px',
-                            minWidth: '44px'
-                          }}>
-                            {(() => {
-                              const logoUrl = getDependencyLogo(item.rawName);
-                              const isDarkTheme = document.body.classList.contains('dark-theme');
-                              if (logoUrl) {
-                                const isSimpleIcon = logoUrl.includes('simple-icons');
-                                const isKong = logoUrl.includes('kong');
-                                const shouldInvert = isDarkTheme && (isSimpleIcon || isKong);
-                                return (
-                                  <img 
-                                    src={logoUrl} 
-                                    alt={item.system} 
-                                    style={{ 
-                                      height: '22px', 
-                                      maxWidth: '44px',
-                                      objectFit: 'contain',
-                                      filter: shouldInvert ? 'invert(1) brightness(0.9)' : undefined
-                                    }} 
-                                    onError={(e) => {
-                                      (e.target as HTMLImageElement).style.display = 'none';
-                                      const parent = (e.target as HTMLImageElement).parentElement;
-                                      if (parent) {
-                                        parent.innerText = getDependencyEmoji(item.rawName);
-                                      }
-                                    }}
-                                  />
-                                );
-                              }
-                              return (
-                                <span style={{ fontSize: '14px' }}>
-                                  {getDependencyEmoji(item.rawName)}
-                                </span>
-                              );
-                            })()}
-                          </span>
-                          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                            <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {item.system.toLowerCase()}
-                            </span>
-                            {item.details && (
-                              <span className="mono" style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.details}>
-                                {item.details}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
+              return (
+                <article key={item.id} className={`dependency-row ${rowTone}`}>
+                  <div className="dependency-identity">
+                    <div className={`dependency-logo ${item.type === '3rdparty' ? 'external' : item.type}`}>
+                      <DependencyLogo item={item} />
+                    </div>
+                    <div className="dependency-name-block">
+                      <div className="dependency-name-line">
+                        <strong title={item.rawName}>{item.system}</strong>
+                        <span>{item.type === '3rdparty' ? t('external') : item.type}</span>
+                      </div>
+                      <p title={item.details || item.namespace}>
+                        {item.details || item.namespace}
+                      </p>
+                      <div className="dependency-consumer-line">
+                        <span>{item.namespace}</span>
+                        <em>
+                          {topConsumer
+                            ? `${topConsumer.serviceName} / ${formatDependencyNumber(item.consumers.length)} consumers`
+                            : t('No active consumers')}
+                        </em>
+                      </div>
+                    </div>
+                  </div>
 
-                      {/* 3. Latency Sparkline + Value */}
-                      <td data-label="Latency (avg.)" style={{ width: colWidths.latency }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <Sparkline data={item.latencyHistory} color="#3b82f6" />
-                          <span className="mono" style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {item.avgDurationMs.toFixed(0)} ms
-                          </span>
-                        </div>
-                      </td>
+                  <div className="dependency-cell health">
+                    <span className={`health-badge ${health.className}`}>
+                      <i />
+                      {t(health.label)}
+                    </span>
+                  </div>
 
-                      {/* 4. Traffic Sparkline + Value (TPM) */}
-                      <td data-label="Traffic" style={{ width: colWidths.traffic }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <Sparkline data={item.throughputHistory} color="#10b981" />
-                          <span className="mono" style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {tpmVal} tpm
-                          </span>
-                        </div>
-                      </td>
+                  <div className="dependency-cell metric">
+                    <Sparkline data={item.latencyHistory} color="#3b82f6" />
+                    <div>
+                      <strong>{formatDependencyLatency(item.avgDurationMs)}</strong>
+                      <span>{t('avg')}</span>
+                    </div>
+                    <div className="dependency-mini-bar">
+                      <i style={{ width: `${Math.max(3, Math.min(100, latencyPct))}%` }} />
+                    </div>
+                  </div>
 
-                      {/* 5. Errors Sparkline + Value (%) */}
-                      <td data-label="Errors" style={{ width: colWidths.errors }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <Sparkline data={item.errorsHistory} color="#ef4444" />
-                          <span className="mono" style={{ fontSize: '12.5px', fontWeight: 600, color: item.errorRate > 0 ? 'var(--accent-rose)' : 'var(--text-secondary)' }}>
-                            {item.errorRate.toFixed(1)} %
-                          </span>
-                        </div>
-                      </td>
+                  <div className="dependency-cell metric">
+                    <Sparkline data={item.throughputHistory} color="#10b981" />
+                    <div>
+                      <strong>{tpmVal.toFixed(1)}</strong>
+                      <span>{t('tpm')}</span>
+                    </div>
+                  </div>
 
-                      {/* 6. Impact Bars */}
-                      <td data-label="Impact" style={{ width: colWidths.impact }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', width: '80px' }}>
-                          <div style={{ height: '5px', background: 'var(--accent-indigo)', borderRadius: '2px', width: `${Math.max(4, impactPct)}%` }} />
-                          <div style={{ height: '3px', background: 'var(--text-muted)', opacity: 0.3, borderRadius: '2px', width: `${Math.max(4, impactPct * 0.7)}%` }} />
-                        </div>
-                      </td>
+                  <div className="dependency-cell metric">
+                    <Sparkline data={item.errorsHistory} color="#ef4444" />
+                    <div>
+                      <strong className={item.errorRate > 0 ? 'danger' : ''}>{formatDependencyRate(item.errorRate)}</strong>
+                      <span>{formatDependencyNumber(item.errorCount)} {t('errors')}</span>
+                    </div>
+                  </div>
 
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-      <style>{`
-        .health-badge {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          padding: 3px 8px;
-          border-radius: 20px;
-          font-size: 10.5px;
-          font-weight: 700;
-          letter-spacing: 0.3px;
-        }
-        .health-ok {
-          background: rgba(16, 185, 129, 0.12);
-          color: var(--accent-emerald, #10b981);
-        }
-        .health-warning {
-          background: rgba(245, 158, 11, 0.12);
-          color: var(--accent-amber, #f59e0b);
-        }
-        .health-critical {
-          background: rgba(244, 63, 94, 0.15);
-          color: var(--accent-rose, #f43f5e);
-        }
-        .health-unknown {
-          background: rgba(148, 163, 184, 0.12);
-          color: var(--text-secondary);
-        }
-
-        .hover-row:hover {
-          background: var(--bg-hover) !important;
-        }
-
-        .filter-bar {
-          padding: 12px 16px !important;
-        }
-
-        @media (max-width: 768px) {
-          .db-table thead {
-            display: none;
-          }
-          .db-table tbody,
-          .db-table tbody tr {
-            display: block;
-            width: 100%;
-          }
-          .db-table tbody tr.hover-row {
-            display: block;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-primary);
-            border-radius: 10px;
-            padding: 14px;
-            margin-bottom: 12px;
-          }
-          .db-table tbody tr.hover-row td {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 4px 0 !important;
-            border: none !important;
-            text-align: right;
-            max-width: none !important;
-            white-space: normal !important;
-            overflow: visible !important;
-          }
-          .db-table tbody tr.hover-row td::before {
-            content: attr(data-label);
-            font-weight: 600;
-            font-size: 11px;
-            text-transform: uppercase;
-            color: var(--text-tertiary);
-            text-align: left;
-            flex-shrink: 0;
-            margin-right: 12px;
-          }
-        }
-      `}</style>
+                  <div className="dependency-impact">
+                    <strong>{formatDependencyNumber(item.requestCount)}</strong>
+                    <span>{t('calls')}</span>
+                    <div className="dependency-impact-bar">
+                      <i style={{ width: `${Math.max(4, Math.min(100, impactPct))}%` }} />
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
