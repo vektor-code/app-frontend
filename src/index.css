@@ -5807,15 +5807,17 @@ body.dark-theme .apm-chart-overlay {
    ========================================== */
 
 .trace-detail-page {
-  max-width: 1500px;
+  width: 100%;
+  max-width: 1680px;
   margin: 0 auto;
   padding-bottom: 36px;
 }
 
 .trace-detail-hero {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, auto);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 270px);
+  gap: 0;
   align-items: stretch;
   margin-bottom: 12px;
   border: 1px solid var(--border-primary);
@@ -5827,9 +5829,11 @@ body.dark-theme .apm-chart-overlay {
 
 .trace-detail-hero::before {
   content: "";
-  grid-row: 1;
+  position: absolute;
+  inset: 0 auto 0 0;
   width: 4px;
   background: var(--accent-emerald);
+  z-index: 1;
 }
 
 .trace-detail-hero.critical::before {
@@ -5842,7 +5846,10 @@ body.dark-theme .apm-chart-overlay {
 
 .trace-detail-hero-main {
   min-width: 0;
-  padding: 16px 18px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 17px 20px 17px 22px;
 }
 
 .trace-detail-back-button {
@@ -5881,7 +5888,7 @@ body.dark-theme .apm-chart-overlay {
 .trace-detail-hero h1 {
   margin: 5px 0 8px;
   color: var(--text-primary);
-  font-size: 26px;
+  font-size: clamp(20px, 1.7vw, 28px);
   line-height: 1.15;
   font-weight: 840;
   letter-spacing: 0;
@@ -5943,9 +5950,12 @@ body.dark-theme .apm-chart-overlay {
   justify-content: center;
   align-items: flex-end;
   gap: 6px;
+  min-width: 0;
   padding: 16px 18px;
   border-left: 1px solid var(--border-primary);
-  background: var(--bg-tertiary);
+  background:
+    linear-gradient(180deg, rgba(99, 102, 241, 0.04), transparent),
+    var(--bg-tertiary);
 }
 
 .trace-detail-status {
@@ -6001,7 +6011,7 @@ body.dark-theme .apm-chart-overlay {
 
 .trace-detail-metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 12px;
 }
@@ -6016,6 +6026,10 @@ body.dark-theme .apm-chart-overlay {
   background: var(--bg-secondary);
   padding: 13px;
   box-shadow: var(--shadow-sm);
+}
+
+.trace-detail-metric-card > div:last-child {
+  min-width: 0;
 }
 
 .trace-detail-metric-icon {
@@ -6081,6 +6095,7 @@ body.dark-theme .apm-chart-overlay {
 .trace-detail-tags-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -6089,6 +6104,7 @@ body.dark-theme .apm-chart-overlay {
 .trace-detail-insight-panel,
 .trace-detail-tag-panel {
   min-width: 0;
+  height: fit-content;
   border: 1px solid var(--border-primary);
   border-radius: 8px;
   background: var(--bg-secondary);
@@ -6114,7 +6130,7 @@ body.dark-theme .apm-chart-overlay {
 .trace-detail-kind-list,
 .trace-detail-chip-cloud {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 7px;
 }
@@ -6615,6 +6631,7 @@ body.dark-theme .apm-chart-overlay {
   }
 
   .trace-detail-hero::before {
+    inset: 0 0 auto 0;
     width: auto;
     height: 4px;
   }
