@@ -1369,6 +1369,13 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
             <feGaussianBlur stdDeviation="3" result="blur" />
             <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
+          <linearGradient id="topo-node-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1e293b" stopOpacity="0.98" />
+            <stop offset="100%" stopColor="#0f172a" stopOpacity="0.98" />
+          </linearGradient>
+          <filter id="topo-card-shadow" x="-20%" y="-40%" width="140%" height="180%">
+            <feDropShadow dx="0" dy="8" stdDeviation="8" floodColor="#020617" floodOpacity="0.35" />
+          </filter>
         </defs>
 
         {/* Dynamic Grid Background */}
@@ -1416,8 +1423,8 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
             const tgt = finalNodes.find(n => n.id === edge.target);
             if (!src || !tgt) return null;
 
-            const x1 = src.x + 70, y1 = src.y;
-            const x2 = tgt.x - 70, y2 = tgt.y;
+            const x1 = src.x + 76, y1 = src.y;
+            const x2 = tgt.x - 76, y2 = tgt.y;
             const mx = (x1 + x2) / 2;
             const pathD = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
             const isHov = hoveredEdge?.id === edge.id;
@@ -1440,20 +1447,20 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
                 <circle r="3" fill={edge.hasError ? '#f43f5e' : '#818cf8'} opacity="0.8">
                   <animateMotion dur="3s" repeatCount="indefinite" path={pathD} />
                 </circle>
-                <foreignObject x={mx - 45} y={(y1 + y2) / 2 - 12} width="90" height="24" style={{ pointerEvents: 'none' }}>
+                <foreignObject x={mx - 50} y={(y1 + y2) / 2 - 11} width="100" height="22" style={{ pointerEvents: 'none' }}>
                   <div style={{ 
-                    background: '#131a26', 
-                    border: '1px solid rgba(99, 102, 241, 0.4)', 
-                    borderRadius: '6px', 
+                    background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
+                    border: `1px solid ${edge.hasError ? 'rgba(244, 63, 94, 0.55)' : 'rgba(129, 140, 248, 0.38)'}`,
+                    borderRadius: '999px',
                     fontSize: '9.5px', 
                     fontFamily: 'var(--font-mono, monospace)', 
                     fontWeight: 'bold',
-                    color: '#fbbf24', 
+                    color: edge.hasError ? '#fb7185' : '#cbd5e1',
                     textAlign: 'center', 
-                    lineHeight: '22px',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.5)'
+                    lineHeight: '20px',
+                    boxShadow: '0 8px 20px rgba(2, 6, 23, 0.32)'
                   }}>
-                    x{edge.callCount} · {formatDuration(edge.avgDurationMs)}
+                    x{edge.callCount} / {formatDuration(edge.avgDurationMs)}
                   </div>
                 </foreignObject>
               </g>
@@ -1464,6 +1471,8 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
           {finalNodes.map(node => {
             const hasErr = node.errorCount > 0;
             const isHov = hoveredNode?.id === node.id;
+            const nodeCol = hasErr ? '#f43f5e' : node.durationMs >= 1000 ? '#f59e0b' : '#10b981';
+            const nodeStatus = hasErr ? 'ERR' : node.durationMs >= 1000 ? 'SLOW' : 'OK';
             const borderCol = hasErr ? '#f43f5e' : isHov ? '#818cf8' : 'rgba(148, 163, 184, 0.25)';
 
             return (
@@ -1475,34 +1484,49 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
                 onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
                 onMouseLeave={() => setHoveredNode(null)}
               >
-                <rect x="-70" y="-24" width="140" height="48" rx="10" ry="10"
-                  fill="#131b2e"
+                <rect x="-76" y="-30" width="152" height="60" rx="12" ry="12"
+                  fill={hasErr ? 'rgba(244, 63, 94, 0.10)' : isHov ? 'rgba(129, 140, 248, 0.12)' : 'rgba(15, 23, 42, 0.32)'}
+                  filter={hasErr || isHov ? 'url(#topo-card-shadow)' : undefined}
+                  style={{ transition: 'fill 0.2s' }}
+                />
+                <rect x="-74" y="-28" width="148" height="56" rx="11" ry="11"
+                  fill="url(#topo-node-fill)"
                   stroke={borderCol}
                   strokeWidth={isHov || hasErr ? 2 : 1.2}
                   filter={hasErr ? 'url(#glow-err)' : undefined}
                   style={{ transition: 'stroke 0.2s, stroke-width 0.2s, fill 0.2s' }}
                 />
+                <rect x="-74" y="-28" width="4" height="56" rx="2" ry="2" fill={nodeCol} />
+                <rect x="-64" y="8" width="128" height="1" fill="rgba(148, 163, 184, 0.14)" />
+                <g transform="translate(43, -21)" style={{ pointerEvents: 'none' }}>
+                  <rect width="26" height="14" rx="7" fill={`${nodeCol}22`} stroke={`${nodeCol}55`} />
+                  <text x="13" y="9.5" textAnchor="middle" style={{ fill: nodeCol, fontSize: '6.5px', fontWeight: 800, fontFamily: 'var(--font-sans)' }}>
+                    {nodeStatus}
+                  </text>
+                </g>
                 {/* Icon */}
                 {(() => {
                   const iconKey = node.iconKey || getTopoIconKey(node.name, spans);
                   const iconUrl = iconKey ? TOPO_ICONS[iconKey] : '';
                   return iconUrl ? (
-                    <foreignObject x="-58" y="-12" width="24" height="24">
-                      <img src={iconUrl} alt={node.name} style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
+                    <foreignObject x="-62" y="-15" width="30" height="30">
+                      <div style={{ width: '30px', height: '30px', borderRadius: '8px', border: `1px solid ${nodeCol}44`, background: `${nodeCol}16`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <img src={iconUrl} alt={node.name} style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                      </div>
                     </foreignObject>
                   ) : (
-                    <text x="-56" y="5" style={{ fontSize: '13px', fontWeight: 800, fill: '#94a3b8', userSelect: 'none' }}>
+                    <text x="-51" y="5" textAnchor="middle" style={{ fontSize: '13px', fontWeight: 800, fill: nodeCol, userSelect: 'none' }}>
                       S
                     </text>
                   );
                 })()}
                 {/* Name */}
-                <text x={node.iconKey || getTopoIconKey(node.name, spans) ? "-26" : "-34"} y="-5" style={{ fontSize: '10.5px', fontWeight: 700, fill: '#f8fafc', fontFamily: 'var(--font-sans)', pointerEvents: 'none' }}>
-                  {node.name.length > 14 ? `${node.name.slice(0, 12)}…` : node.name}
+                <text x={node.iconKey || getTopoIconKey(node.name, spans) ? "-24" : "-34"} y="-6" style={{ fontSize: '10.5px', fontWeight: 800, fill: '#f8fafc', fontFamily: 'var(--font-sans)', pointerEvents: 'none' }}>
+                  {node.name.length > 13 ? `${node.name.slice(0, 10)}...` : node.name}
                 </text>
                 {/* Duration */}
-                <text x={node.iconKey || getTopoIconKey(node.name, spans) ? "-26" : "-34"} y="12" style={{ fontSize: '9.5px', fontWeight: 500, fill: hasErr ? '#f43f5e' : '#94a3b8', fontFamily: 'var(--font-mono)', pointerEvents: 'none' }}>
-                  {formatDuration(node.durationMs)} · x{node.callCount}
+                <text x={node.iconKey || getTopoIconKey(node.name, spans) ? "-24" : "-34"} y="13" style={{ fontSize: '9.5px', fontWeight: 600, fill: hasErr ? '#fb7185' : '#94a3b8', fontFamily: 'var(--font-mono)', pointerEvents: 'none' }}>
+                  {formatDuration(node.durationMs)} / x{node.callCount}
                 </text>
                 {/* Error badge */}
                 {hasErr && (
