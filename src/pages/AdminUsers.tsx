@@ -326,10 +326,19 @@ export default function AdminUsers() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Apply template</label>
-                <select className="form-select" value="" onChange={e => { if (e.target.value) setEditUser(applyTemplateToUser(editUser, e.target.value)); }}>
-                  <option value="">— pick a template —</option>
-                  {templates.map(t => <option key={t.name} value={t.name}>{t.name}{t.isDefault ? ' ★' : ''}</option>)}
-                </select>
+                <div className="admin-template-picker">
+                  {templates.map(template => (
+                    <button
+                      key={template.name}
+                      type="button"
+                      onClick={() => setEditUser(applyTemplateToUser(editUser, template.name))}
+                    >
+                      <span>{template.name}</span>
+                      {template.isDefault && <em>Default</em>}
+                    </button>
+                  ))}
+                  {templates.length === 0 && <span>No templates</span>}
+                </div>
               </div>
             </div>
 

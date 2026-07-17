@@ -17,6 +17,16 @@ type AdminIconName =
   | 'shield'
   | 'users';
 
+const STACK_OPTIONS = [
+  { value: 'unknown', label: 'Auto', logo: null },
+  { value: 'go', label: 'Go', logo: '/logos/go.svg' },
+  { value: 'nodejs', label: 'Node.js', logo: '/logos/node.svg' },
+  { value: 'python', label: 'Python', logo: '/logos/python.svg' },
+  { value: 'java', label: 'Java', logo: '/logos/java.svg' },
+  { value: 'dotnet', label: '.NET', logo: '/logos/dotnet.svg' },
+  { value: 'php', label: 'PHP', logo: '/logos/php.svg' },
+] as const;
+
 function AdminIcon({ name }: { name: AdminIconName }) {
   const common = {
     width: 18,
@@ -73,7 +83,64 @@ function AdminSwitch({
   );
 }
 
-// Credential input with a show/hide toggle so real values are inspectable.
+function AdminSegmented<T extends string>({
+  value,
+  options,
+  onChange,
+  disabled,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (value: T) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className={`admin-segmented ${disabled ? 'disabled' : ''}`}>
+      {options.map(option => (
+        <button
+          key={option.value}
+          type="button"
+          disabled={disabled}
+          className={value === option.value ? 'active' : ''}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function StackPicker({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const current = value || 'unknown';
+
+  return (
+    <div className={`admin-stack-picker ${disabled ? 'disabled' : ''}`} onClick={(event) => event.stopPropagation()}>
+      {STACK_OPTIONS.map(option => (
+        <button
+          key={option.value}
+          type="button"
+          disabled={disabled}
+          className={current === option.value ? 'active' : ''}
+          onClick={() => onChange(option.value)}
+          title={option.label}
+        >
+          {option.logo ? <img src={option.logo} alt="" /> : <AdminIcon name="settings" />}
+          <span>{option.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function SecretInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [show, setShow] = useState(false);
   return (
@@ -703,9 +770,9 @@ export default function Admin() {
 
           {/* Workload/Service manager modal */}
           {openAppsModal && createPortal(
-            <div style={{ position: 'fixed', inset: 0, background: 'rgba(10, 14, 23, 0.75)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, animation: 'fadeIn 0.2s' }}>
-              <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '16px', width: '680px', maxWidth: '95%', padding: '32px', boxShadow: 'var(--shadow-lg), var(--shadow-glow)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="admin-modal-backdrop">
+              <div className="admin-modal-panel admin-workload-modal">
+                <div className="admin-modal-header">
                   <div>
                     <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
                       Workload Instrumentation
@@ -748,33 +815,13 @@ export default function Admin() {
                             <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>
                               {app.kind || 'Deployment'}
                             </span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Stack:</span>
-                              <select
-                                className="form-input"
+                            <div className="admin-stack-field">
+                              <span>Stack</span>
+                              <StackPicker
                                 value={app.language || 'unknown'}
                                 disabled={togglingApp === app.name}
-                                onChange={(e) => handleLanguageChange(app, e.target.value)}
-                                style={{
-                                  background: 'var(--bg-secondary)',
-                                  border: '1px solid var(--border-primary)',
-                                  borderRadius: '6px',
-                                  color: 'var(--text-primary)',
-                                  padding: '2px 6px',
-                                  fontSize: '11px',
-                                  outline: 'none',
-                                  cursor: 'pointer',
-                                  fontWeight: 600
-                                }}
-                              >
-                                <option value="unknown">Auto-detect</option>
-                                <option value="go">Go</option>
-                                <option value="nodejs">NodeJS</option>
-                                <option value="python">Python</option>
-                                <option value="java">Java</option>
-                                <option value="dotnet">.NET</option>
-                                <option value="php">PHP</option>
-                              </select>
+                                onChange={(nextStack) => handleLanguageChange(app, nextStack)}
+                              />
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: '12px', fontSize: '11px', color: 'var(--text-secondary)' }}>
@@ -849,10 +896,12 @@ export default function Admin() {
                     <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Ingestion Queue</span>
                   </div>
                 </div>
-                <span className="badge badge-success">Configured</span>
+                <span className={`badge ${infraConfig.kafka?.brokers && infraConfig.kafka?.topic ? 'badge-success' : 'badge-neutral'}`}>
+                  {infraConfig.kafka?.brokers && infraConfig.kafka?.topic ? 'Configured' : 'Not set'}
+                </span>
               </div>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Buffers incoming spans and traces from collection agents prior to indexing.
+                Span intake queue and consumer group.
               </p>
               <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-tertiary)' }}>
                 <span style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
@@ -889,10 +938,12 @@ export default function Admin() {
                     <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>OLAP Database</span>
                   </div>
                 </div>
-                <span className="badge badge-success">Active</span>
+                <span className={`badge ${infraConfig.clickhouse?.host ? 'badge-success' : 'badge-neutral'}`}>
+                  {infraConfig.clickhouse?.host ? 'Active' : 'Not set'}
+                </span>
               </div>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Columnar store optimized for high-performance log, metric, and trace analysis.
+                Trace analytics database.
               </p>
               <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-tertiary)' }}>
                 <span style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
@@ -929,10 +980,12 @@ export default function Admin() {
                     <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Trace Object Storage</span>
                   </div>
                 </div>
-                <span className="badge badge-success">Connected</span>
+                <span className={`badge ${infraConfig.minio?.endpoint && infraConfig.minio?.bucket ? 'badge-success' : 'badge-neutral'}`}>
+                  {infraConfig.minio?.endpoint && infraConfig.minio?.bucket ? 'Connected' : 'Not set'}
+                </span>
               </div>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                S3-compliant object store repository for long-term trace payloads and spans.
+                Object storage for trace payloads.
               </p>
               <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-tertiary)' }}>
                 <span style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
@@ -974,7 +1027,7 @@ export default function Admin() {
                 </span>
               </div>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Synchronize user groups and manage access control permissions.
+                Directory login and group access.
               </p>
               <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-tertiary)' }}>
                 <span style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
@@ -1011,10 +1064,12 @@ export default function Admin() {
                     <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Metrics Exporter</span>
                   </div>
                 </div>
-                <span className="badge badge-success">Exporter Up</span>
+                <span className={`badge ${infraConfig.prometheus?.url ? 'badge-success' : 'badge-neutral'}`}>
+                  {infraConfig.prometheus?.url ? 'Configured' : 'Not set'}
+                </span>
               </div>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Provides scraped system utilization stats and collector infrastructure statistics.
+                Metrics scrape endpoint.
               </p>
               <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-tertiary)' }}>
                 <span>Scrape: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{infraConfig.prometheus?.scrapeInterval || '30s'}</strong></span>
@@ -1048,10 +1103,12 @@ export default function Admin() {
                     <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Metadata Indexer</span>
                   </div>
                 </div>
-                <span className="badge badge-success">Indexed</span>
+                <span className={`badge ${infraConfig.elasticsearch?.url ? 'badge-success' : 'badge-neutral'}`}>
+                  {infraConfig.elasticsearch?.url ? 'Indexed' : 'Not set'}
+                </span>
               </div>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Stores high-cardinality trace attributes and enables quick text searches.
+                Trace metadata search index.
               </p>
               <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-tertiary)' }}>
                 <span>Prefix: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{infraConfig.elasticsearch?.indexPrefix || 'kubetrace'}</strong></span>
@@ -1061,9 +1118,9 @@ export default function Admin() {
           </div>
 
           {openInfraModal && editableInfra && createPortal(
-            <div style={{ position: 'fixed', inset: 0, background: 'rgba(10, 14, 23, 0.75)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, animation: 'fadeIn 0.2s' }}>
-              <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '16px', width: '560px', maxWidth: '90%', padding: '32px', boxShadow: 'var(--shadow-lg), var(--shadow-glow)', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="admin-modal-backdrop">
+              <div className="admin-modal-panel admin-infra-modal">
+                <div className="admin-modal-header">
                   <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em', textTransform: 'capitalize' }}>
                     {openInfraModal === 'clickhouse' ? 'ClickHouse Database Connection' : `${openInfraModal} Setup`}
                   </h3>
@@ -1121,12 +1178,21 @@ export default function Admin() {
                         <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>S3 Host Endpoint</label>
                         <input type="text" className="form-input" value={editableInfra.minio?.endpoint || ''} onChange={(e) => setEditableInfra({ ...editableInfra, minio: { ...editableInfra.minio, endpoint: e.target.value } })} />
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>SSL Enabled</label>
-                        <select className="form-select" value={editableInfra.minio?.useSSL || 'false'} onChange={(e) => setEditableInfra({ ...editableInfra, minio: { ...editableInfra.minio, useSSL: e.target.value } })}>
-                          <option value="true">true</option>
-                          <option value="false">false</option>
-                        </select>
+                      <div className="admin-setting-row">
+                        <div>
+                          <strong>SSL connection</strong>
+                          <span>Use HTTPS for the object storage endpoint.</span>
+                        </div>
+                        <AdminSwitch
+                          checked={editableInfra.minio?.useSSL === 'true'}
+                          onChange={() => setEditableInfra({
+                            ...editableInfra,
+                            minio: {
+                              ...editableInfra.minio,
+                              useSSL: editableInfra.minio?.useSSL === 'true' ? 'false' : 'true',
+                            }
+                          })}
+                        />
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Storage Bucket</label>
@@ -1200,10 +1266,14 @@ export default function Admin() {
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Service Discovery Mode</label>
-                        <select className="form-select" value={editableInfra.prometheus?.discoveryMode || 'kubernetes'} onChange={(e) => setEditableInfra({ ...editableInfra, prometheus: { ...editableInfra.prometheus, discoveryMode: e.target.value } })}>
-                          <option value="kubernetes">kubernetes</option>
-                          <option value="static">static</option>
-                        </select>
+                        <AdminSegmented
+                          value={editableInfra.prometheus?.discoveryMode || 'kubernetes'}
+                          options={[
+                            { value: 'kubernetes', label: 'Kubernetes' },
+                            { value: 'static', label: 'Static' },
+                          ]}
+                          onChange={(value) => setEditableInfra({ ...editableInfra, prometheus: { ...editableInfra.prometheus, discoveryMode: value } })}
+                        />
                       </div>
                     </>
                   )}
@@ -1218,12 +1288,21 @@ export default function Admin() {
                         <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Index Pattern Prefix</label>
                         <input type="text" className="form-input" value={editableInfra.elasticsearch?.indexPrefix || ''} onChange={(e) => setEditableInfra({ ...editableInfra, elasticsearch: { ...editableInfra.elasticsearch, indexPrefix: e.target.value } })} />
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>TLS Verification</label>
-                        <select className="form-select" value={editableInfra.elasticsearch?.tlsVerify || 'false'} onChange={(e) => setEditableInfra({ ...editableInfra, elasticsearch: { ...editableInfra.elasticsearch, tlsVerify: e.target.value } })}>
-                          <option value="true">true</option>
-                          <option value="false">false</option>
-                        </select>
+                      <div className="admin-setting-row">
+                        <div>
+                          <strong>TLS verification</strong>
+                          <span>Verify certificates when connecting to Elasticsearch.</span>
+                        </div>
+                        <AdminSwitch
+                          checked={editableInfra.elasticsearch?.tlsVerify === 'true'}
+                          onChange={() => setEditableInfra({
+                            ...editableInfra,
+                            elasticsearch: {
+                              ...editableInfra.elasticsearch,
+                              tlsVerify: editableInfra.elasticsearch?.tlsVerify === 'true' ? 'false' : 'true',
+                            }
+                          })}
+                        />
                       </div>
                     </>
                   )}
@@ -1355,8 +1434,8 @@ export default function Admin() {
             </div>
           </div>
 
-          <div className="card" style={{ padding: '0', overflow: 'hidden', border: '1px solid var(--border-primary)', background: 'var(--bg-secondary)', borderRadius: '12px', boxShadow: 'var(--shadow-sm)' }}>
-            <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="admin-cluster-table-card">
+            <table className="admin-cluster-table">
               <thead>
                 <tr style={{ background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-primary)', textAlign: 'left' }}>
                   <th style={{ padding: '16px 20px', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cluster Identifier</th>
@@ -1406,11 +1485,18 @@ export default function Admin() {
                         </span>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <select className="form-select" style={{ padding: '4px 8px', fontSize: '12px' }} value={item.credentialType || 'kubeconfig'}
-                            onChange={(e) => { const n = [...editableClusters]; n[idx].credentialType = e.target.value; setEditableClusters(n); }}>
-                            <option value="kubeconfig">Kubeconfig YAML</option>
-                            <option value="bearer">Bearer Token</option>
-                          </select>
+                          <AdminSegmented
+                            value={item.credentialType || 'kubeconfig'}
+                            options={[
+                              { value: 'kubeconfig', label: 'Kubeconfig' },
+                              { value: 'bearer', label: 'Bearer token' },
+                            ]}
+                            onChange={(value) => {
+                              const n = [...editableClusters];
+                              n[idx].credentialType = value;
+                              setEditableClusters(n);
+                            }}
+                          />
                           {(item.credentialType === 'bearer') && (
                             <input type="text" placeholder="API Server (https://host:6443)" className="form-input" style={{ padding: '6px 10px', fontSize: '11px' }}
                               value={item.apiServer || ''} onChange={(e) => { const n = [...editableClusters]; n[idx].apiServer = e.target.value; setEditableClusters(n); }} />
@@ -1500,37 +1586,47 @@ export default function Admin() {
             <p>{t('Resources created for namespaces enabled in ingestion control.')}</p>
           </div>
           
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+          <div className="admin-instrumentation-grid">
             {instrumentations.map((inst) => (
-              <div className="card animate-fade-in" key={`${inst.namespace}/${inst.name}`} style={{ border: '1px solid var(--border-primary)', borderRadius: '12px', background: 'var(--bg-secondary)', padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <div style={{ borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-indigo)' }} />
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', wordBreak: 'break-all', fontFamily: 'var(--font-mono)' }}>{inst.name}</div>
+              <div className="admin-instrumentation-card animate-fade-in" key={`${inst.namespace}/${inst.name}`}>
+                <div className="admin-instrumentation-top">
+                  <div className="admin-instrumentation-icon">
+                    <AdminIcon name="plug" />
                   </div>
-                  <span style={{ fontSize: '9px', textTransform: 'uppercase', fontWeight: 700, color: 'var(--accent-indigo)', background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.15)', padding: '2px 6px', borderRadius: '4px' }}>OTEL CRD</span>
+                  <div className="admin-instrumentation-title">
+                    <strong>{inst.name}</strong>
+                    <span>{inst.namespace}</span>
+                  </div>
+                  <span className="admin-status-pill active">Active</span>
                 </div>
-                <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Namespace</span>
-                    <span className="badge badge-ns" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-indigo)', border: '1px solid rgba(99, 102, 241, 0.2)', padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 600 }}>
-                      {inst.namespace}
-                    </span>
+
+                <div className="admin-instrumentation-flow">
+                  <span>Workload</span>
+                  <i />
+                  <span>Collector</span>
+                  <i />
+                  <span>Exporter</span>
+                </div>
+
+                <div className="admin-instrumentation-meta-grid">
+                  <div>
+                    <span>Endpoint</span>
+                    <code>{inst.endpoint || 'Not set'}</code>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Exporter Endpoint</span>
-                    <code style={{ fontSize: '11.5px', color: 'var(--text-primary)', wordBreak: 'break-all', background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', padding: '6px 10px', borderRadius: '6px', fontFamily: 'var(--font-mono)' }}>{inst.endpoint || 'Not set'}</code>
+                  <div>
+                    <span>Sampler</span>
+                    <code>{inst.sampler || 'default'}</code>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Sampler Type</span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-primary)', fontWeight: 500 }}>{inst.sampler || 'default'}</span>
+                  <div>
+                    <span>Resource</span>
+                    <code>Instrumentation</code>
                   </div>
                 </div>
               </div>
             ))}
             
             {instrumentations.length === 0 && (
-              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', background: 'var(--bg-secondary)', border: '1px dashed var(--border-primary)', borderRadius: '16px', color: 'var(--text-secondary)' }}>
+              <div className="admin-empty-card">
                 No active OpenTelemetry instrumentation resources found in the cluster.
               </div>
             )}
