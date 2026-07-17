@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { connectLiveStream } from '../api/liveStream';
-import type { ServiceMapData, ServiceStats, Span } from '../entities';
+import type { ServiceMapData, ServiceStats, Span, TraceListItem } from '../entities';
 import { isSpanError } from '../utils/spanStatus';
 import { createPortal } from 'react-dom';
 import { LoadingState, NoDataState } from '../components/DataState';
@@ -650,7 +650,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
 
   // Click/Selection details drawer state
   const [selectedService, setSelectedService] = useState<string | null>(null);
-  const [serviceTraces, setServiceTraces] = useState<any[]>([]);
+  const [serviceTraces, setServiceTraces] = useState<TraceListItem[]>([]);
   const [loadingTraces, setLoadingTraces] = useState(false);
   const [drawerTab, setDrawerTab] = useState<'traces' | 'metrics'>('traces');
   const mouseDownPosRef = useRef({ x: 0, y: 0 });
@@ -2334,36 +2334,123 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
   };
 
   const isDarkTheme = document.body.classList.contains('dark-theme');
+  const applicationNodes = activeNodes.filter(node => node.serviceName !== 'Internet' && !isInfraNode(node));
+  const infrastructureNodes = activeNodes.filter(node => isInfraNode(node));
+  const totalRequests = activeNodes.reduce((sum, node) => sum + node.requestCount, 0);
+  const totalErrors = activeNodes.reduce((sum, node) => sum + node.errorCount, 0);
+  const mapErrorRate = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
+  const weightedP95 = weightedMapValue(applicationNodes.length > 0 ? applicationNodes : activeNodes, node => node.p95Ms, node => node.requestCount);
+  const criticalNodes = activeNodes.filter(node => getMapNodeHealth(node).tone === 'critical');
+  const degradedNodes = activeNodes.filter(node => getMapNodeHealth(node).tone === 'warning');
+  const selectedNode = selectedService
+    ? activeNodes.find(node => node.serviceName === selectedService) || data?.nodes.find(node => node.serviceName === selectedService) || null
+    : null;
+  const selectedIncoming = selectedService ? activeEdges.filter(edge => edge.target === selectedService) : [];
+  const selectedOutgoing = selectedService ? activeEdges.filter(edge => edge.source === selectedService) : [];
+  const topServices = [...activeNodes]
+    .filter(node => node.serviceName !== 'Internet')
+    .sort((a, b) => getMapNodeRisk(b) - getMapNodeRisk(a))
+    .slice(0, 8);
+  const topPaths = [...activeEdges]
+    .sort((a, b) => getMapEdgeWeight(b) - getMapEdgeWeight(a))
+    .slice(0, 6);
+  const mapStatusTone = data === null
+    ? 'neutral'
+    : criticalNodes.length > 0
+      ? 'critical'
+      : degradedNodes.length > 0
+        ? 'warning'
+        : activeNodes.length > 0
+          ? 'healthy'
+          : 'neutral';
+  const mapStatusLabel = data === null
+    ? t('Loading')
+    : activeNodes.length === 0
+      ? t('No data')
+      : criticalNodes.length > 0
+        ? t('Action needed')
+        : degradedNodes.length > 0
+          ? t('Watch')
+          : t('Healthy');
 
   return (
-    <div className="animate-fade-in" style={{ paddingBottom: '40px' }}>
-      <h1 className="page-title">{t('Service Map')}</h1>
-      <p className="page-subtitle">
-        {namespace ? t('Service dependencies in {{namespace}}').replace('{{namespace}}', namespace) : t('Service dependencies across all namespaces')}
-      </p>
+    <div className="service-map-page animate-fade-in">
+      <section className="service-map-hero">
+        <div className="service-map-title-block">
+          <span className="service-map-eyebrow">
+            <ServiceMapIcon name="network" />
+            {t('Live topology')}
+          </span>
+          <h1>{t('Service Map')}</h1>
+          <p>
+            {namespace
+              ? t('Service dependencies in {{namespace}}').replace('{{namespace}}', namespace)
+              : t('Service dependencies across all namespaces')}
+          </p>
+        </div>
+        <div className="service-map-hero-actions">
+          <button className="service-map-tool-button" onClick={handleFitView} disabled={activeNodes.length === 0}>
+            <ServiceMapIcon name="focus" />
+            {t('Fit')}
+          </button>
+          <button className="service-map-tool-button" onClick={handleReset}>
+            <ServiceMapIcon name="reset" />
+            {t('Reset')}
+          </button>
+        </div>
+      </section>
+
+      <section className="service-map-kpi-grid">
+        <ServiceMapStatCard
+          icon="services"
+          label={t('Applications')}
+          value={formatMapNumber(applicationNodes.length)}
+          detail={`${formatMapNumber(activeNodes.length)} ${t('visible nodes')}`}
+          tone={applicationNodes.length > 0 ? 'info' : 'neutral'}
+        />
+        <ServiceMapStatCard
+          icon="flow"
+          label={t('Dependencies')}
+          value={formatMapNumber(activeEdges.length)}
+          detail={`${formatMapNumber(infrastructureNodes.length)} ${t('infra nodes')}`}
+          tone="info"
+        />
+        <ServiceMapStatCard
+          icon="activity"
+          label={t('Traffic')}
+          value={formatMapNumber(totalRequests)}
+          detail={`${formatMapNumber(totalErrors)} ${t('errors')}`}
+          tone={totalErrors > 0 ? 'warning' : totalRequests > 0 ? 'healthy' : 'neutral'}
+        />
+        <ServiceMapStatCard
+          icon="latency"
+          label={t('Weighted P95')}
+          value={formatMapMs(weightedP95)}
+          detail={`${formatMapPercent(mapErrorRate)} ${t('error rate')}`}
+          tone={mapErrorRate > 5 ? 'critical' : weightedP95 > 1000 ? 'warning' : totalRequests > 0 ? 'healthy' : 'neutral'}
+        />
+      </section>
 
       {namespace && enabledNamespaces && !enabledNamespaces.has(namespace) && (
-        <div className="card" style={{ marginBottom: '16px', borderColor: 'var(--accent-rose)' }}>
-          <div className="card-body" style={{ padding: '14px 18px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-            <strong style={{ color: 'var(--accent-rose)' }}>{t('Ingestion is disabled')}</strong> {t('for')} <code className="mono">{namespace}</code>. {t('Enable it in Namespace Manager to see its service map.')}
-          </div>
+        <div className="service-map-alert">
+          <ServiceMapIcon name="alert" />
+          <span>
+            <strong>{t('Ingestion is disabled')}</strong> {t('for')} <code className="mono">{namespace}</code>. {t('Enable it in Namespace Manager to see its service map.')}
+          </span>
         </div>
       )}
 
-      {/* Filter Bar */}
-      <div className="card" style={{ marginBottom: '16px' }}>
-        <div className="card-body" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-          
-          {/* Namespace Filter Pills */}
+      <section className="service-map-toolbar">
+        <div className="service-map-filter-group">
+          <span className="service-map-filter-label">
+            <ServiceMapIcon name="namespace" />
+            {t('Namespaces')}
+          </span>
           {!namespace && filterableNamespaces.length > 0 ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginRight: '8px' }}>
-                {t('Filter Namespaces:')}
-              </span>
+            <div className="service-map-namespace-row">
               <button
                 onClick={handleToggleAll}
-                className="btn btn-ghost btn-sm"
-                style={{ padding: '4px 8px', fontSize: '11px', borderRadius: '4px' }}
+                className="service-map-chip service-map-chip-action"
               >
                 {selectedNamespaces.length === filterableNamespaces.length ? t('Clear All') : t('Select All')}
               </button>
@@ -2374,90 +2461,60 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
                   <button
                     key={ns}
                     onClick={() => handleToggleNamespace(ns)}
+                    className={`service-map-chip ${isSelected ? 'active' : ''}`}
                     style={{
-                      padding: '6px 12px',
-                      borderRadius: '20px',
-                      border: `1.5px solid ${isSelected ? theme.border : 'var(--border-primary)'}`,
-                      background: isSelected ? theme.headerBg : 'transparent',
-                      color: isSelected ? theme.text : 'var(--text-secondary)',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                    }}
+                      '--sm-chip-bg': isSelected ? theme.headerBg : 'transparent',
+                      '--sm-chip-color': isSelected ? theme.text : 'var(--text-secondary)',
+                      '--sm-chip-border': isSelected ? theme.border : 'var(--border-primary)',
+                    } as React.CSSProperties}
                   >
-                    <span style={{
-                      width: '6px',
-                      height: '6px',
-                      borderRadius: '50%',
-                      background: isSelected ? theme.text : 'transparent',
-                      border: `1px solid ${isSelected ? 'transparent' : 'var(--text-muted)'}`,
-                    }} />
+                    <span />
                     {ns}
                   </button>
                 );
               })}
             </div>
           ) : (
-            <div />
+            <span className="service-map-scope-pill">{namespace || t('All namespaces')}</span>
           )}
+        </div>
 
-          {/* Activity / Inactivity Filter */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
-            <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
-              {t('Node Activity:')}
+        <label className="service-map-select-field">
+          <span>{t('Activity')}</span>
+          <select value={activityFilter} onChange={(e) => setActivityFilter(e.target.value)}>
+            <option value="all">{t('All nodes')}</option>
+            <option value="5m">{t('Last 5m')}</option>
+            <option value="15m">{t('Last 15m')}</option>
+            <option value="1h">{t('Last 1h')}</option>
+          </select>
+        </label>
+      </section>
+
+      <section className="service-map-shell">
+        <div className="service-map-shell-header">
+          <div>
+            <span className={`service-map-status-pill ${mapStatusTone}`}>
+              <i />
+              {mapStatusLabel}
             </span>
-            <select
-              value={activityFilter}
-              onChange={(e) => setActivityFilter(e.target.value)}
-              style={{
-                background: 'var(--bg-card)',
-                color: 'var(--text-primary)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: '6px',
-                padding: '6px 12px',
-                fontSize: '11px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                outline: 'none',
-                transition: 'border-color var(--transition-fast), background var(--transition-fast)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--accent-indigo)';
-                e.currentTarget.style.background = 'var(--bg-hover)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-primary)';
-                e.currentTarget.style.background = 'var(--bg-card)';
-              }}
-            >
-              <option value="all">{t('All (No Pruning)')}</option>
-              <option value="5m">{t('Active in last 5m')}</option>
-              <option value="15m">{t('Active in last 15m')}</option>
-              <option value="1h">{t('Active in last 1h')}</option>
-            </select>
+            <h2>{t('Service Topology')}</h2>
           </div>
-
+          <div className="service-map-shell-meta">
+            <span>{formatMapNumber(activeNodes.length)} {t('nodes')}</span>
+            <span>{formatMapNumber(activeEdges.length)} {t('edges')}</span>
+            <span>{Math.round(zoom * 100)}%</span>
+          </div>
         </div>
-      </div>
 
-      <div className="card">
-        <div className="card-header">
-          <div className="card-title">{t('Service Topology')}</div>
-          <span className="text-sm text-muted">{activeNodes.length} {t('services')}</span>
-        </div>
-        <div className="card-body" ref={containerRef} style={{ padding: 0, position: 'relative', overflow: 'hidden' }}>
+        <div className="service-map-canvas-area" ref={containerRef}>
           <canvas
             ref={canvasRef}
-            style={{ width: dimensions.width, height: dimensions.height, display: 'block' }}
+            className="service-map-canvas"
+            style={{ width: dimensions.width, height: dimensions.height }}
           />
 
-          {/* Loading / empty overlay — never leave the user guessing */}
           {(data === null || activeNodes.length === 0) && (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', zIndex: 20 }}>
+            <div className="service-map-empty-overlay">
               {data === null ? (
                 <LoadingState height={220} label={t("Discovering service topology…")} />
               ) : (
@@ -2476,21 +2533,17 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             </div>
           )}
 
-          {/* Minimap */}
           {activeNodes.length > 0 && (
-            <div style={{
-              position: 'absolute',
-              bottom: 16,
-              right: 56,
-              zIndex: 10,
-              background: 'var(--bg-card, rgba(30, 41, 59, 0.85))',
-              backdropFilter: 'blur(12px)',
-              borderRadius: 8,
-              border: '1px solid var(--border-primary, rgba(255,255,255,0.1))',
-              padding: 4,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-              overflow: 'hidden',
-            }}>
+            <div className="service-map-legend">
+              <ServiceMapLegendItem tone="healthy" label={t('Healthy')} />
+              <ServiceMapLegendItem tone="warning" label={t('Latency')} />
+              <ServiceMapLegendItem tone="critical" label={t('Errors')} />
+              <ServiceMapLegendItem tone="infra" label={t('Infrastructure')} />
+            </div>
+          )}
+
+          {activeNodes.length > 0 && (
+            <div className="service-map-minimap">
               <canvas
                 ref={minimapCanvasRef}
                 style={{ width: 160, height: 100, display: 'block' }}
@@ -2498,170 +2551,118 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             </div>
           )}
 
-          {/* Floating Zoom Controls */}
-          <div style={{
-            position: 'absolute',
-            bottom: 16,
-            right: 16,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
-            zIndex: 10,
-          }}>
+          <div className="service-map-zoom-controls">
             {[
-              { label: '+', title: t('Zoom In'), handler: handleZoomIn },
-              { label: '−', title: t('Zoom Out'), handler: handleZoomOut },
-              { label: '⊞', title: t('Fit View'), handler: handleFitView },
-              { label: '↺', title: t('Reset'), handler: handleReset },
+              { icon: 'plus' as const, title: t('Zoom In'), handler: handleZoomIn },
+              { icon: 'minus' as const, title: t('Zoom Out'), handler: handleZoomOut },
+              { icon: 'focus' as const, title: t('Fit View'), handler: handleFitView },
+              { icon: 'reset' as const, title: t('Reset'), handler: handleReset },
             ].map(btn => (
               <button
                 key={btn.title}
                 title={btn.title}
                 onClick={btn.handler}
-                style={{
-                  width: 32,
-                  height: 32,
-                  border: 'none',
-                  borderRadius: 8,
-                  background: 'var(--bg-card, rgba(30, 41, 59, 0.85))',
-                  color: 'var(--text-primary, #f1f5f9)',
-                  fontSize: 16,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backdropFilter: 'blur(12px)',
-                  WebkitBackdropFilter: 'blur(12px)',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-                  transition: 'transform 0.15s, box-shadow 0.15s',
-                  lineHeight: 1,
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.1)';
-                  (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 16px rgba(99,102,241,0.35)';
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)';
-                  (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.25)';
-                }}
               >
-                {btn.label}
+                <ServiceMapIcon name={btn.icon} />
               </button>
             ))}
           </div>
         </div>
-      </div>
+      </section>
 
       {activeNodes.length > 0 && (
-        <div className="card mt-6">
-          <div className="card-header">
-            <div className="card-title">Service Details</div>
-          </div>
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Service</th>
-                  <th>Namespace</th>
-                  <th>Requests</th>
-                  <th>Errors</th>
-                  <th>Error Rate</th>
-                  <th>P50</th>
-                  <th>P95</th>
-                  <th>P99</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activeNodes.map(node => (
-                  <tr key={node.serviceName}>
-                    <td style={{ fontWeight: 600 }}>{node.serviceName}</td>
-                    <td>
-                      <span className="badge badge-ns" style={{
-                        background: getColumnTheme(node.namespace || 'default', 0, isDarkTheme).headerBg,
-                        color: getColumnTheme(node.namespace || 'default', 0, isDarkTheme).text,
-                        border: `1px solid ${getColumnTheme(node.namespace || 'default', 0, isDarkTheme).border}`,
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        fontSize: '10px',
-                        fontWeight: 600
-                      }}>
-                        {node.namespace || 'default'}
-                      </span>
-                    </td>
-                    <td className="mono">{node.requestCount}</td>
-                    <td className="mono" style={{ color: node.errorCount > 0 ? 'var(--accent-rose)' : 'var(--text-secondary)' }}>{node.errorCount}</td>
-                    <td className="mono" style={{ color: node.errorRate > 5 ? 'var(--accent-rose)' : 'var(--text-secondary)' }}>{node.errorRate.toFixed(1)}%</td>
-                    <td className="mono">{node.p50Ms.toFixed(1)}ms</td>
-                    <td className="mono">{node.p95Ms.toFixed(1)}ms</td>
-                    <td className="mono">{node.p99Ms.toFixed(1)}ms</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {activeNodes.length === 0 && (
-        <div className="card mt-4">
-          <div className="card-body">
-            <div className="empty-state">
-              <div className="empty-state-icon" style={{ color: 'var(--text-muted)', marginBottom: '12px', display: 'flex', justifyContent: 'center' }}>
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                </svg>
+        <section className="service-map-insights-grid">
+          <div className="service-map-panel">
+            <div className="service-map-panel-header">
+              <div>
+                <span>{t('Service Health')}</span>
+                <h3>{t('Highest risk nodes')}</h3>
               </div>
-              <div className="empty-state-title">{t('No active services visible')}</div>
-              <div className="empty-state-text">{t('Toggle on namespaces to display service topology')}</div>
+              <strong>{formatMapNumber(topServices.length)}</strong>
+            </div>
+            <div className="service-map-node-list">
+              {topServices.map(node => (
+                <ServiceMapNodeCard
+                  key={getNodeKey(node)}
+                  node={node}
+                  onClick={() => {
+                    setSelectedService(node.serviceName);
+                    setDrawerTab('metrics');
+                  }}
+                />
+              ))}
             </div>
           </div>
-        </div>
+
+          <div className="service-map-panel">
+            <div className="service-map-panel-header">
+              <div>
+                <span>{t('Critical Paths')}</span>
+                <h3>{t('Slowest or failing edges')}</h3>
+              </div>
+              <strong>{formatMapNumber(topPaths.length)}</strong>
+            </div>
+            <div className="service-map-path-list">
+              {topPaths.length === 0 ? (
+                <NoDataState height={180} title={t('No dependency edges yet')} hint={t('Edges appear after service-to-service traces arrive.')} />
+              ) : (
+                topPaths.map(edge => (
+                  <button
+                    key={`${edge.sourceNamespace || 'default'}:${edge.source}->${edge.targetNamespace || 'default'}:${edge.target}`}
+                    className={`service-map-path-card ${edge.errorCount > 0 ? 'critical' : edge.avgDurationMs > 1000 ? 'warning' : ''}`}
+                    onClick={() => setHighlightedService(edge.source)}
+                  >
+                    <div className="service-map-path-main">
+                      <strong>{edge.source}</strong>
+                      <ServiceMapIcon name="arrow" />
+                      <strong>{edge.target}</strong>
+                    </div>
+                    <div className="service-map-path-metrics">
+                      <span>{formatMapNumber(edge.callCount)} {t('calls')}</span>
+                      <span>{formatMapMs(edge.avgDurationMs)}</span>
+                      <span>{formatMapNumber(edge.errorCount)} {t('errors')}</span>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
       )}
 
       {/* Context Menu */}
       {contextMenu && (
         <div
-          className="context-menu"
-          style={{
-            position: 'fixed',
-            left: contextMenu.x,
-            top: contextMenu.y,
-            zIndex: 1000,
-            background: 'var(--bg-card, rgba(15, 23, 42, 0.95))',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid var(--border-primary, rgba(255,255,255,0.1))',
-            borderRadius: '8px',
-            padding: '4px',
-            minWidth: '160px',
-            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.4)',
-            fontSize: '12px',
-          }}
+          className="service-map-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div style={{ padding: '6px 12px', fontWeight: 600, color: 'var(--text-muted, #94a3b8)', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '10px', textTransform: 'uppercase' }}>
-            {contextMenu.nodeName}
+          <div className="service-map-context-title">
+            <span>{t('Service')}</span>
+            <strong>{contextMenu.nodeName}</strong>
           </div>
           <button
-            className="context-menu-item"
+            className="service-map-context-item"
             onClick={() => {
-              navigate(`/traces?service=${contextMenu.nodeName}`);
+              navigate(`/traces?service=${encodeURIComponent(contextMenu.nodeName)}`);
               setContextMenu(null);
             }}
           >
-            🔍 View Traces
+            <ServiceMapIcon name="trace" />
+            {t('View Traces')}
           </button>
           <button
-            className="context-menu-item"
+            className="service-map-context-item"
             onClick={() => {
               navigate(`/services?service=${encodeURIComponent(contextMenu.nodeName)}`);
               setContextMenu(null);
             }}
           >
-            📈 View Metrics
+            <ServiceMapIcon name="metrics" />
+            {t('View Metrics')}
           </button>
           <button
-            className="context-menu-item"
+            className="service-map-context-item"
             onClick={() => {
               setHighlightedService(
                 highlightedService === contextMenu.nodeName ? null : contextMenu.nodeName
@@ -2669,7 +2670,8 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
               setContextMenu(null);
             }}
           >
-            🔗 {highlightedService === contextMenu.nodeName ? 'Clear Highlight' : 'Expand Dependencies'}
+            <ServiceMapIcon name="focus" />
+            {highlightedService === contextMenu.nodeName ? t('Clear Focus') : t('Focus Dependencies')}
           </button>
         </div>
       )}
@@ -2678,368 +2680,411 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       {createPortal(
         <>
           <div 
-            className={`drawer-backdrop ${selectedService ? 'open' : ''}`} 
+            className={`service-map-drawer-backdrop ${selectedService ? 'open' : ''}`}
             onClick={() => setSelectedService(null)} 
           />
-          <div className={`span-drawer ${selectedService ? 'open' : ''}`}>
-        {selectedService && (
-          <>
-            <div className="drawer-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '14px 18px', borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-tertiary)' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxWidth: '85%' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <span className="badge badge-ns" style={{ fontSize: '9px', background: 'rgba(99, 102, 241, 0.12)', color: 'var(--accent-indigo-light)' }}>
-                    {namespace || 'default'}
-                  </span>
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                    Service Details
-                  </span>
+          <div className={`span-drawer service-map-drawer ${selectedService ? 'open' : ''}`}>
+            {selectedService && (
+              <>
+                <div className="service-map-drawer-header">
+                  <div className="service-map-drawer-title">
+                    <span>{selectedNode?.namespace || namespace || 'default'}</span>
+                    <h2>{selectedService}</h2>
+                    <p>
+                      {selectedNode
+                        ? `${formatMapNumber(selectedNode.requestCount)} ${t('calls')} / ${formatMapPercent(selectedNode.errorRate)} ${t('errors')}`
+                        : t('Service details')}
+                    </p>
+                  </div>
+                  <button className="service-map-drawer-close" onClick={() => setSelectedService(null)} title={t('Close')}>
+                    <ServiceMapIcon name="close" />
+                  </button>
                 </div>
-                <h2 style={{ fontSize: '14px', fontWeight: 700, margin: '2px 0 0 0', color: 'var(--text-primary)' }}>
-                  {selectedService}
-                </h2>
-              </div>
-              <button 
-                onClick={() => setSelectedService(null)} 
-                style={{ 
-                  background: 'transparent', 
-                  border: 'none', 
-                  color: 'var(--text-secondary)', 
-                  fontSize: '16px', 
-                  cursor: 'pointer',
-                  padding: '4px'
-                }}
-              >
-                ✕
-              </button>
-            </div>
 
-            {/* Drawer tabs */}
-            <div className="drawer-tabs" style={{ display: 'flex', borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-secondary)' }}>
-              <button 
-                className={`drawer-tab-btn ${drawerTab === 'traces' ? 'active' : ''}`}
-                onClick={() => setDrawerTab('traces')}
-                style={{ 
-                  flex: 1, 
-                  padding: '10px', 
-                  background: 'transparent', 
-                  border: 'none', 
-                  borderBottom: drawerTab === 'traces' ? '2px solid var(--accent-indigo)' : '2px solid transparent', 
-                  color: drawerTab === 'traces' ? 'var(--accent-indigo)' : 'var(--text-secondary)',
-                  cursor: 'pointer', 
-                  fontSize: '11px', 
-                  fontWeight: 600, 
-                  textAlign: 'center' 
-                }}
-              >
-                {t('Recent Traces')}
-              </button>
-              <button 
-                className={`drawer-tab-btn ${drawerTab === 'metrics' ? 'active' : ''}`}
-                onClick={() => setDrawerTab('metrics')}
-                style={{ 
-                  flex: 1, 
-                  padding: '10px', 
-                  background: 'transparent', 
-                  border: 'none', 
-                  borderBottom: drawerTab === 'metrics' ? '2px solid var(--accent-indigo)' : '2px solid transparent', 
-                  color: drawerTab === 'metrics' ? 'var(--accent-indigo)' : 'var(--text-secondary)',
-                  cursor: 'pointer', 
-                  fontSize: '11px', 
-                  fontWeight: 600, 
-                  textAlign: 'center' 
-                }}
-              >
-                {t('Info & Topology')}
-              </button>
-            </div>
+                <div className="service-map-drawer-tabs">
+                  <button
+                    className={drawerTab === 'traces' ? 'active' : ''}
+                    onClick={() => setDrawerTab('traces')}
+                  >
+                    <ServiceMapIcon name="trace" />
+                    {t('Recent Traces')}
+                  </button>
+                  <button
+                    className={drawerTab === 'metrics' ? 'active' : ''}
+                    onClick={() => setDrawerTab('metrics')}
+                  >
+                    <ServiceMapIcon name="network" />
+                    {t('Topology')}
+                  </button>
+                </div>
 
-            {/* Scrollable Content */}
-            <div className="drawer-content-scroll" style={{ flex: 1, overflowY: 'auto', padding: '14px 18px' }}>
-              {drawerTab === 'traces' ? (
-                <div>
-                  <h3 style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                    {t('15 Most Recent Transactions')}
-                  </h3>
-                  
-                  {loadingTraces ? (
-                    <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '11.5px' }}>
-                      {t('Loading traces...')}
-                    </div>
-                  ) : serviceTraces.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '11.5px', border: '1px dashed var(--border-primary)', borderRadius: '8px' }}>
-                      {t('No recent transactions recorded for this service.')}
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {serviceTraces.map((item) => (
-                        <div 
-                          key={item.traceId} 
-                          style={{ 
-                            background: 'var(--bg-secondary)', 
-                            border: '1px solid var(--border-primary)', 
-                            borderRadius: '8px', 
-                            padding: '10px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '6px'
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-                            <span 
-                              style={{ 
-                                fontWeight: 600, 
-                                fontSize: '11px', 
-                                color: 'var(--text-primary)',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                              }}
-                              title={item.rootName || 'Transaction'}
-                            >
-                              {item.rootName || 'Transaction'}
-                            </span>
-                            <span className={`badge ${item.hasError ? 'badge-error' : 'badge-ok'}`} style={{ fontSize: '8.5px', padding: '1px 5px' }}>
-                              {item.hasError ? 'ERROR' : 'OK'}
-                            </span>
-                          </div>
-                          
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', color: 'var(--text-muted)' }}>
-                            <span style={{ fontFamily: 'var(--font-mono)' }}>
-                              {new Date(item.startTime).toLocaleTimeString()}
-                            </span>
-                            <span style={{ color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)' }}>
-                              {item.durationMs.toFixed(1)}ms
-                            </span>
-                          </div>
+                <div className="service-map-drawer-content">
+                  {drawerTab === 'traces' ? (
+                    <div className="service-map-drawer-section">
+                      <div className="service-map-drawer-section-title">
+                        <span>{t('Recent transactions')}</span>
+                        <strong>{formatMapNumber(serviceTraces.length)}</strong>
+                      </div>
 
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-primary)', paddingTop: '6px', marginTop: '2px' }}>
-                            <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '60%' }}>
-                              ID: {item.traceId.slice(0, 8)}...
-                            </span>
-                            <button 
-                              className="btn btn-ghost btn-sm" 
-                              style={{ fontSize: '9px', padding: '2px 8px' }}
+                      {loadingTraces ? (
+                        <LoadingState height={180} label={t('Loading traces...')} />
+                      ) : serviceTraces.length === 0 ? (
+                        <NoDataState height={180} title={t('No recent transactions')} hint={t('Traces appear here when this service receives traffic.')} />
+                      ) : (
+                        <div className="service-map-trace-list">
+                          {serviceTraces.map((item) => (
+                            <button
+                              key={item.traceId}
+                              className={`service-map-trace-card ${item.hasError ? 'critical' : ''}`}
                               onClick={() => navigate(`/traces/${item.traceId}`)}
                             >
-                              Open Trace Details →
+                              <div className="service-map-trace-title">
+                                <strong title={item.rootName || 'Transaction'}>{item.rootName || 'Transaction'}</strong>
+                                <span className={item.hasError ? 'critical' : 'healthy'}>{item.hasError ? 'ERROR' : 'OK'}</span>
+                              </div>
+                              <div className="service-map-trace-meta">
+                                <code>{item.traceId.slice(0, 10)}...</code>
+                                <span>{new Date(item.startTime).toLocaleTimeString()}</span>
+                                <strong>{formatMapMs(item.durationMs)}</strong>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="service-map-drawer-section">
+                      {selectedNode ? (
+                        <>
+                          <div className="service-map-drawer-metrics">
+                            <ServiceMapMetricBox label={t('Throughput')} value={formatMapNumber(selectedNode.requestCount)} detail={t('calls')} />
+                            <ServiceMapMetricBox label={t('Error Rate')} value={formatMapPercent(selectedNode.errorRate)} detail={`${formatMapNumber(selectedNode.errorCount)} ${t('errors')}`} tone={selectedNode.errorCount > 0 ? 'critical' : 'healthy'} />
+                            <ServiceMapMetricBox label={t('P95')} value={formatMapMs(selectedNode.p95Ms)} detail={`P50 ${formatMapMs(selectedNode.p50Ms)}`} tone={selectedNode.p95Ms > 1000 ? 'warning' : 'neutral'} />
+                            <ServiceMapMetricBox label={t('P99')} value={formatMapMs(selectedNode.p99Ms)} detail={selectedNode.lastSeen ? formatRelativeTime(selectedNode.lastSeen) : t('No recent activity')} tone={selectedNode.p99Ms > 2000 ? 'warning' : 'neutral'} />
+                          </div>
+
+                          <div className="service-map-drawer-actions">
+                            <button onClick={() => navigate(`/traces?service=${encodeURIComponent(selectedService)}`)}>
+                              <ServiceMapIcon name="trace" />
+                              {t('Open traces')}
+                            </button>
+                            <button onClick={() => navigate(`/services?service=${encodeURIComponent(selectedService)}`)}>
+                              <ServiceMapIcon name="metrics" />
+                              {t('Open metrics')}
                             </button>
                           </div>
-                        </div>
-                      ))}
+                        </>
+                      ) : (
+                        <NoDataState height={160} title={t('Metrics unavailable')} hint={t('This component is not visible in the current filter.')} />
+                      )}
+
+                      <ServiceMapConnectionList
+                        title={t('Incoming Callers')}
+                        empty={t('No incoming callers.')}
+                        edges={selectedIncoming}
+                        direction="incoming"
+                        onSelect={setSelectedService}
+                      />
+                      <ServiceMapConnectionList
+                        title={t('Outgoing Dependencies')}
+                        empty={t('No outgoing calls.')}
+                        edges={selectedOutgoing}
+                        direction="outgoing"
+                        onSelect={setSelectedService}
+                      />
                     </div>
                   )}
                 </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {/* Stats segment */}
-                  {(() => {
-                    const stats = data?.nodes.find(n => n.serviceName === selectedService);
-                    return (
-                      <div>
-                        <h3 style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', borderBottom: '1px solid var(--border-primary)', paddingBottom: '3px' }}>
-                          Performance Metrics (Last 5m)
-                        </h3>
-                        {stats ? (
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                            <div style={{ background: 'var(--bg-tertiary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-primary)' }}>
-                              <div style={{ fontSize: '8.5px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Throughput</div>
-                              <div style={{ fontSize: '13px', fontWeight: 700, marginTop: '2px' }}>{stats.requestCount} calls</div>
-                            </div>
-                            <div style={{ background: 'var(--bg-tertiary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-primary)' }}>
-                              <div style={{ fontSize: '8.5px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Error Rate</div>
-                              <div style={{ fontSize: '13px', fontWeight: 700, color: stats.errorRate > 0 ? 'var(--accent-rose)' : 'var(--text-primary)', marginTop: '2px' }}>
-                                {stats.errorRate.toFixed(2)}%
-                              </div>
-                            </div>
-                            <div style={{ background: 'var(--bg-tertiary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-primary)', gridColumn: 'span 2' }}>
-                              <div style={{ fontSize: '8.5px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>Latency Percentiles</div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontFamily: 'var(--font-mono)' }}>
-                                <span>p50: <strong style={{ color: 'var(--accent-cyan)' }}>{stats.p50Ms.toFixed(1)}ms</strong></span>
-                                <span>p95: <strong style={{ color: 'var(--accent-amber)' }}>{stats.p95Ms.toFixed(1)}ms</strong></span>
-                                <span>p99: <strong style={{ color: 'var(--accent-rose)' }}>{stats.p99Ms.toFixed(1)}ms</strong></span>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{ color: 'var(--text-muted)', fontSize: '11px', padding: '6px 0' }}>Metrics are unavailable for this component.</div>
-                        )}
-                      </div>
-                    );
-                  })()}
-
-                  {/* Connected Dependencies segment */}
-                  {(() => {
-                    const incoming = activeEdges.filter(e => e.target === selectedService);
-                    const outgoing = activeEdges.filter(e => e.source === selectedService);
-                    return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                        <div>
-                          <h3 style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', borderBottom: '1px solid var(--border-primary)', paddingBottom: '3px' }}>
-                            Incoming Callers (Called By)
-                          </h3>
-                          {incoming.length === 0 ? (
-                            <div style={{ color: 'var(--text-muted)', fontSize: '11px', padding: '4px 0' }}>No incoming callers.</div>
-                          ) : (
-                            <table className="attr-table" style={{ fontSize: '11px' }}>
-                              <thead>
-                                <tr style={{ background: 'var(--bg-tertiary)', fontSize: '9px', textTransform: 'uppercase' }}>
-                                  <th style={{ padding: '4px 8px', textAlign: 'left' }}>Caller Service</th>
-                                  <th style={{ padding: '4px 8px', textAlign: 'right' }}>Calls</th>
-                                  <th style={{ padding: '4px 8px', textAlign: 'right' }}>Avg Latency</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {incoming.map((edge, idx) => (
-                                  <tr key={idx}>
-                                    <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--accent-indigo-light)', cursor: 'pointer' }} onClick={() => setSelectedService(edge.source)}>
-                                      {edge.source}
-                                    </td>
-                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{edge.callCount}</td>
-                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)' }}>{edge.avgDurationMs.toFixed(1)}ms</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          )}
-                        </div>
-
-                        <div>
-                          <h3 style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', borderBottom: '1px solid var(--border-primary)', paddingBottom: '3px' }}>
-                            Outgoing Dependencies (Calls)
-                          </h3>
-                          {outgoing.length === 0 ? (
-                            <div style={{ color: 'var(--text-muted)', fontSize: '11px', padding: '4px 0' }}>No outgoing calls.</div>
-                          ) : (
-                            <table className="attr-table" style={{ fontSize: '11px' }}>
-                              <thead>
-                                <tr style={{ background: 'var(--bg-tertiary)', fontSize: '9px', textTransform: 'uppercase' }}>
-                                  <th style={{ padding: '4px 8px', textAlign: 'left' }}>Target Service</th>
-                                  <th style={{ padding: '4px 8px', textAlign: 'right' }}>Calls</th>
-                                  <th style={{ padding: '4px 8px', textAlign: 'right' }}>Avg Latency</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {outgoing.map((edge, idx) => (
-                                  <tr key={idx}>
-                                    <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--accent-indigo-light)', cursor: 'pointer' }} onClick={() => setSelectedService(edge.target)}>
-                                      {edge.target}
-                                    </td>
-                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{edge.callCount}</td>
-                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)' }}>{edge.avgDurationMs.toFixed(1)}ms</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-            </div>
-          </>
-        )}
+              </>
+            )}
           </div>
         </>,
         document.body
       )}
-
-      {/* Context Menu Styles */}
-      <style>{`
-        .context-menu-item {
-          width: 100%;
-          text-align: left;
-          background: transparent;
-          border: none;
-          color: var(--text-primary);
-          padding: 8px 12px;
-          cursor: pointer;
-          font-size: 11.5px;
-          border-radius: 4px;
-          transition: background 0.15s;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-        .context-menu-item:hover {
-          background: rgba(99, 102, 241, 0.15);
-          color: var(--accent-indigo-light, #818cf8);
-        }
-
-        /* Drawer backdrop overlay */
-        .drawer-backdrop {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(15, 23, 42, 0.4);
-          backdrop-filter: blur(4px);
-          z-index: 999;
-          opacity: 0;
-          pointer-events: none;
-          transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .drawer-backdrop.open {
-          opacity: 1;
-          pointer-events: auto;
-        }
-
-        /* Span drawer container sliding from the right */
-        .span-drawer {
-          position: fixed;
-          top: 0;
-          right: 0;
-          bottom: 0;
-          width: 520px;
-          background: var(--bg-secondary);
-          border-left: 1px solid var(--border-primary);
-          box-shadow: -10px 0 30px rgba(0, 0, 0, 0.25);
-          z-index: 1000;
-          transform: translateX(100%);
-          transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
-        }
-        .span-drawer.open {
-          transform: translateX(0);
-        }
-
-        .attr-table {
-          width: 100%;
-          border-collapse: collapse;
-          background: var(--bg-secondary);
-          border-radius: 6px;
-          overflow: hidden;
-          border: 1px solid var(--border-primary);
-        }
-        .attr-table tr {
-          border-bottom: 1px solid var(--border-primary);
-        }
-        .attr-table tr:last-child {
-          border-bottom: none;
-        }
-        .attr-table th {
-          padding: 6px 12px;
-          font-weight: 600;
-          color: var(--text-secondary);
-          border-bottom: 1px solid var(--border-primary);
-          border-right: 1px solid var(--border-primary);
-        }
-        .attr-table th:last-child {
-          border-right: none;
-        }
-        .attr-table td {
-          padding: 6px 12px;
-          color: var(--text-primary);
-          border-right: 1px solid var(--border-primary);
-        }
-        .attr-table td:last-child {
-          border-right: none;
-        }
-      `}</style>
     </div>
   );
+}
+
+type ServiceMapTone = 'healthy' | 'warning' | 'critical' | 'neutral' | 'info';
+type ServiceMapIconName =
+  | 'activity'
+  | 'alert'
+  | 'arrow'
+  | 'close'
+  | 'flow'
+  | 'focus'
+  | 'latency'
+  | 'metrics'
+  | 'minus'
+  | 'namespace'
+  | 'network'
+  | 'plus'
+  | 'reset'
+  | 'services'
+  | 'trace';
+
+function ServiceMapStatCard({
+  icon,
+  label,
+  value,
+  detail,
+  tone = 'neutral',
+}: {
+  icon: ServiceMapIconName;
+  label: string;
+  value: string;
+  detail: string;
+  tone?: ServiceMapTone;
+}) {
+  return (
+    <div className={`service-map-stat-card ${tone}`}>
+      <div className="service-map-stat-icon">
+        <ServiceMapIcon name={icon} />
+      </div>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <em>{detail}</em>
+      </div>
+    </div>
+  );
+}
+
+function ServiceMapLegendItem({ tone, label }: { tone: ServiceMapTone | 'infra'; label: string }) {
+  return (
+    <span className={`service-map-legend-item ${tone}`}>
+      <i />
+      {label}
+    </span>
+  );
+}
+
+function ServiceMapNodeCard({ node, onClick }: { node: ServiceStats; onClick: () => void }) {
+  const health = getMapNodeHealth(node);
+  const isInfra = isInfraNode(node);
+  return (
+    <button className={`service-map-node-card ${health.tone}`} onClick={onClick}>
+      <div className="service-map-node-card-top">
+        <span className="service-map-node-kind">
+          <ServiceMapIcon name={isInfra ? 'network' : 'services'} />
+        </span>
+        <div>
+          <strong title={node.serviceName}>{node.serviceName}</strong>
+          <em>{isInfra ? 'Infrastructure' : (node.namespace || 'default')}</em>
+        </div>
+        <i className={`service-map-node-state ${health.tone}`} />
+      </div>
+      <div className="service-map-node-card-metrics">
+        <span>{formatMapNumber(node.requestCount)} calls</span>
+        <span>{formatMapPercent(node.errorRate)} err</span>
+        <span>{formatMapMs(node.p95Ms)} p95</span>
+      </div>
+      <div className="service-map-health-bar">
+        <i className={health.tone} style={{ width: `${Math.max(4, health.score)}%` }} />
+      </div>
+    </button>
+  );
+}
+
+function ServiceMapMetricBox({
+  label,
+  value,
+  detail,
+  tone = 'neutral',
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: ServiceMapTone;
+}) {
+  return (
+    <div className={`service-map-metric-box ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <em>{detail}</em>
+    </div>
+  );
+}
+
+function ServiceMapConnectionList({
+  title,
+  empty,
+  edges,
+  direction,
+  onSelect,
+}: {
+  title: string;
+  empty: string;
+  edges: ServiceMapData['edges'];
+  direction: 'incoming' | 'outgoing';
+  onSelect: (serviceName: string) => void;
+}) {
+  return (
+    <div className="service-map-connection-section">
+      <div className="service-map-drawer-section-title">
+        <span>{title}</span>
+        <strong>{formatMapNumber(edges.length)}</strong>
+      </div>
+      {edges.length === 0 ? (
+        <div className="service-map-connection-empty">{empty}</div>
+      ) : (
+        <div className="service-map-connection-list">
+          {edges.map(edge => {
+            const serviceName = direction === 'incoming' ? edge.source : edge.target;
+            return (
+              <button
+                key={`${edge.sourceNamespace || 'default'}:${edge.source}->${edge.targetNamespace || 'default'}:${edge.target}`}
+                className={`service-map-connection-card ${edge.errorCount > 0 ? 'critical' : edge.avgDurationMs > 1000 ? 'warning' : ''}`}
+                onClick={() => onSelect(serviceName)}
+              >
+                <div>
+                  <strong title={serviceName}>{serviceName}</strong>
+                  <span>{direction === 'incoming' ? (edge.sourceNamespace || 'default') : (edge.targetNamespace || 'default')}</span>
+                </div>
+                <em>{formatMapNumber(edge.callCount)} calls</em>
+                <em>{formatMapMs(edge.avgDurationMs)}</em>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ServiceMapIcon({ name }: { name: ServiceMapIconName }) {
+  const common = {
+    width: 18,
+    height: 18,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+
+  switch (name) {
+    case 'activity':
+      return <svg {...common}><path d="M3 12h4l3-8 4 16 3-8h4" /></svg>;
+    case 'alert':
+      return <svg {...common}><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.3 3.6 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z" /></svg>;
+    case 'arrow':
+      return <svg {...common}><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>;
+    case 'close':
+      return <svg {...common}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>;
+    case 'flow':
+      return <svg {...common}><circle cx="5" cy="6" r="2.5" /><circle cx="19" cy="6" r="2.5" /><circle cx="12" cy="18" r="2.5" /><path d="M7.4 7.6 10.8 16" /><path d="m16.6 7.6-3.4 8.4" /><path d="M8 6h8" /></svg>;
+    case 'focus':
+      return <svg {...common}><path d="M4 8V5a1 1 0 0 1 1-1h3" /><path d="M16 4h3a1 1 0 0 1 1 1v3" /><path d="M20 16v3a1 1 0 0 1-1 1h-3" /><path d="M8 20H5a1 1 0 0 1-1-1v-3" /><circle cx="12" cy="12" r="3" /></svg>;
+    case 'latency':
+      return <svg {...common}><path d="M9 2h6" /><path d="M12 6v5l3 2" /><circle cx="12" cy="14" r="8" /></svg>;
+    case 'metrics':
+      return <svg {...common}><path d="M4 19V5" /><path d="M4 19h16" /><path d="M8 15v-4" /><path d="M12 15V8" /><path d="M16 15v-6" /></svg>;
+    case 'minus':
+      return <svg {...common}><path d="M5 12h14" /></svg>;
+    case 'namespace':
+      return <svg {...common}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>;
+    case 'network':
+      return <svg {...common}><path d="M12 3v5" /><path d="M6 13H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2" /><path d="M12 16v5" /><rect x="8" y="8" width="8" height="8" rx="2" /></svg>;
+    case 'plus':
+      return <svg {...common}><path d="M12 5v14" /><path d="M5 12h14" /></svg>;
+    case 'reset':
+      return <svg {...common}><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v6h6" /></svg>;
+    case 'services':
+      return <svg {...common}><path d="M12 2 4 6.5v9L12 20l8-4.5v-9L12 2Z" /><path d="m4.5 7 7.5 4.2L19.5 7" /><path d="M12 20v-8.8" /></svg>;
+    case 'trace':
+      return <svg {...common}><path d="M4 7h5" /><path d="M15 7h5" /><circle cx="12" cy="7" r="3" /><path d="M12 10v4" /><path d="M7 17h10" /><circle cx="5" cy="17" r="2" /><circle cx="19" cy="17" r="2" /></svg>;
+    default:
+      return <svg {...common}><path d="M4 12h16" /></svg>;
+  }
+}
+
+function getMapNodeHealth(node: ServiceStats): { tone: ServiceMapTone; score: number; label: string } {
+  if (node.requestCount <= 0) {
+    return { tone: 'neutral', score: 100, label: 'No traffic' };
+  }
+
+  const errorRate = Number.isFinite(node.errorRate) ? node.errorRate : (node.errorCount / Math.max(node.requestCount, 1)) * 100;
+  const healthScore = clampMapValue(
+    node.healthScore ?? inferMapHealthScore(errorRate, node.p95Ms, node.p99Ms),
+    0,
+    100
+  );
+
+  if (node.status === 'critical' || errorRate > 10 || healthScore < 65) {
+    return { tone: 'critical', score: healthScore, label: 'Critical' };
+  }
+  if (node.status === 'degraded' || errorRate > 2 || node.p95Ms > 1000 || healthScore < 85) {
+    return { tone: 'warning', score: healthScore, label: 'Watch' };
+  }
+  return { tone: 'healthy', score: healthScore, label: 'Healthy' };
+}
+
+function inferMapHealthScore(errorRate: number, p95Ms: number, p99Ms: number) {
+  const errorPenalty = Math.min(70, errorRate * 5);
+  const latencyPenalty = Math.min(25, Math.max(0, p95Ms - 300) / 35) + Math.min(15, Math.max(0, p99Ms - 1200) / 120);
+  return 100 - errorPenalty - latencyPenalty;
+}
+
+function getMapNodeRisk(node: ServiceStats) {
+  const health = getMapNodeHealth(node);
+  const trafficWeight = Math.log10(Math.max(node.requestCount, 1));
+  return (100 - health.score) * 2 + node.errorRate * 8 + Math.min(node.p99Ms / 30, 80) + trafficWeight;
+}
+
+function getMapEdgeWeight(edge: ServiceMapData['edges'][number]) {
+  return edge.errorCount * 20 + edge.avgDurationMs + Math.log10(Math.max(edge.callCount, 1)) * 10;
+}
+
+function weightedMapValue(
+  nodes: ServiceStats[],
+  getValue: (node: ServiceStats) => number,
+  getWeight: (node: ServiceStats) => number
+) {
+  const totals = nodes.reduce(
+    (acc, node) => {
+      const value = getValue(node);
+      const weight = Math.max(getWeight(node), 0);
+      if (Number.isFinite(value)) {
+        acc.value += value * Math.max(weight, 1);
+        acc.weight += Math.max(weight, 1);
+      }
+      return acc;
+    },
+    { value: 0, weight: 0 }
+  );
+  return totals.weight > 0 ? totals.value / totals.weight : 0;
+}
+
+function clampMapValue(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
+}
+
+function formatMapNumber(value: number) {
+  if (!Number.isFinite(value)) return '0';
+  return new Intl.NumberFormat(undefined, { notation: value >= 10000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value);
+}
+
+function formatMapMs(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0ms';
+  if (value < 1) return `${(value * 1000).toFixed(0)}us`;
+  if (value >= 1000) return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}s`;
+  return `${value.toFixed(value >= 100 ? 0 : 1)}ms`;
+}
+
+function formatMapPercent(value: number) {
+  if (!Number.isFinite(value)) return '0.0%';
+  return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
+}
+
+function formatRelativeTime(value: string) {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return 'No recent activity';
+  const diffMs = Date.now() - timestamp;
+  if (diffMs < 60_000) return 'just now';
+  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m ago`;
+  if (diffMs < 86_400_000) return `${Math.floor(diffMs / 3_600_000)}h ago`;
+  return `${Math.floor(diffMs / 86_400_000)}d ago`;
 }
