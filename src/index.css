@@ -9649,28 +9649,17 @@ body.dark-theme .apm-chart-overlay {
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-columns: 10px minmax(0, 1fr);
   align-items: center;
-  gap: 9px;
+  gap: 8px;
 }
 
 .dependency-health-orb {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, currentColor 30%, var(--border-primary));
-  border-radius: 8px;
-  background: color-mix(in srgb, currentColor 10%, var(--bg-primary));
-  color: var(--text-tertiary);
-}
-
-.dependency-health-orb::before {
-  content: "";
   width: 8px;
   height: 8px;
   border-radius: 999px;
   background: currentColor;
+  color: var(--text-tertiary);
   box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 16%, transparent);
 }
 
