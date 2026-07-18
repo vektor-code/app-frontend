@@ -562,17 +562,20 @@ export default function Dependencies({ namespace }: DependenciesProps) {
     return { maxLatency, maxThroughput };
   }, [accumulated]);
 
-  const getHealthMeta = (errorRate: number, isActive: boolean) => {
-    if (!isActive) {
-      return { label: 'Idle', className: 'health-unknown' };
+  const getHealthMeta = (item: AccumulatedDependency) => {
+    if (!item.isActive) {
+      return { label: t('No traffic'), detail: t('waiting'), className: 'health-muted' };
     }
-    if (errorRate === 0) {
-      return { label: 'Healthy', className: 'health-ok' };
+    if (item.errorRate >= 10) {
+      return { label: t('Failing'), detail: `${formatDependencyRate(item.errorRate)} ${t('errors')}`, className: 'health-danger' };
     }
-    if (errorRate < 10) {
-      return { label: 'Warning', className: 'health-warning' };
+    if (item.errorRate > 0) {
+      return { label: t('Errors'), detail: `${formatDependencyRate(item.errorRate)} ${t('errors')}`, className: 'health-warning' };
     }
-    return { label: 'Critical', className: 'health-critical' };
+    if (item.avgDurationMs >= 1000) {
+      return { label: t('Slow'), detail: `${formatDependencyLatency(item.avgDurationMs)} ${t('avg')}`, className: 'health-slow' };
+    }
+    return { label: t('OK'), detail: t('0 errors'), className: 'health-good' };
   };
 
   const namespaceOptions = [
@@ -706,7 +709,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
             </div>
 
             {filteredItems.map(item => {
-              const health = getHealthMeta(item.errorRate, item.isActive);
+              const health = getHealthMeta(item);
               const impactPct = maxValues.maxThroughput > 0 ? (item.requestCount / maxValues.maxThroughput) * 100 : 0;
               const tpmVal = item.isActive ? item.requestCount / 60 : 0;
               const topConsumer = item.consumers[0];
@@ -744,10 +747,13 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                   </div>
 
                   <div className="dependency-cell health">
-                    <span className={`dependency-health-status ${health.className}`}>
-                      <i />
-                      <span>{t(health.label)}</span>
-                    </span>
+                    <div className={`dependency-health-card ${health.className}`}>
+                      <span className="dependency-health-orb" aria-hidden="true" />
+                      <div>
+                        <strong>{health.label}</strong>
+                        <small>{health.detail}</small>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="dependency-cell metric">
