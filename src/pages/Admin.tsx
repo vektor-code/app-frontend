@@ -1643,88 +1643,69 @@ export default function Admin() {
           </div>
 
           <div className="admin-storage-grid">
-            <div className="admin-storage-card primary">
+            <div className="admin-storage-card primary policy">
               <div className="admin-storage-head">
                 <div>
-                  <span>{t('Current policy')}</span>
+                  <span>{t('Retention policy')}</span>
                   <strong>{retentionPolicyLabel}</strong>
                 </div>
-                <img src="/logos/clickhouse.svg" alt="" />
-              </div>
-
-              <div className="admin-retention-ring">
-                <strong>{retentionHours === 0 ? '∞' : retentionHours}</strong>
-                <span>{retentionHours === 0 ? t('hours limit off') : t('hours')}</span>
-              </div>
-
-              <div className="admin-retention-controls">
-                <label>{t('Retention window')}</label>
-                <div>
-                  <input type="number" min="0" value={retentionInput} onChange={(e) => setRetentionInput(e.target.value)} />
-                  <span>{t('hours')}</span>
+                <div className="admin-storage-icon policy">
+                  <AdminIcon name="archive" />
                 </div>
               </div>
 
-              <div className="admin-retention-presets">
-                {[
-                  { label: '24h', value: '24' },
-                  { label: '7d', value: '168' },
-                  { label: '30d', value: '720' },
-                  { label: t('Forever'), value: '0' },
-                ].map(option => (
-                  <button key={option.value} type="button" className={retentionInput === option.value ? 'active' : ''} onClick={() => setRetentionInput(option.value)}>
-                    {option.label}
+              <div className="admin-policy-layout">
+                <div className="admin-retention-ring">
+                  <strong>{retentionHours === 0 ? '∞' : retentionHours}</strong>
+                  <span>{retentionHours === 0 ? t('hours limit off') : t('hours')}</span>
+                </div>
+
+                <div className="admin-policy-editor">
+                  <div className="admin-retention-controls">
+                    <label>{t('Retention window')}</label>
+                    <div>
+                      <input type="number" min="0" value={retentionInput} onChange={(e) => setRetentionInput(e.target.value)} />
+                      <span>{t('hours')}</span>
+                    </div>
+                  </div>
+
+                  <div className="admin-retention-presets">
+                    {[
+                      { label: '24h', value: '24' },
+                      { label: '7d', value: '168' },
+                      { label: '30d', value: '720' },
+                      { label: t('Forever'), value: '0' },
+                    ].map(option => (
+                      <button key={option.value} type="button" className={retentionInput === option.value ? 'active' : ''} onClick={() => setRetentionInput(option.value)}>
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button type="button" onClick={handleSaveRetention} disabled={savingRetention} className="btn btn-primary">
+                    {savingRetention ? t('Saving…') : t('Apply policy')}
                   </button>
-                ))}
-              </div>
 
-              <button type="button" onClick={handleSaveRetention} disabled={savingRetention} className="btn btn-primary">
-                {savingRetention ? t('Saving…') : t('Apply policy')}
-              </button>
-
-              {retentionSuccess && (
-                <div className="admin-inline-success">{t('Retention policy saved.')}</div>
-              )}
-            </div>
-
-            <div className="admin-storage-card">
-              <div className="admin-storage-head">
-                <div>
-                  <span>{t('Trace payloads')}</span>
-                  <strong>MinIO</strong>
+                  {retentionSuccess && (
+                    <div className="admin-inline-success">{t('Retention policy saved.')}</div>
+                  )}
                 </div>
-                <img src="/logos/minio.png" alt="" />
               </div>
-              <div className="admin-storage-status-list">
-                <span className={infraConfig?.minio?.endpoint ? 'ready' : 'missing'}>
-                  <i />{infraConfig?.minio?.endpoint ? t('Endpoint configured') : t('Endpoint missing')}
-                </span>
-                <span className={infraConfig?.minio?.bucket ? 'ready' : 'missing'}>
-                  <i />{infraConfig?.minio?.bucket ? t('Bucket configured') : t('Bucket missing')}
-                </span>
-                <span className="neutral">
-                  <i />{infraConfig?.minio?.useSSL === 'true' ? t('SSL enabled') : t('SSL disabled')}
-                </span>
-              </div>
-              <button
-                type="button"
-                className="admin-storage-config-btn"
-                onClick={() => {
-                  setActiveTab('infrastructure');
-                  openInfraConfig('minio');
-                }}
-              >
-                {t('Configure storage')}
-              </button>
             </div>
 
-            <div className="admin-storage-card danger">
+            <div className="admin-storage-card danger purge">
               <div className="admin-storage-head">
                 <div>
                   <span>{t('Danger zone')}</span>
                   <strong>{t('Purge traces')}</strong>
                 </div>
-                <AdminIcon name="alerts" />
+                <div className="admin-storage-icon danger">
+                  <AdminIcon name="alerts" />
+                </div>
+              </div>
+              <div className="admin-purge-state">
+                <span>{t('Storage data')}</span>
+                <strong>{clearedMessage ? t('Purged') : t('Ready')}</strong>
               </div>
               <button type="button" onClick={handleClearTraces} disabled={clearingTraces}>
                 {clearingTraces ? t('Purging…') : t('Purge storage')}
