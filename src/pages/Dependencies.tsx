@@ -564,18 +564,18 @@ export default function Dependencies({ namespace }: DependenciesProps) {
 
   const getHealthMeta = (item: AccumulatedDependency) => {
     if (!item.isActive) {
-      return { label: t('No traffic'), detail: t('waiting'), className: 'health-muted' };
+      return { label: t('Quiet'), detail: t('no recent calls'), className: 'health-muted' };
     }
     if (item.errorRate >= 10) {
       return { label: t('Failing'), detail: `${formatDependencyRate(item.errorRate)} ${t('errors')}`, className: 'health-danger' };
     }
     if (item.errorRate > 0) {
-      return { label: t('Errors'), detail: `${formatDependencyRate(item.errorRate)} ${t('errors')}`, className: 'health-warning' };
+      return { label: t('Degraded'), detail: `${formatDependencyRate(item.errorRate)} ${t('errors')}`, className: 'health-warning' };
     }
     if (item.avgDurationMs >= 1000) {
       return { label: t('Slow'), detail: `${formatDependencyLatency(item.avgDurationMs)} ${t('avg')}`, className: 'health-slow' };
     }
-    return { label: t('OK'), detail: t('0 errors'), className: 'health-good' };
+    return { label: t('Passing'), detail: t('0 errors'), className: 'health-good' };
   };
 
   const namespaceOptions = [
@@ -748,7 +748,11 @@ export default function Dependencies({ namespace }: DependenciesProps) {
 
                   <div className="dependency-cell health">
                     <div className={`dependency-health-card ${health.className}`}>
-                      <span className="dependency-health-orb" aria-hidden="true" />
+                      <span className="dependency-health-signal" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                      </span>
                       <div>
                         <strong>{health.label}</strong>
                         <small>{health.detail}</small>

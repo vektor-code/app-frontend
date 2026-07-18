@@ -9649,18 +9649,40 @@ body.dark-theme .apm-chart-overlay {
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr);
+  grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 9px;
 }
 
-.dependency-health-orb {
-  width: 8px;
-  height: 8px;
+.dependency-health-signal {
+  width: 18px;
+  height: 22px;
+  display: grid;
+  grid-template-columns: repeat(3, 4px);
+  align-items: end;
+  gap: 3px;
+  color: var(--text-tertiary);
+}
+
+.dependency-health-signal i {
+  display: block;
+  width: 4px;
   border-radius: 999px;
   background: currentColor;
-  color: var(--text-tertiary);
-  box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 16%, transparent);
+  opacity: 0.18;
+  transition: opacity var(--transition-fast), height var(--transition-fast);
+}
+
+.dependency-health-signal i:nth-child(1) {
+  height: 8px;
+}
+
+.dependency-health-signal i:nth-child(2) {
+  height: 14px;
+}
+
+.dependency-health-signal i:nth-child(3) {
+  height: 20px;
 }
 
 .dependency-health-card div {
@@ -9694,17 +9716,34 @@ body.dark-theme .apm-chart-overlay {
   color: var(--accent-emerald);
 }
 
+.dependency-health-card.health-good .dependency-health-signal i {
+  opacity: 1;
+}
+
 .dependency-health-card.health-slow,
 .dependency-health-card.health-warning {
   color: var(--accent-amber);
+}
+
+.dependency-health-card.health-slow .dependency-health-signal i:nth-child(-n + 2),
+.dependency-health-card.health-warning .dependency-health-signal i:nth-child(-n + 2) {
+  opacity: 1;
 }
 
 .dependency-health-card.health-danger {
   color: var(--accent-rose);
 }
 
+.dependency-health-card.health-danger .dependency-health-signal i:first-child {
+  opacity: 1;
+}
+
 .dependency-health-card.health-muted {
   color: var(--text-tertiary);
+}
+
+.dependency-health-card.health-muted .dependency-health-signal i {
+  opacity: 0.32;
 }
 
 .dependency-cell,
