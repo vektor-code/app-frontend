@@ -146,7 +146,6 @@ type InfraCardConfig = {
   key: string;
   title: string;
   subtitle: string;
-  description: string;
   logo: string;
   status: string;
   statusState: InfraChipState;
@@ -158,7 +157,6 @@ type InfraCardConfig = {
 function InfraResourceCard({
   title,
   subtitle,
-  description,
   logo,
   status,
   statusState,
@@ -169,7 +167,6 @@ function InfraResourceCard({
 }: {
   title: string;
   subtitle: string;
-  description: string;
   logo: string;
   status: string;
   statusState: InfraChipState;
@@ -187,7 +184,6 @@ function InfraResourceCard({
       <span className="admin-infra-copy">
         <strong>{title}</strong>
         <em>{subtitle}</em>
-        <span>{description}</span>
       </span>
       <span className="admin-infra-chip-grid">
         {chips.map(chip => (
@@ -638,7 +634,6 @@ export default function Admin() {
       key: 'kafka',
       title: 'Apache Kafka',
       subtitle: t('Ingestion queue'),
-      description: t('Buffers spans before they are written to storage.'),
       logo: '/logos/kafka.svg',
       status: infraConfig.kafka?.brokers && infraConfig.kafka?.topic ? t('Configured') : t('Missing setup'),
       statusState: infraConfig.kafka?.brokers && infraConfig.kafka?.topic ? 'ready' : 'missing',
@@ -652,7 +647,6 @@ export default function Admin() {
       key: 'clickhouse',
       title: 'ClickHouse',
       subtitle: t('Trace analytics database'),
-      description: t('Stores spans and powers trace queries.'),
       logo: '/logos/clickhouse.svg',
       status: infraConfig.clickhouse?.host ? t('Configured') : t('Missing setup'),
       statusState: infraConfig.clickhouse?.host ? 'ready' : 'missing',
@@ -667,7 +661,6 @@ export default function Admin() {
       key: 'minio',
       title: 'MinIO',
       subtitle: t('Trace object storage'),
-      description: t('Stores trace payloads and long-term span artifacts.'),
       logo: '/logos/minio.png',
       logoTheme: 'dark',
       status: infraConfig.minio?.endpoint && infraConfig.minio?.bucket ? t('Configured') : t('Missing setup'),
@@ -681,13 +674,11 @@ export default function Admin() {
     },
     {
       key: 'ldap',
-      title: 'OpenLDAP',
-      subtitle: t('Directory access'),
-      description: t('Controls directory login and group-based access.'),
-      logo: '/logos/ldap.gif',
+      title: 'Active Directory',
+      subtitle: t('LDAP identity provider'),
+      logo: '/logos/active-directory.svg',
       status: infraConfig.ldap?.enabled === 'true' ? t('Enabled') : t('Disabled'),
       statusState: infraConfig.ldap?.enabled === 'true' ? 'ready' : 'neutral',
-      wideLogo: true,
       chips: [
         { label: t('Auth'), state: infraConfig.ldap?.enabled === 'true' ? 'ready' : 'neutral' },
         { label: t('Server'), state: infraConfig.ldap?.url ? 'ready' : 'missing' },
@@ -698,7 +689,6 @@ export default function Admin() {
       key: 'prometheus',
       title: 'Prometheus',
       subtitle: t('Metrics source'),
-      description: t('Provides infrastructure and collector metrics.'),
       logo: '/logos/prometheus.svg',
       status: infraConfig.prometheus?.url ? t('Configured') : t('Missing setup'),
       statusState: infraConfig.prometheus?.url ? 'ready' : 'missing',
@@ -712,7 +702,6 @@ export default function Admin() {
       key: 'elasticsearch',
       title: 'Elasticsearch',
       subtitle: t('Metadata search'),
-      description: t('Indexes trace attributes for fast filtering.'),
       logo: '/logos/elasticsearch.svg',
       status: infraConfig.elasticsearch?.url ? t('Configured') : t('Missing setup'),
       statusState: infraConfig.elasticsearch?.url ? 'ready' : 'missing',
@@ -751,7 +740,6 @@ export default function Admin() {
             {t('Control plane')}
           </span>
           <h1>{t('Admin')}</h1>
-          <p>{t('Manage ingestion, infrastructure, clusters, storage, access, and alert integrations.')}</p>
         </div>
         <button type="button" className="admin-refresh-btn" onClick={fetchData} disabled={loading}>
           <AdminIcon name="settings" />
@@ -883,7 +871,6 @@ export default function Admin() {
               <span>{t('Ingestion Control')}</span>
               <h2>{t('Namespace Manager')}</h2>
             </div>
-            <p>{t('Enable tracing per namespace and manage workload instrumentation from one place.')}</p>
           </div>
 
           <div className="admin-namespace-grid">
@@ -1068,7 +1055,6 @@ export default function Admin() {
               <span>{t('Platform services')}</span>
               <h2>{t('Infrastructure')}</h2>
             </div>
-            <p>{t('Connection settings for ingestion, storage, search, metrics, and directory services.')}</p>
           </div>
 
           <div className="admin-infra-grid">
@@ -1077,7 +1063,6 @@ export default function Admin() {
                 key={resource.key}
                 title={resource.title}
                 subtitle={resource.subtitle}
-                description={resource.description}
                 logo={resource.logo}
                 status={resource.status}
                 statusState={resource.statusState}
@@ -1380,7 +1365,6 @@ export default function Admin() {
             <div>
               <span>{t('Kubernetes')}</span>
               <h2>{t('Cluster Inventory')}</h2>
-              <p>{t('Register clusters, store credentials, and test connectivity.')}</p>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               {!isEditingClusters ? (
@@ -1406,144 +1390,188 @@ export default function Admin() {
             </div>
           </div>
 
-          <div className="admin-cluster-table-card">
-            <table className="admin-cluster-table">
-              <thead>
-                <tr style={{ background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-primary)', textAlign: 'left' }}>
-                  <th style={{ padding: '16px 20px', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cluster Identifier</th>
-                  <th style={{ padding: '16px 20px', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Display Name</th>
-                  <th style={{ padding: '16px 20px', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Credentials Type</th>
-                  <th style={{ padding: '16px 20px', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Agent Namespace</th>
-                  <th style={{ padding: '16px 20px', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</th>
-                  <th style={{ padding: '16px 20px', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(isEditingClusters ? editableClusters : clusterInventory).map((item, idx) => (
-                  <tr key={item.id} className="hover-row" style={{ borderBottom: '1px solid var(--border-primary)', transition: 'background 0.2s' }}>
-                    <td style={{ padding: '16px 20px' }}>
-                      {!isEditingClusters ? (
-                        <code style={{ fontSize: '11.5px', background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', padding: '3px 6px', borderRadius: '4px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{item.id}</code>
-                      ) : item.managedByAgent ? (
+          <div className="admin-cluster-grid">
+            {(isEditingClusters ? editableClusters : clusterInventory).map((item, idx) => {
+              const credentialsReady = Boolean(item.hasCredentials || (item.token && item.token !== '******'));
+              return (
+                <div
+                  key={`${item.id || 'cluster'}-${idx}`}
+                  className={`admin-cluster-card ${item.status === 'Active' ? 'active' : 'inactive'} ${isEditingClusters ? 'editing' : ''}`}
+                >
+                  <div className="admin-cluster-card-top">
+                    <div className="admin-cluster-identity">
+                      <span className="admin-cluster-icon"><AdminIcon name="cluster" /></span>
+                      <div>
+                        <strong>{item.displayName || item.id || t('New cluster')}</strong>
+                        <code>{item.id || t('cluster-id')}</code>
+                      </div>
+                    </div>
+                    {!isEditingClusters ? (
+                      <span className={`admin-status-pill ${item.status === 'Active' ? 'active' : 'inactive'}`}>
+                        {item.status}
+                      </span>
+                    ) : (
+                      <AdminSwitch
+                        checked={item.status === 'Active'}
+                        label={item.status === 'Active' ? t('Active') : t('Inactive')}
+                        onChange={() => {
+                          const next = [...editableClusters];
+                          next[idx].status = next[idx].status === 'Active' ? 'Inactive' : 'Active';
+                          setEditableClusters(next);
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  {!isEditingClusters ? (
+                    <>
+                      <div className="admin-cluster-meta-grid">
                         <div>
-                          <code style={{ fontSize: '11.5px', background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', padding: '3px 6px', borderRadius: '4px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{item.id}</code>
-                          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>Set via CLUSTER_NAME on agent Helm chart</div>
+                          <span>{t('Credentials')}</span>
+                          <strong className={credentialsReady ? 'ready' : 'missing'}>
+                            {credentialsReady ? t('Configured') : t('Not set')}
+                          </strong>
                         </div>
-                      ) : (
-                        <input type="text" className="form-input" style={{ width: '160px', padding: '6px 10px', fontSize: '12px' }} value={item.id}
-                          onChange={(e) => { const n = [...editableClusters]; n[idx].id = e.target.value; setEditableClusters(n); }} />
-                      )}
-                    </td>
-                    <td style={{ padding: '16px 20px', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>
-                      {!isEditingClusters ? (item.displayName || item.id) : (
-                        <input type="text" className="form-input" style={{ width: '180px', padding: '6px 10px', fontSize: '12px' }} value={item.displayName || ''}
-                          onChange={(e) => { const n = [...editableClusters]; n[idx].displayName = e.target.value; setEditableClusters(n); }} />
-                      )}
-                    </td>
-                    <td style={{ padding: '16px 20px', minWidth: '220px' }}>
-                      {!isEditingClusters ? (
-                        <span style={{ 
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          background: item.hasCredentials || (item.token && item.token !== '******') ? 'rgba(16, 185, 129, 0.08)' : 'rgba(244, 63, 94, 0.08)',
-                          color: item.hasCredentials || (item.token && item.token !== '******') ? 'var(--accent-emerald)' : 'var(--accent-rose)',
-                          border: item.hasCredentials || (item.token && item.token !== '******') ? '1px solid rgba(16, 185, 129, 0.15)' : '1px solid rgba(244, 63, 94, 0.15)'
-                        }}>
-                          {item.hasCredentials || (item.token && item.token !== '******') ? '● Configured' : '○ Not set'}
-                        </span>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <AdminSegmented
-                            value={item.credentialType || 'kubeconfig'}
-                            options={[
-                              { value: 'kubeconfig', label: 'Kubeconfig' },
-                              { value: 'bearer', label: 'Bearer token' },
-                            ]}
-                            onChange={(value) => {
-                              const n = [...editableClusters];
-                              n[idx].credentialType = value;
-                              setEditableClusters(n);
+                        <div>
+                          <span>{t('Type')}</span>
+                          <strong>{item.credentialType || 'kubeconfig'}</strong>
+                        </div>
+                        <div>
+                          <span>{t('Agent namespace')}</span>
+                          <strong>{item.agentNamespace || 'trace-prod'}</strong>
+                        </div>
+                      </div>
+                      <div className="admin-cluster-actions">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          disabled={testingClusterId === item.id}
+                          onClick={() => handleTestCluster(item)}
+                        >
+                          {testingClusterId === item.id ? t('Testing…') : t('Test')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm danger"
+                          onClick={() => handleDeleteCluster(item.id)}
+                        >
+                          {t('Delete')}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="admin-cluster-edit-grid">
+                        <label>
+                          <span>{t('Cluster ID')}</span>
+                          {item.managedByAgent ? (
+                            <div className="admin-cluster-managed">
+                              <code>{item.id}</code>
+                              <em>{t('Set by agent')}</em>
+                            </div>
+                          ) : (
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={item.id}
+                              onChange={(event) => {
+                                const next = [...editableClusters];
+                                next[idx].id = event.target.value;
+                                setEditableClusters(next);
+                              }}
+                            />
+                          )}
+                        </label>
+                        <label>
+                          <span>{t('Display name')}</span>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={item.displayName || ''}
+                            onChange={(event) => {
+                              const next = [...editableClusters];
+                              next[idx].displayName = event.target.value;
+                              setEditableClusters(next);
                             }}
                           />
-                          {(item.credentialType === 'bearer') && (
-                            <input type="text" placeholder="API Server (https://host:6443)" className="form-input" style={{ padding: '6px 10px', fontSize: '11px' }}
-                              value={item.apiServer || ''} onChange={(e) => { const n = [...editableClusters]; n[idx].apiServer = e.target.value; setEditableClusters(n); }} />
-                          )}
-                          <textarea placeholder="Paste kubeconfig YAML or bearer token" className="form-input" style={{ padding: '6px 10px', fontSize: '11px', minHeight: '72px', fontFamily: 'var(--font-mono)' }}
-                            value={item.token === '******' ? '' : (item.token || '')} onChange={(e) => { const n = [...editableClusters]; n[idx].token = e.target.value; setEditableClusters(n); }} />
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '16px 20px' }}>
-                      {!isEditingClusters ? (
-                        <code style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{item.agentNamespace || 'trace-prod'}</code>
-                      ) : (
-                        <input type="text" className="form-input" style={{ width: '120px', padding: '6px 10px', fontSize: '12px' }} value={item.agentNamespace || 'trace-prod'}
-                          onChange={(e) => { const n = [...editableClusters]; n[idx].agentNamespace = e.target.value; setEditableClusters(n); }} />
-                      )}
-                    </td>
-                    <td style={{ padding: '16px 20px' }}>
-                      {!isEditingClusters ? (
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          background: item.status === 'Active' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(148, 163, 184, 0.08)',
-                          color: item.status === 'Active' ? 'var(--accent-emerald)' : 'var(--text-muted)',
-                          border: item.status === 'Active' ? '1px solid rgba(16, 185, 129, 0.15)' : '1px solid rgba(148, 163, 184, 0.15)'
-                        }}>
-                          {item.status}
-                        </span>
-                      ) : (
-                        <AdminSwitch
-                          checked={item.status === 'Active'}
-                          label={item.status === 'Active' ? t('Active') : t('Inactive')}
-                          onChange={() => {
-                            const n = [...editableClusters];
-                            n[idx].status = n[idx].status === 'Active' ? 'Inactive' : 'Active';
-                            setEditableClusters(n);
+                        </label>
+                        <label>
+                          <span>{t('Agent namespace')}</span>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={item.agentNamespace || 'trace-prod'}
+                            onChange={(event) => {
+                              const next = [...editableClusters];
+                              next[idx].agentNamespace = event.target.value;
+                              setEditableClusters(next);
+                            }}
+                          />
+                        </label>
+                      </div>
+
+                      <div className="admin-cluster-credential-panel">
+                        <span>{t('Credentials')}</span>
+                        <AdminSegmented
+                          value={item.credentialType || 'kubeconfig'}
+                          options={[
+                            { value: 'kubeconfig', label: 'Kubeconfig' },
+                            { value: 'bearer', label: 'Bearer token' },
+                          ]}
+                          onChange={(value) => {
+                            const next = [...editableClusters];
+                            next[idx].credentialType = value;
+                            setEditableClusters(next);
                           }}
                         />
-                      )}
-                    </td>
-                    <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                        {!isEditingClusters ? (
-                          <>
-                            <button type="button" className="btn btn-ghost" style={{ fontSize: '11px', padding: '4px 10px' }}
-                              disabled={testingClusterId === item.id} onClick={() => handleTestCluster(item)}>
-                              {testingClusterId === item.id ? 'Testing…' : 'Test'}
-                            </button>
-                            <button type="button" className="btn btn-ghost" style={{ fontSize: '11px', padding: '4px 10px', color: 'var(--accent-rose)' }}
-                              onClick={() => handleDeleteCluster(item.id)}>Delete</button>
-                          </>
-                        ) : (
-                          <button type="button" className="btn btn-ghost" style={{ fontSize: '11px', padding: '4px 10px', color: 'var(--accent-rose)' }}
-                            onClick={() => {
-                              const n = editableClusters.filter((_, i) => i !== idx);
-                              setEditableClusters(n);
-                            }}>Remove</button>
+                        {item.credentialType === 'bearer' && (
+                          <input
+                            type="text"
+                            placeholder="https://host:6443"
+                            className="form-input"
+                            value={item.apiServer || ''}
+                            onChange={(event) => {
+                              const next = [...editableClusters];
+                              next[idx].apiServer = event.target.value;
+                              setEditableClusters(next);
+                            }}
+                          />
                         )}
+                        <textarea
+                          placeholder={item.credentialType === 'bearer' ? t('Bearer token') : t('Kubeconfig YAML')}
+                          className="form-input"
+                          value={item.token === '******' ? '' : (item.token || '')}
+                          onChange={(event) => {
+                            const next = [...editableClusters];
+                            next[idx].token = event.target.value;
+                            setEditableClusters(next);
+                          }}
+                        />
                       </div>
-                    </td>
-                  </tr>
-                ))}
-                {(isEditingClusters ? editableClusters : clusterInventory).length === 0 && (
-                  <tr>
-                    <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-secondary)' }}>
-                      No Kubernetes clusters configured. Register a cluster registry using "Add Cluster".
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+
+                      <div className="admin-cluster-actions">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm danger"
+                          onClick={() => {
+                            const next = editableClusters.filter((_, clusterIndex) => clusterIndex !== idx);
+                            setEditableClusters(next);
+                          }}
+                        >
+                          {t('Remove')}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+
+            {(isEditingClusters ? editableClusters : clusterInventory).length === 0 && (
+              <div className="admin-empty-card">
+                {t('No Kubernetes clusters configured.')}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1555,7 +1583,6 @@ export default function Admin() {
               <span>{t('OpenTelemetry')}</span>
               <h2>{t('Auto-Instrumentation Rules')}</h2>
             </div>
-            <p>{t('Kubernetes rules that inject OpenTelemetry libraries into selected workloads.')}</p>
           </div>
           
           <div className="admin-instrumentation-grid">
@@ -1613,7 +1640,6 @@ export default function Admin() {
               <span>{t('Storage')}</span>
               <h2>{t('Storage & Retention')}</h2>
             </div>
-            <p>{t('Control how long traces stay queryable and clear stored trace data when needed.')}</p>
           </div>
 
           <div className="admin-storage-grid">
@@ -1669,7 +1695,6 @@ export default function Admin() {
                 </div>
                 <img src="/logos/minio.png" alt="" />
               </div>
-              <p>{t('Object storage for trace payloads. Sensitive connection values stay inside Configure.')}</p>
               <div className="admin-storage-status-list">
                 <span className={infraConfig?.minio?.endpoint ? 'ready' : 'missing'}>
                   <i />{infraConfig?.minio?.endpoint ? t('Endpoint configured') : t('Endpoint missing')}
@@ -1701,7 +1726,6 @@ export default function Admin() {
                 </div>
                 <AdminIcon name="alerts" />
               </div>
-              <p>{t('Deletes stored trace data and resets dashboard statistics.')}</p>
               <button type="button" onClick={handleClearTraces} disabled={clearingTraces}>
                 {clearingTraces ? t('Purging…') : t('Purge storage')}
               </button>
@@ -1722,45 +1746,41 @@ export default function Admin() {
               <span>{t('Alerts')}</span>
               <h2>{t('Notification Integrations')}</h2>
             </div>
-            <p>{t('Forward alert events to external notification channels.')}</p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+          <div className="admin-integration-grid">
             <div
-              className="admin-resource-card"
+              role="button"
+              tabIndex={0}
+              className={`admin-integration-card clickable ${telegramEnabled ? 'active' : ''}`}
               onClick={() => {
                 setOpenInfraModal('telegram');
               }}
-              style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', cursor: 'pointer', transition: 'transform 0.2s, border-color 0.2s', border: '1px solid var(--border-primary)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.borderColor = 'var(--accent-indigo)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.borderColor = 'var(--border-primary)';
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setOpenInfraModal('telegram');
+                }
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{ width: '48px', minWidth: '48px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <img src="/logos/telegram.svg" style={{ height: '30px', maxWidth: '48px', objectFit: 'contain' }} alt="Telegram" />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Telegram Messenger</h3>
-                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Send real-time alerts to Telegram channels</span>
-                  </div>
-                </div>
-                <span className={`badge ${telegramEnabled ? 'badge-success' : 'badge-neutral'}`}>
-                  {telegramEnabled ? 'Active' : 'Disabled'}
-                </span>
-              </div>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Dispatches system telemetry and error notifications to a chat group.
-              </p>
-              <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                <span>Chat ID: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{telegramChatId || 'Not set'}</strong></span>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '10px' }} onClick={(event) => event.stopPropagation()}>
+              <span className={`admin-infra-status ${telegramEnabled ? 'ready' : 'neutral'}`}>
+                {telegramEnabled ? t('Active') : t('Disabled')}
+              </span>
+              <span className="admin-integration-logo">
+                <img src="/logos/telegram.svg" alt="" />
+              </span>
+              <span className="admin-infra-copy">
+                <strong>Telegram</strong>
+                <em>{t('Alert channel')}</em>
+              </span>
+              <span className="admin-infra-chip-grid">
+                <span className={`admin-infra-chip ${telegramToken ? 'ready' : 'missing'}`}><i />{t('Token')}</span>
+                <span className={`admin-infra-chip ${telegramChatId ? 'ready' : 'missing'}`}><i />{t('Chat')}</span>
+                <span className="admin-infra-chip neutral"><i />{telegramSeverities.length} {t('levels')}</span>
+              </span>
+              <span className="admin-integration-footer" onClick={(event) => event.stopPropagation()}>
+                <span>{telegramChatId || t('No chat selected')}</span>
+                <span>
                   <button type="button" className="admin-link-btn" onClick={() => setOpenInfraModal('telegram')}>
                     {t('Configure')}
                   </button>
@@ -1768,50 +1788,46 @@ export default function Admin() {
                     checked={telegramEnabled}
                     onChange={() => handleToggleTelegramEnabled(!telegramEnabled)}
                   />
-                </div>
-              </div>
+                </span>
+              </span>
             </div>
 
             <div
-              className="admin-resource-card"
-              style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', opacity: 0.7, border: '1px dashed var(--border-secondary)' }}
+              className="admin-integration-card muted"
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{ width: '48px', minWidth: '48px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <img src="/logos/slack.svg" style={{ height: '30px', maxWidth: '48px', objectFit: 'contain' }} alt="Slack" />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Slack Webhooks</h3>
-                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Channel webhook integration</span>
-                  </div>
-                </div>
-                <span className="badge badge-neutral">Coming Soon</span>
-              </div>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Post critical incident alert details to your SRE channel feed using Slack incoming webhooks.
-              </p>
+              <span className="admin-infra-status neutral">{t('Soon')}</span>
+              <span className="admin-integration-logo">
+                <img src="/logos/slack.svg" alt="" />
+              </span>
+              <span className="admin-infra-copy">
+                <strong>Slack</strong>
+                <em>{t('Webhook channel')}</em>
+              </span>
+              <span className="admin-infra-chip-grid">
+                <span className="admin-infra-chip missing"><i />{t('Webhook')}</span>
+                <span className="admin-infra-chip neutral"><i />{t('Channel')}</span>
+                <span className="admin-infra-chip neutral"><i />{t('Rules')}</span>
+              </span>
+              <span className="admin-integration-action">{t('Coming soon')}</span>
             </div>
 
             <div
-              className="admin-resource-card"
-              style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', opacity: 0.7, border: '1px dashed var(--border-secondary)' }}
+              className="admin-integration-card muted"
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{ width: '48px', minWidth: '48px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <img src="/logos/pagerduty.svg" style={{ height: '30px', maxWidth: '48px', objectFit: 'contain' }} alt="PagerDuty" />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>PagerDuty</h3>
-                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Incident escalation management</span>
-                  </div>
-                </div>
-                <span className="badge badge-neutral">Coming Soon</span>
-              </div>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Trigger on-call escalation schedules, acknowledge pages, and resolve incidents inside PagerDuty.
-              </p>
+              <span className="admin-infra-status neutral">{t('Soon')}</span>
+              <span className="admin-integration-logo">
+                <img src="/logos/pagerduty.svg" alt="" />
+              </span>
+              <span className="admin-infra-copy">
+                <strong>PagerDuty</strong>
+                <em>{t('Incident routing')}</em>
+              </span>
+              <span className="admin-infra-chip-grid">
+                <span className="admin-infra-chip missing"><i />{t('Key')}</span>
+                <span className="admin-infra-chip neutral"><i />{t('Service')}</span>
+                <span className="admin-infra-chip neutral"><i />{t('Policy')}</span>
+              </span>
+              <span className="admin-integration-action">{t('Coming soon')}</span>
             </div>
           </div>
         </div>

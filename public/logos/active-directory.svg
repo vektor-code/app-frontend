@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Active Directory">
+  <defs>
+    <linearGradient id="ad-blue" x1="12" y1="12" x2="78" y2="82" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5ec2ff"/>
+      <stop offset="1" stop-color="#0078d4"/>
+    </linearGradient>
+    <linearGradient id="ad-card" x1="18" y1="20" x2="78" y2="78" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef7ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="80" height="80" rx="18" fill="url(#ad-card)"/>
+  <path d="M17 22 44 17v27H17V22Z" fill="#0078d4"/>
+  <path d="M50 16 79 11v33H50V16Z" fill="#2b88d8"/>
+  <path d="M17 50h27v29l-27-4V50Z" fill="#00a4ef"/>
+  <path d="M50 50h29v35l-29-5V50Z" fill="#7fba00"/>
+  <circle cx="48" cy="48" r="25" fill="#ffffff" opacity=".94"/>
+  <path d="M48 31a7 7 0 1 1 0 14 7 7 0 0 1 0-14Z" fill="url(#ad-blue)"/>
+  <path d="M32 65c3.8-9 27.9-9 32 0" fill="none" stroke="#075a9c" stroke-width="5" stroke-linecap="round"/>
+  <path d="M25 48h12m22 0h12M48 25v6m0 14v12" fill="none" stroke="#075a9c" stroke-width="4" stroke-linecap="round"/>
+</svg>

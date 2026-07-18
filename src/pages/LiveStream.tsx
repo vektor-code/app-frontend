@@ -212,15 +212,15 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
     const svcs = spans.map(s => s.serviceName).filter(Boolean);
     const unique = [...new Set(svcs)].sort();
     return [
-      { value: '', label: 'All Services' },
+      { value: '', label: 'All services' },
       ...unique.map(s => ({ value: s, label: s }))
     ];
   }, [spans]);
 
   const statusOptions = [
-    { value: '', label: 'All Status' },
-    { value: 'ok', label: 'Success Only' },
-    { value: 'error', label: 'Errors Only' }
+    { value: '', label: 'All status' },
+    { value: 'ok', label: 'OK' },
+    { value: 'error', label: 'Errors' }
   ];
 
   // Filter spans in real-time
@@ -242,227 +242,120 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
   }, [spans, serviceFilter, statusFilter, searchQuery]);
 
   return (
-    <div className="animate-fade-in">
-      <h1 className="page-title">{t('Live Tail')}</h1>
-      <p className="page-subtitle">
-        {t('Real-time request telemetry and span updates streaming from active runtimes')}
-      </p>
-
-      {/* Real-time stats grid */}
-      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '24px' }}>
-        {/* Metric 1: Rate */}
-        <div className="card" style={{
-          position: 'relative',
-          padding: '20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-          borderLeft: '4px solid var(--accent-indigo)',
-          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(99, 102, 241, 0.03) 100%)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>{t('Stream Throughput')}</span>
-            <span style={{ fontSize: '11px', color: connected ? 'var(--accent-emerald)' : 'var(--accent-rose)', fontWeight: 600 }}>
-              {connected ? '● ' + t('LIVE') : '○ ' + t('OFFLINE')}
-            </span>
-          </div>
-          <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
-            {spansPerSec} <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 400 }}>{t('spans/sec')}</span>
-          </div>
+    <div className="live-page animate-fade-in">
+      <section className="live-hero">
+        <div>
+          <span className={`live-status-pill ${connected ? 'live' : 'offline'}`}>
+            <i />
+            {connected ? t('Live') : t('Offline')}
+          </span>
+          <h1>{t('Live Stream')}</h1>
         </div>
-
-        {/* Metric 2: Live Avg Latency */}
-        <div className="card" style={{
-          position: 'relative',
-          padding: '20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-          borderLeft: '4px solid var(--accent-emerald)',
-          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(16, 185, 129, 0.03) 100%)'
-        }}>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>{t('Live Avg Latency')}</div>
-          <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
-            {formatDuration(stats.avgDuration)}
-          </div>
+        <div className="live-hero-actions">
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPaused(!paused)}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              {paused ? <polygon points="5 3 19 12 5 21 5 3" /> : (
+                <>
+                  <line x1="6" y1="4" x2="6" y2="20" />
+                  <line x1="18" y1="4" x2="18" y2="20" />
+                </>
+              )}
+            </svg>
+            {paused ? t('Resume') : t('Pause')}
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={clearSpans}>
+            {t('Clear')}
+          </button>
         </div>
+      </section>
 
-        {/* Metric 3: Live Error Rate */}
-        <div className="card" style={{
-          position: 'relative',
-          padding: '20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-          borderLeft: `4px solid ${stats.errorRate > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)'}`,
-          background: `linear-gradient(135deg, var(--bg-secondary) 0%, ${stats.errorRate > 0 ? 'rgba(244, 63, 94, 0.03)' : 'rgba(16, 185, 129, 0.03)'} 100%)`
-        }}>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>{t('Live Error Rate')}</div>
-          <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: stats.errorRate > 0 ? 'var(--accent-rose)' : 'var(--text-primary)' }}>
-            {stats.errorRate.toFixed(1)}%
-          </div>
+      <section className="live-metric-grid">
+        <div className="live-metric-card indigo">
+          <span>{t('Throughput')}</span>
+          <strong>{spansPerSec}</strong>
+          <em>{t('spans/sec')}</em>
         </div>
-
-        {/* Metric 4: Active Services */}
-        <div className="card" style={{
-          position: 'relative',
-          padding: '20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-          borderLeft: '4px solid var(--accent-amber)',
-          background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(245, 158, 11, 0.03) 100%)'
-        }}>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>{t('Active Services')}</div>
-          <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
-            {stats.uniqueServices}
-          </div>
+        <div className="live-metric-card emerald">
+          <span>{t('Avg latency')}</span>
+          <strong>{formatDuration(stats.avgDuration)}</strong>
+          <em>{filteredSpans.length} {t('visible')}</em>
         </div>
-      </div>
+        <div className={`live-metric-card ${stats.errorRate > 0 ? 'rose' : 'emerald'}`}>
+          <span>{t('Error rate')}</span>
+          <strong>{stats.errorRate.toFixed(1)}%</strong>
+          <em>{spans.filter(s => isSpanError(s)).length} {t('errors')}</em>
+        </div>
+        <div className="live-metric-card amber">
+          <span>{t('Services')}</span>
+          <strong>{stats.uniqueServices}</strong>
+          <em>{totalCount} {t('total spans')}</em>
+        </div>
+      </section>
 
-      {/* Advanced real-time filter bar */}
-      <div className="filter-bar db-filter-bar" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', marginBottom: '20px', background: 'var(--bg-secondary)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-primary)' }}>
-        {/* Search Input */}
-        <div style={{ flex: '1', minWidth: '240px', position: 'relative' }}>
-          <input
-            type="text"
-            placeholder={t("Live search spans, services, trace IDs...")}
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '8px 12px 8px 36px',
-              background: 'var(--bg-tertiary)',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border-primary)',
-              borderRadius: '8px',
-              fontSize: '13px',
-              outline: 'none',
-              transition: 'all 0.15s ease-out'
-            }}
-            onFocus={e => {
-              e.currentTarget.style.borderColor = 'var(--accent-indigo)';
-              e.currentTarget.style.boxShadow = '0 0 0 2px rgba(99, 102, 241, 0.15)';
-            }}
-            onBlur={e => {
-              e.currentTarget.style.borderColor = 'var(--border-primary)';
-              e.currentTarget.style.boxShadow = 'none';
-            }}
-          />
-          <svg
-            viewBox="0 0 24 24"
-            width="14"
-            height="14"
-            fill="none"
-            stroke="var(--text-secondary)"
-            strokeWidth="2.5"
-            style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
-          >
+      <section className="live-filter-panel">
+        <div className="live-search">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5">
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
+          <input
+            type="text"
+            placeholder={t('Search spans, services, trace IDs')}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+          />
         </div>
-
-        {/* Flowing Services selector */}
         <CustomDropdown
           options={flowingServicesOptions}
           value={serviceFilter}
           onChange={setServiceFilter}
-          placeholder={t("All Services")}
+          placeholder={t('All services')}
         />
-
-        {/* Status selector */}
         <CustomDropdown
           options={statusOptions}
           value={statusFilter}
           onChange={setStatusFilter}
-          placeholder={t("All Status")}
+          placeholder={t('All status')}
         />
+      </section>
 
-        {/* Pause/Resume button */}
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={() => setPaused(!paused)}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '36px', padding: '0 14px', borderRadius: '8px' }}
-        >
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            {paused ? <polygon points="5 3 19 12 5 21 5 3" /> : (
-              <>
-                <line x1="6" y1="4" x2="6" y2="20" />
-                <line x1="18" y1="4" x2="18" y2="20" />
-              </>
-            )}
-          </svg>
-          {paused ? t('Resume') : t('Pause')}
-        </button>
+      <section className="live-stream-panel">
+        <div className="live-stream-panel-head">
+          <strong>{t('Span Feed')}</strong>
+          <span>{filteredSpans.length} / {totalCount}</span>
+        </div>
 
-        {/* Clear button */}
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={clearSpans}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '36px', padding: '0 14px', borderRadius: '8px' }}
-        >
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-          </svg>
-          {t('Clear')}
-        </button>
-      </div>
-
-      {/* Stream body list */}
-      <div className="live-stream-container">
-        {filteredSpans.length === 0 && (
-          <div className="card">
-            <div className="card-body">
-              <div className="empty-state">
-                <div className="empty-state-icon">
-                  <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-tertiary)', opacity: 0.6 }}>
-                    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                  </svg>
-                </div>
-                <div className="empty-state-title">{connected ? t('Waiting for matching spans...') : t('Connecting...')}</div>
-                <div className="empty-state-text">
-                  {connected
-                    ? t('Spans matching your active filters will appear here in real-time')
-                    : t('Attempting to establish WebSocket connection to the backend telemetry server')
-                  }
-                </div>
-              </div>
+        {filteredSpans.length === 0 ? (
+          <div className="live-empty-state">
+            <div className="live-empty-icon">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+              </svg>
             </div>
+            <strong>{connected ? t('Waiting for spans') : t('Connecting')}</strong>
+          </div>
+        ) : (
+          <div className="live-stream-container">
+            {filteredSpans.map(span => (
+              <button
+                key={span._id}
+                type="button"
+                onClick={() => navigate(`/traces/${span.traceId}`)}
+                className={`live-span-item ${isSpanError(span) ? 'error' : 'ok'}`}
+              >
+                <span className={`live-span-status ${isSpanError(span) ? 'error' : 'ok'}`}>
+                  {isSpanError(span) ? 'ERR' : 'OK'}
+                </span>
+                <span className="live-span-svc">{span.serviceName}</span>
+                <span className="live-span-name" title={span.name}>{span.name}</span>
+                {!namespace && <span className="live-span-ns">{span.namespace}</span>}
+                <span className="live-span-duration">{formatDuration(span.durationMs)}</span>
+                <span className="live-span-time">{formatTime(span.startTime)}</span>
+              </button>
+            ))}
           </div>
         )}
-
-        {filteredSpans.map(span => (
-          <div
-            key={span._id}
-            onClick={() => navigate(`/traces/${span.traceId}`)}
-            className="live-span-item"
-            style={{
-              cursor: 'pointer',
-              transition: 'all 0.15s ease-out',
-              borderLeft: isSpanError(span) ? '4px solid var(--accent-rose)' : '4px solid var(--accent-indigo)'
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = 'var(--bg-hover)';
-              e.currentTarget.style.transform = 'translateX(2px)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = 'var(--bg-secondary)';
-              e.currentTarget.style.transform = 'none';
-            }}
-          >
-            <span className={`badge ${isSpanError(span) ? 'badge-error' : 'badge-ok'}`} style={{ minWidth: '52px', justifyContent: 'center' }}>
-              {isSpanError(span) ? 'ERR' : 'OK'}
-            </span>
-            <span className="live-span-svc" style={{ fontWeight: 600 }}>{span.serviceName}</span>
-            <span className="live-span-name" title={span.name} style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>{span.name}</span>
-            {!namespace && <span className="badge badge-ns">{span.namespace}</span>}
-            <span className="live-span-duration" style={{ fontFamily: 'var(--font-mono)' }}>{formatDuration(span.durationMs)}</span>
-            <span className="live-span-time" style={{ color: 'var(--text-muted)' }}>{formatTime(span.startTime)}</span>
-          </div>
-        ))}
-      </div>
+      </section>
     </div>
   );
 }

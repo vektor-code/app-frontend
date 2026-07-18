@@ -203,7 +203,6 @@ export default function AdminUsers() {
           <div>
             <span>{t('Access presets')}</span>
             <h2>{t('Permission Templates')}</h2>
-            <p>{t('The default template is applied to new users on first login.')}</p>
           </div>
           <button className="admin-new-template-btn" onClick={() => setEditTemplate({ name: '', description: '', role: 'viewer', namespaces: [ALL_NS], isDefault: templates.length === 0 })}>
             {t('New Template')}
@@ -212,7 +211,7 @@ export default function AdminUsers() {
 
         {templates.length === 0 ? (
           <div className="admin-empty-card">
-            {t('No templates. New users start with no access — mark a template as default to grant a baseline automatically.')}
+            {t('No templates.')}
           </div>
         ) : (
           <div className="admin-access-grid">
@@ -250,7 +249,6 @@ export default function AdminUsers() {
           <div>
             <span>{t('LDAP identities')}</span>
             <h2>{t('Users')}</h2>
-            <p>{t('Users appear after first login. Namespace changes apply in seconds.')}</p>
           </div>
         </div>
 
