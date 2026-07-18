@@ -4,6 +4,8 @@ import { api } from '../api/client';
 import type { ServiceMapData } from '../entities';
 import { useTranslation } from '../utils/i18n';
 import { LoadingState, NoDataState } from '../components/DataState';
+import CustomSelect from '../components/CustomSelect';
+import { techLogoFor } from '../components/TechIcon';
 
 interface DependenciesProps {
   namespace: string;
@@ -74,129 +76,6 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
   );
 }
 
-function CustomDropdown({
-  options,
-  value,
-  onChange,
-  placeholder
-}: {
-  options: { value: string; label: string }[];
-  value: string;
-  onChange: (val: string) => void;
-  placeholder: string;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const currentOption = options.find(o => o.value === value);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleClose = () => setIsOpen(false);
-    window.addEventListener('click', handleClose);
-    return () => window.removeEventListener('click', handleClose);
-  }, [isOpen]);
-
-  return (
-    <div style={{ position: 'relative', minWidth: '160px' }} onClick={e => e.stopPropagation()}>
-      <div 
-        onClick={() => setIsOpen(!isOpen)}
-        style={{
-          background: 'var(--bg-secondary)',
-          color: value ? 'var(--text-primary)' : 'var(--text-secondary)',
-          border: '1px solid var(--border-primary)',
-          borderRadius: '8px',
-          padding: '8px 12px',
-          fontSize: '13px',
-          cursor: 'pointer',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '8px',
-          boxShadow: isOpen ? '0 0 0 2px rgba(99, 102, 241, 0.2)' : 'none',
-          borderColor: isOpen ? 'var(--accent-indigo)' : 'var(--border-primary)',
-          transition: 'all 0.15s ease',
-          height: '36px'
-        }}
-      >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {currentOption ? currentOption.label : placeholder}
-        </span>
-        <svg 
-          viewBox="0 0 24 24" 
-          width="14" 
-          height="14" 
-          fill="none" 
-          stroke="var(--text-secondary)" 
-          strokeWidth="2.5" 
-          style={{ 
-            transform: isOpen ? 'rotate(180deg)' : 'none', 
-            transition: 'transform 0.15s ease',
-            flexShrink: 0
-          }}
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </div>
-
-      {isOpen && (
-        <div 
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 6px)',
-            left: 0,
-            right: 0,
-            background: 'var(--bg-secondary)',
-            border: '1px solid var(--border-primary)',
-            borderRadius: '8px',
-            boxShadow: 'var(--shadow-lg), 0 10px 15px -3px rgba(0, 0, 0, 0.3)',
-            zIndex: 100,
-            maxHeight: '220px',
-            overflowY: 'auto',
-            padding: '4px',
-            animation: 'fadeIn 0.1s ease-out'
-          }}
-        >
-          {options.map(opt => (
-            <div
-              key={opt.value}
-              onClick={() => {
-                onChange(opt.value);
-                setIsOpen(false);
-              }}
-              style={{
-                padding: '8px 12px',
-                fontSize: '13px',
-                color: value === opt.value ? 'var(--accent-indigo)' : 'var(--text-primary)',
-                background: value === opt.value ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                transition: 'background 0.12s'
-              }}
-              onMouseEnter={e => {
-                if (value !== opt.value) e.currentTarget.style.background = 'var(--bg-hover)';
-              }}
-              onMouseLeave={e => {
-                if (value !== opt.value) e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '8px' }}>
-                {opt.label}
-              </span>
-              {value === opt.value && (
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--accent-indigo)" strokeWidth="3" style={{ flexShrink: 0 }}>
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 const getDependencyType = (name: string): 'database' | 'messaging' | '3rdparty' | 'other' => {
   const n = name.toLowerCase();
   if (
@@ -259,62 +138,6 @@ const getDependencyType = (name: string): 'database' | 'messaging' | '3rdparty' 
     return '3rdparty';
   }
   return 'other';
-};
-
-const BRAND_LOGOS: Record<string, string> = {
-  redis: '/logos/redis.svg',
-  kafka: '/logos/kafka.svg',
-  rabbitmq: '/logos/rabbitmq.svg',
-  vault: '/logos/vault.svg',
-  elasticsearch: '/logos/elasticsearch.svg',
-  minio: '/logos/minio.svg',
-  postgres: '/logos/postgres.svg',
-  mysql: '/logos/mysql.svg',
-  mongodb: '/logos/mongodb.svg',
-  liquibase: '/logos/liquibase.svg',
-  nginx: '/logos/nginx.svg',
-  kong: '/logos/kong.svg',
-  mygov: '/mygov-id.svg',
-  stripe: '',
-  openai: '',
-  slack: '/logos/slack.svg',
-  discord: '',
-  github: '',
-  vm: '',
-  bridge: '',
-  apm: '/logos/apm.svg',
-  clickhouse: '/logos/clickhouse.svg',
-  dns: '/logos/dns.svg',
-  database: '/logos/database.svg',
-};
-
-const getDependencyLogo = (name: string): string | null => {
-  const n = name.toLowerCase();
-  if (n.includes('mygov')) return BRAND_LOGOS.mygov;
-  if (n.includes('postgres')) return BRAND_LOGOS.postgres;
-  if (n.includes('mysql')) return BRAND_LOGOS.mysql;
-  if (n.includes('redis')) return BRAND_LOGOS.redis;
-  if (n.includes('kafka')) return BRAND_LOGOS.kafka;
-  if (n.includes('rabbitmq') || n.includes('message_bus')) return BRAND_LOGOS.rabbitmq;
-  if (n.includes('apm')) return BRAND_LOGOS.apm;
-  if (n.includes('vault')) return BRAND_LOGOS.vault;
-  if (n.includes('elastic')) return BRAND_LOGOS.elasticsearch;
-  if (n.includes('minio')) return BRAND_LOGOS.minio;
-  if (n.includes('mongo')) return BRAND_LOGOS.mongodb;
-  if (n.includes('liquibase')) return BRAND_LOGOS.liquibase;
-  if (n.includes('nginx')) return BRAND_LOGOS.nginx;
-  if (n.includes('kong')) return BRAND_LOGOS.kong;
-  if (n.includes('clickhouse')) return BRAND_LOGOS.clickhouse;
-  if (n.includes('dns')) return BRAND_LOGOS.dns;
-  if (n.includes('stripe')) return BRAND_LOGOS.stripe;
-  if (n.includes('openai')) return BRAND_LOGOS.openai;
-  if (n.includes('slack')) return BRAND_LOGOS.slack;
-  if (n.includes('discord')) return BRAND_LOGOS.discord;
-  if (n.includes('github')) return BRAND_LOGOS.github;
-  if (n.includes('vm') || n.includes('virtual machine') || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(n)) return BRAND_LOGOS.vm;
-  if (n.includes('bridge') || n.includes('.gov.az') || n.includes('.az')) return BRAND_LOGOS.bridge;
-  if (n.includes('database') || n.includes('db')) return BRAND_LOGOS.database;
-  return null;
 };
 
 type DependencyIconName =
@@ -381,7 +204,7 @@ function DependencyIcon({ name }: { name: DependencyIconName }) {
 }
 
 function DependencyLogo({ item }: { item: AccumulatedDependency }) {
-  const logoUrl = getDependencyLogo(item.rawName);
+  const logoUrl = techLogoFor(item.rawName);
   const iconName = getDependencyIconName(item.rawName, item.type);
 
   if (logoUrl) {
@@ -834,7 +657,9 @@ export default function Dependencies({ namespace }: DependenciesProps) {
 
         <div className="dependencies-filter-group">
           {!namespace && (
-            <CustomDropdown
+            <CustomSelect
+              className="dependency-filter-select"
+              ariaLabel={t('Namespace')}
               options={namespaceOptions}
               value={activeNamespaceFilter}
               onChange={setActiveNamespaceFilter}
@@ -842,7 +667,9 @@ export default function Dependencies({ namespace }: DependenciesProps) {
             />
           )}
 
-          <CustomDropdown
+          <CustomSelect
+            className="dependency-filter-select"
+            ariaLabel={t('Dependency type')}
             options={typeOptions}
             value={selectedType}
             onChange={setSelectedType}
@@ -917,9 +744,9 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                   </div>
 
                   <div className="dependency-cell health">
-                    <span className={`health-badge ${health.className}`}>
+                    <span className={`dependency-health-status ${health.className}`}>
                       <i />
-                      {t(health.label)}
+                      <span>{t(health.label)}</span>
                     </span>
                   </div>
 

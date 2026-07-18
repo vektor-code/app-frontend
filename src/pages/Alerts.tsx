@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { ServiceStats } from '../entities';
 import { LoadingState } from '../components/DataState';
+import CustomSelect from '../components/CustomSelect';
 import { useTranslation } from '../utils/i18n';
 
 // Interfaces
@@ -409,26 +410,16 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
         {/* Dynamic Namespace Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{t('Namespace Scope')}</label>
-          <select
+          <CustomSelect
+            className="alert-namespace-select"
+            ariaLabel={t('Namespace Scope')}
             value={selectedNamespace}
-            onChange={(e) => setSelectedNamespace(e.target.value)}
-            style={{
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-primary)',
-              borderRadius: '8px',
-              color: 'var(--text-primary)',
-              padding: '8px 16px',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              outline: 'none'
-            }}
-          >
-            <option value="">{t('All Namespaces')}</option>
-            {namespacesList.map(ns => (
-              <option key={ns} value={ns}>{ns}</option>
-            ))}
-          </select>
+            onChange={setSelectedNamespace}
+            options={[
+              { value: '', label: t('All Namespaces') },
+              ...namespacesList.map(ns => ({ value: ns, label: ns })),
+            ]}
+          />
         </div>
       </div>
 
@@ -998,40 +989,38 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', padding: '14px', background: 'var(--bg-tertiary)', borderRadius: '10px', border: '1px solid var(--border-primary)' }}>
                   <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>1 · Namespace</label>
-                    <select
-                      className="input-field"
+                    <CustomSelect
+                      className="drawer-select"
+                      ariaLabel="Namespace"
                       value={newRuleNamespace}
-                      onChange={(e) => {
-                        setNewRuleNamespace(e.target.value);
+                      onChange={(value) => {
+                        setNewRuleNamespace(value);
                         setNewRuleService('all-services'); // reset service on namespace change
                       }}
-                      style={{ cursor: 'pointer' }}
-                      required
-                    >
-                      <option value="" disabled>Select namespace…</option>
-                      {namespacesList.map(ns => (
-                        <option key={ns} value={ns}>{ns}</option>
-                      ))}
-                    </select>
+                      placeholder="Select namespace..."
+                      options={[
+                        { value: '', label: 'Select namespace...', disabled: true },
+                        ...namespacesList.map(ns => ({ value: ns, label: ns })),
+                      ]}
+                    />
                   </div>
 
                   <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>2 · Service</label>
-                    <select
-                      className="input-field"
+                    <CustomSelect
+                      className="drawer-select"
+                      ariaLabel="Service"
                       value={newRuleService}
-                      onChange={(e) => setNewRuleService(e.target.value)}
-                      style={{ cursor: 'pointer' }}
+                      onChange={setNewRuleService}
                       disabled={!newRuleNamespace}
-                    >
-                      <option value="all-services">All services ({drawerServices.length})</option>
-                      {drawerServices.map(svc => (
-                        <option key={svc.serviceName} value={svc.serviceName}>{svc.serviceName}</option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: 'all-services', label: `All services (${drawerServices.length})` },
+                        ...drawerServices.map(svc => ({ value: svc.serviceName, label: svc.serviceName })),
+                      ]}
+                    />
                     {newRuleNamespace && drawerServices.length === 0 && (
                       <span style={{ fontSize: '10.5px', color: 'var(--accent-amber)' }}>
-                        No services reporting yet — activates when telemetry arrives.
+                        No services yet.
                       </span>
                     )}
                   </div>
@@ -1040,31 +1029,33 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Metric</label>
-                    <select
-                      className="input-field"
+                    <CustomSelect
+                      className="drawer-select"
+                      ariaLabel="Metric"
                       value={newRuleMetric}
-                      onChange={(e) => setNewRuleMetric(e.target.value as any)}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <option value="Error Rate">Error Rate (%)</option>
-                      <option value="p95 Latency">p95 Latency (ms)</option>
-                      <option value="p99 Latency">p99 Latency (ms)</option>
-                    </select>
+                      onChange={(value) => setNewRuleMetric(value as AlertRule['metric'])}
+                      options={[
+                        { value: 'Error Rate', label: 'Error Rate (%)' },
+                        { value: 'p95 Latency', label: 'p95 Latency (ms)' },
+                        { value: 'p99 Latency', label: 'p99 Latency (ms)' },
+                      ]}
+                    />
                   </div>
 
                   <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Eval Window</label>
-                    <select
-                      className="input-field"
+                    <CustomSelect
+                      className="drawer-select"
+                      ariaLabel="Eval Window"
                       value={newRuleWindow}
-                      onChange={(e) => setNewRuleWindow(e.target.value)}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <option value="1m">1 minute</option>
-                      <option value="5m">5 minutes</option>
-                      <option value="15m">15 minutes</option>
-                      <option value="1h">1 hour</option>
-                    </select>
+                      onChange={setNewRuleWindow}
+                      options={[
+                        { value: '1m', label: '1 minute' },
+                        { value: '5m', label: '5 minutes' },
+                        { value: '15m', label: '15 minutes' },
+                        { value: '1h', label: '1 hour' },
+                      ]}
+                    />
                   </div>
                 </div>
 

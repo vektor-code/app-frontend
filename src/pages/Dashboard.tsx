@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client';
 import type { DatabaseQueryMetric, NamespaceStats, ServiceErrorSeries, ServiceStats, TimeseriesData } from '../entities';
 import { LoadingState, NoDataState } from '../components/DataState';
+import CustomSelect from '../components/CustomSelect';
 import { useTranslation } from '../utils/i18n';
 
 interface DashboardProps {
@@ -232,12 +233,16 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
             </button>
           ))}
           {namespaceOptions.length > 7 && (
-            <select value={selectedNamespace} onChange={event => onSelectNamespace(event.target.value)}>
-              <option value="">{t('More')}</option>
-              {namespaceOptions.slice(7).map(ns => (
-                <option key={ns} value={ns}>{ns}</option>
-              ))}
-            </select>
+            <CustomSelect
+              className="apm-more-namespace-select"
+              ariaLabel={t('More namespaces')}
+              value={namespaceOptions.slice(7).includes(selectedNamespace) ? selectedNamespace : ''}
+              onChange={onSelectNamespace}
+              options={[
+                { value: '', label: t('More') },
+                ...namespaceOptions.slice(7).map(ns => ({ value: ns, label: ns })),
+              ]}
+            />
           )}
         </section>
       )}

@@ -8,6 +8,8 @@ import { createPortal } from 'react-dom';
 import SpanTimeline, { getSpanDestination } from '../components/SpanTimeline';
 import { explainSpanError } from '../utils/errorAnalysis';
 import { isHttpMethodAttribute, normalizeHttpMethod } from '../utils/httpTelemetry';
+import { LANG_ICONS } from '../components/LanguageIcon';
+import { TECH_LOGOS } from '../components/TechIcon';
 
 const SERVICE_COLORS: Record<string, string> = {};
 const PALETTE = [
@@ -941,36 +943,10 @@ interface TopologyEdge {
 }
 
 const TOPO_ICONS: Record<string, string> = {
-  redis: '/logos/redis.svg',
-  kafka: '/logos/kafka.svg',
-  rabbitmq: '/logos/rabbitmq.svg',
-  vault: '/logos/vault.svg',
-  elasticsearch: '/logos/elasticsearch.svg',
-  minio: '/logos/minio.svg',
-  postgres: '/logos/postgres.svg',
-  mysql: '/logos/mysql.svg',
-  mongodb: '/logos/mongodb.svg',
-  liquibase: '/logos/liquibase.svg',
-  nginx: '/logos/nginx.svg',
-  kong: '/logos/kong.svg',
-  mygov: '/mygov-id.svg',
-  vm: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linux.svg',
-  bridge: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linkerd.svg',
-  frontend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg',
-  backend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg',
-  clickhouse: '/logos/clickhouse.svg',
-  apm: '/logos/apm.svg',
-  dns: '/logos/dns.svg',
-  database: '/logos/database.svg',
-  // Technology language backends
-  go: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg',
-  php: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/php/php-original.svg',
-  java: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/java/java-original.svg',
-  node: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nodejs/nodejs-original.svg',
-  python: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/python/python-original.svg',
-  dotnet: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/dotnetcore/dotnetcore-original.svg',
-  ruby: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/ruby/ruby-original.svg',
-  rust: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/rust/rust-original.svg',
+  ...TECH_LOGOS,
+  ...LANG_ICONS,
+  frontend: LANG_ICONS.javascript,
+  backend: LANG_ICONS.go,
 };
 
 const getServiceLanguage = (serviceName: string, serviceSpans: Span[]): string => {
@@ -1022,6 +998,9 @@ const getTopoIconKey = (name: string, spans: Span[] = []): string => {
   if (n.includes('rabbitmq') || n.includes('message_bus')) return 'rabbitmq';
   if (n.includes('apm')) return 'apm';
   if (n.includes('vault')) return 'vault';
+  if (n.includes('ldap') || n.includes('active-directory') || n.includes('active directory')) return 'ldap';
+  if (n.includes('prometheus')) return 'prometheus';
+  if (n.includes('grafana')) return 'grafana';
   if (n.includes('elastic')) return 'elasticsearch';
   if (n.includes('minio')) return 'minio';
   if (n.includes('postgres') || n.includes('postgresql')) return 'postgres';

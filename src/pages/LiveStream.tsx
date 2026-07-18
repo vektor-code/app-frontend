@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { connectLiveStream } from '../api/liveStream';
 import type { Span } from '../entities';
 import { isSpanError } from '../utils/spanStatus';
+import CustomSelect from '../components/CustomSelect';
 import { useTranslation } from '../utils/i18n';
 
 interface LiveStreamProps {
@@ -11,129 +12,6 @@ interface LiveStreamProps {
 
 interface LiveSpan extends Span {
   _id: string;
-}
-
-function CustomDropdown({
-  options,
-  value,
-  onChange,
-  placeholder
-}: {
-  options: { value: string; label: string }[];
-  value: string;
-  onChange: (val: string) => void;
-  placeholder: string;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const currentOption = options.find(o => o.value === value);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleClose = () => setIsOpen(false);
-    window.addEventListener('click', handleClose);
-    return () => window.removeEventListener('click', handleClose);
-  }, [isOpen]);
-
-  return (
-    <div style={{ position: 'relative', minWidth: '160px' }} onClick={e => e.stopPropagation()}>
-      <div 
-        onClick={() => setIsOpen(!isOpen)}
-        style={{
-          background: 'var(--bg-secondary)',
-          color: value ? 'var(--text-primary)' : 'var(--text-secondary)',
-          border: '1px solid var(--border-primary)',
-          borderRadius: '8px',
-          padding: '8px 12px',
-          fontSize: '13px',
-          cursor: 'pointer',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '8px',
-          boxShadow: isOpen ? '0 0 0 2px rgba(99, 102, 241, 0.2)' : 'none',
-          borderColor: isOpen ? 'var(--accent-indigo)' : 'var(--border-primary)',
-          transition: 'all 0.15s ease',
-          height: '36px'
-        }}
-      >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {currentOption ? currentOption.label : placeholder}
-        </span>
-        <svg 
-          viewBox="0 0 24 24" 
-          width="14" 
-          height="14" 
-          fill="none" 
-          stroke="var(--text-secondary)" 
-          strokeWidth="2.5" 
-          style={{ 
-            transform: isOpen ? 'rotate(180deg)' : 'none', 
-            transition: 'transform 0.15s ease',
-            flexShrink: 0
-          }}
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </div>
-
-      {isOpen && (
-        <div 
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 6px)',
-            left: 0,
-            right: 0,
-            background: 'var(--bg-secondary)',
-            border: '1px solid var(--border-primary)',
-            borderRadius: '8px',
-            boxShadow: 'var(--shadow-lg), 0 10px 15px -3px rgba(0, 0, 0, 0.3)',
-            zIndex: 100,
-            maxHeight: '220px',
-            overflowY: 'auto',
-            padding: '4px',
-            animation: 'fadeIn 0.1s ease-out'
-          }}
-        >
-          {options.map(opt => (
-            <div
-              key={opt.value}
-              onClick={() => {
-                onChange(opt.value);
-                setIsOpen(false);
-              }}
-              style={{
-                padding: '8px 12px',
-                fontSize: '13px',
-                color: value === opt.value ? 'var(--accent-indigo)' : 'var(--text-primary)',
-                background: value === opt.value ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                transition: 'background 0.12s'
-              }}
-              onMouseEnter={e => {
-                if (value !== opt.value) e.currentTarget.style.background = 'var(--bg-hover)';
-              }}
-              onMouseLeave={e => {
-                if (value !== opt.value) e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '8px' }}>
-                {opt.label}
-              </span>
-              {value === opt.value && (
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--accent-indigo)" strokeWidth="3" style={{ flexShrink: 0 }}>
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 export default function LiveStream({ namespace }: LiveStreamProps) {
@@ -305,13 +183,17 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
             onChange={e => setSearchQuery(e.target.value)}
           />
         </div>
-        <CustomDropdown
+        <CustomSelect
+          className="live-stream-filter-select"
+          ariaLabel={t('Service')}
           options={flowingServicesOptions}
           value={serviceFilter}
           onChange={setServiceFilter}
           placeholder={t('All services')}
         />
-        <CustomDropdown
+        <CustomSelect
+          className="live-stream-filter-select"
+          ariaLabel={t('Status')}
           options={statusOptions}
           value={statusFilter}
           onChange={setStatusFilter}

@@ -1,6 +1,6 @@
 import React from 'react';
 
-const LANG_ICONS: Record<string, string> = {
+export const LANG_ICONS: Record<string, string> = {
   go: '/logos/go.svg',
   golang: '/logos/go.svg',
   php: '/logos/php.svg',
@@ -20,6 +20,11 @@ const LANG_ICONS: Record<string, string> = {
   scala: '/logos/scala.svg',
 };
 
+export function languageLogoFor(language?: string): string | null {
+  if (!language) return null;
+  return LANG_ICONS[language.toLowerCase().trim()] ?? null;
+}
+
 interface LanguageIconProps {
   language?: string;
   size?: number;
@@ -27,8 +32,7 @@ interface LanguageIconProps {
 
 export default function LanguageIcon({ language, size = 20 }: LanguageIconProps) {
   if (!language) return null;
-  const key = language.toLowerCase().trim();
-  const src = LANG_ICONS[key];
+  const src = languageLogoFor(language);
   
   if (!src) {
     // Premium generic fallback text representation

@@ -6,6 +6,9 @@ import type { ServiceMapData, ServiceStats, Span, TraceListItem } from '../entit
 import { isSpanError } from '../utils/spanStatus';
 import { createPortal } from 'react-dom';
 import { LoadingState, NoDataState } from '../components/DataState';
+import CustomSelect from '../components/CustomSelect';
+import { LANG_ICONS } from '../components/LanguageIcon';
+import { TECH_LOGOS } from '../components/TechIcon';
 import { useTranslation } from '../utils/i18n';
 
 interface ServiceMapProps {
@@ -51,6 +54,11 @@ const isInfraNode = (node: ServiceStats) => {
     name.includes('elasticsearch') ||
     name.includes('clickhouse') ||
     name.includes('vault') ||
+    name.includes('ldap') ||
+    name.includes('active-directory') ||
+    name.includes('active directory') ||
+    name.includes('prometheus') ||
+    name.includes('grafana') ||
     name.includes('apm') ||
     name.includes('minio') ||
     name.includes('dns') ||
@@ -241,6 +249,9 @@ const drawInfraIcon = (
   else if (sys.includes('rabbitmq') || sys.includes('message_bus')) matchedKey = 'rabbitmq';
   else if (sys.includes('apm')) matchedKey = 'apm';
   else if (sys.includes('vault')) matchedKey = 'vault';
+  else if (sys.includes('ldap') || sys.includes('active-directory') || sys.includes('active directory')) matchedKey = 'ldap';
+  else if (sys.includes('prometheus')) matchedKey = 'prometheus';
+  else if (sys.includes('grafana')) matchedKey = 'grafana';
   else if (sys.includes('elastic')) matchedKey = 'elasticsearch';
   else if (sys.includes('minio')) matchedKey = 'minio';
   else if (sys.includes('postgres')) matchedKey = 'postgres';
@@ -800,46 +811,20 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   useEffect(() => { panRef.current = pan; }, [pan]);
 
-  // Refs for preloaded brand icons from Devicon CDN
+  // Refs for preloaded local brand and language icons.
   const iconImagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
   useEffect(() => {
     const urls = {
-      redis: '/logos/redis.svg',
-      kafka: '/logos/kafka.svg',
-      rabbitmq: '/logos/rabbitmq.svg',
-      vault: '/logos/vault.svg',
-      elasticsearch: '/logos/elasticsearch.svg',
-      minio: '/logos/minio.svg',
-      postgres: '/logos/postgres.svg',
-      mysql: '/logos/mysql.svg',
-      mongodb: '/logos/mongodb.svg',
-      liquibase: '/logos/liquibase.svg',
-      nginx: '/logos/nginx.svg',
-      kong: '/logos/kong.svg',
-      mygov: '/mygov-id.svg',
-      vm: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linux.svg',
-      bridge: 'https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/linkerd.svg',
-      frontend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg',
-      backend: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg',
-      clickhouse: '/logos/clickhouse.svg',
-      apm: '/logos/apm.svg',
-      dns: '/logos/dns.svg',
-      database: '/logos/database.svg',
-      // Language backends
-      go: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg',
-      php: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/php/php-original.svg',
-      java: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/java/java-original.svg',
-      node: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nodejs/nodejs-original.svg',
-      python: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/python/python-original.svg',
-      dotnet: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/dotnetcore/dotnetcore-original.svg',
-      ruby: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/ruby/ruby-original.svg',
-      rust: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/rust/rust-original.svg',
+      ...TECH_LOGOS,
+      ...LANG_ICONS,
+      frontend: LANG_ICONS.javascript,
+      backend: LANG_ICONS.go,
     };
 
     Object.entries(urls).forEach(([key, url]) => {
+      if (!url) return;
       const img = new Image();
       img.src = url;
-      img.crossOrigin = 'anonymous';
       img.onload = () => {
         iconImagesRef.current.set(key, img);
       };
@@ -2578,12 +2563,18 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
 
         <label className="service-map-select-field">
           <span>{t('Activity')}</span>
-          <select value={activityFilter} onChange={(e) => setActivityFilter(e.target.value)}>
-            <option value="all">{t('All nodes')}</option>
-            <option value="5m">{t('Last 5m')}</option>
-            <option value="15m">{t('Last 15m')}</option>
-            <option value="1h">{t('Last 1h')}</option>
-          </select>
+          <CustomSelect
+            className="service-map-activity-select"
+            ariaLabel={t('Activity')}
+            value={activityFilter}
+            onChange={setActivityFilter}
+            options={[
+              { value: 'all', label: t('All nodes') },
+              { value: '5m', label: t('Last 5m') },
+              { value: '15m', label: t('Last 15m') },
+              { value: '1h', label: t('Last 1h') },
+            ]}
+          />
         </label>
       </section>
 

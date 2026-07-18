@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import type { EndpointStat, TraceListItem } from '../entities';
 import { LoadingState, NoDataState } from '../components/DataState';
+import CustomSelect from '../components/CustomSelect';
 import LanguageIcon from '../components/LanguageIcon';
 import { useTranslation } from '../utils/i18n';
 
@@ -285,9 +286,13 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
         <div className="traces-toolbar-actions">
           <label>
             <span>{t('Sort')}</span>
-            <select value={sortBy} onChange={event => setSortBy(event.target.value as EndpointSort | TraceSort)}>
-              {sortOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
+            <CustomSelect
+              className="trace-sort-select"
+              ariaLabel={t('Sort')}
+              value={sortBy}
+              onChange={value => setSortBy(value as EndpointSort | TraceSort)}
+              options={sortOptions}
+            />
           </label>
           <button type="button" className="traces-refresh-btn" onClick={loadTraces}>Refresh</button>
         </div>
@@ -585,12 +590,18 @@ function ResultsHeader({ title, count, pageSize, setPageSize }: { title: string;
       </div>
       <label>
         <span>{t('Rows')}</span>
-        <select value={pageSize} onChange={event => setPageSize(parseInt(event.target.value, 10))}>
-          <option value="10">10</option>
-          <option value="25">25</option>
-          <option value="50">50</option>
-          <option value="100">100</option>
-        </select>
+        <CustomSelect
+          className="trace-rows-select"
+          ariaLabel={t('Rows')}
+          value={pageSize.toString()}
+          onChange={value => setPageSize(parseInt(value, 10))}
+          options={[
+            { value: '10', label: '10' },
+            { value: '25', label: '25' },
+            { value: '50', label: '50' },
+            { value: '100', label: '100' },
+          ]}
+        />
       </label>
     </div>
   );
@@ -633,9 +644,12 @@ function FilterSelect({ label, value, options, onChange }: { label: string; valu
   return (
     <label className="trace-filter-field">
       <span>{label}</span>
-      <select value={value} onChange={event => onChange(event.target.value)}>
-        {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-      </select>
+      <CustomSelect
+        ariaLabel={label}
+        value={value}
+        onChange={onChange}
+        options={options}
+      />
     </label>
   );
 }
