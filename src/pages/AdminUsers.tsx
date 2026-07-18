@@ -6,6 +6,42 @@ import { useTranslation } from '../utils/i18n';
 
 const ALL_NS = '*';
 
+type AccessIconName = 'check' | 'clock' | 'edit' | 'eye' | 'grid' | 'key' | 'shield' | 'trash' | 'users';
+
+function AccessIcon({ name }: { name: AccessIconName }) {
+  const common = {
+    width: 16,
+    height: 16,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+
+  switch (name) {
+    case 'check':
+      return <svg {...common}><path d="m5 12 4 4L19 6" /></svg>;
+    case 'clock':
+      return <svg {...common}><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2" /></svg>;
+    case 'edit':
+      return <svg {...common}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>;
+    case 'eye':
+      return <svg {...common}><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg>;
+    case 'grid':
+      return <svg {...common}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>;
+    case 'key':
+      return <svg {...common}><circle cx="7.5" cy="14.5" r="3.5" /><path d="m10 12 9-9" /><path d="m15 3 3 3" /><path d="m13 5 3 3" /></svg>;
+    case 'shield':
+      return <svg {...common}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-5" /></svg>;
+    case 'trash':
+      return <svg {...common}><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg>;
+    case 'users':
+      return <svg {...common}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
+  }
+}
+
 function AccessSwitch({
   checked,
   onChange,
@@ -16,7 +52,7 @@ function AccessSwitch({
   label?: string;
 }) {
   return (
-    <label className="admin-switch">
+    <label className="admin-switch admin-access-switch">
       {label && <span>{label}</span>}
       <input type="checkbox" checked={checked} onChange={onChange} />
       <i />
@@ -44,19 +80,13 @@ function NamespacePicker({ selected, options, onChange }: {
   };
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+    <div className="admin-ns-picker">
       <button
         type="button"
         onClick={() => toggle(ALL_NS)}
-        className="ns-chip"
-        style={{
-          background: allSelected ? 'rgba(99, 102, 241, 0.18)' : 'var(--bg-tertiary)',
-          borderColor: allSelected ? 'var(--accent-indigo)' : 'var(--border-primary)',
-          color: allSelected ? 'var(--accent-indigo-light)' : 'var(--text-secondary)',
-          fontWeight: 700,
-        }}
+        className={`ns-chip ${allSelected ? 'active all' : ''}`}
       >
-        ✳ All namespaces
+        All namespaces
       </button>
       {options.map(ns => {
         const active = !allSelected && selected.includes(ns);
@@ -65,14 +95,8 @@ function NamespacePicker({ selected, options, onChange }: {
             key={ns}
             type="button"
             onClick={() => toggle(ns)}
-            className="ns-chip"
+            className={`ns-chip ${active ? 'active' : ''}`}
             disabled={allSelected}
-            style={{
-              background: active ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-tertiary)',
-              borderColor: active ? 'var(--accent-emerald, #10b981)' : 'var(--border-primary)',
-              color: active ? 'var(--accent-emerald, #10b981)' : 'var(--text-secondary)',
-              opacity: allSelected ? 0.45 : 1,
-            }}
           >
             {ns}
           </button>
@@ -85,12 +109,10 @@ function NamespacePicker({ selected, options, onChange }: {
 function RoleBadge({ role }: { role: string }) {
   const isAdmin = role === 'admin';
   return (
-    <span style={{
-      fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase',
-      background: isAdmin ? 'rgba(244, 63, 94, 0.12)' : 'rgba(14, 165, 233, 0.12)',
-      color: isAdmin ? 'var(--accent-rose, #f43f5e)' : 'var(--accent-cyan, #0ea5e9)',
-      border: `1px solid ${isAdmin ? 'rgba(244, 63, 94, 0.3)' : 'rgba(14, 165, 233, 0.3)'}`,
-    }}>{role}</span>
+    <span className={`admin-role-badge ${isAdmin ? 'admin' : 'viewer'}`}>
+      <AccessIcon name={isAdmin ? 'shield' : 'eye'} />
+      {role}
+    </span>
   );
 }
 
@@ -98,6 +120,27 @@ function nsSummary(namespaces: string[]): string {
   if (namespaces && namespaces.includes(ALL_NS)) return 'All namespaces';
   if (!namespaces || namespaces.length === 0) return 'No access';
   return namespaces.join(', ');
+}
+
+function nsCount(namespaces: string[]): string {
+  if (namespaces && namespaces.includes(ALL_NS)) return 'All';
+  if (!namespaces || namespaces.length === 0) return '0';
+  return namespaces.length.toString();
+}
+
+function initials(user: Pick<UserPermission, 'displayName' | 'username'>): string {
+  const base = (user.displayName || user.username || '').trim();
+  if (!base) return 'U';
+  const parts = base.split(/[\s._-]+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return base.slice(0, 2).toUpperCase();
+}
+
+function formatLastLogin(value?: string): string {
+  if (!value || value.startsWith('1970')) return 'Never';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Never';
+  return date.toLocaleString();
 }
 
 export default function AdminUsers() {
@@ -205,6 +248,7 @@ export default function AdminUsers() {
             <h2>{t('Permission Templates')}</h2>
           </div>
           <button className="admin-new-template-btn" onClick={() => setEditTemplate({ name: '', description: '', role: 'viewer', namespaces: [ALL_NS], isDefault: templates.length === 0 })}>
+            <AccessIcon name="key" />
             {t('New Template')}
           </button>
         </div>
@@ -218,25 +262,47 @@ export default function AdminUsers() {
             {templates.map(tpl => (
               <div key={tpl.name} className={`admin-access-card ${tpl.role === 'admin' ? 'admin-role' : ''}`}>
                 <div className="admin-access-card-top">
-                  <div className="admin-access-avatar">{tpl.role === 'admin' ? 'A' : 'V'}</div>
+                  <div className="admin-access-avatar">
+                    <AccessIcon name={tpl.role === 'admin' ? 'shield' : 'eye'} />
+                  </div>
                   <div className="admin-access-title">
                     <strong>{tpl.name}</strong>
-                    <span>{tpl.description || (tpl.role === 'admin' ? t('Full platform access') : t('Namespace access preset'))}</span>
+                    <span>{tpl.description || (tpl.role === 'admin' ? t('Platform access') : t('Namespace preset'))}</span>
                   </div>
                   <RoleBadge role={tpl.role} />
                 </div>
 
+                <div className="admin-template-scope-grid">
+                  <div className="admin-template-scope-card">
+                    <span><AccessIcon name="grid" />{t('Scope')}</span>
+                    <strong>{tpl.role === 'admin' ? t('Platform') : nsCount(tpl.namespaces)}</strong>
+                    <em>{tpl.role === 'admin' ? t('All areas') : t('namespaces')}</em>
+                  </div>
+                  <div className="admin-template-scope-card">
+                    <span><AccessIcon name="users" />{t('Default')}</span>
+                    <strong>{tpl.isDefault ? t('Yes') : t('No')}</strong>
+                    <em>{tpl.isDefault ? t('New users') : t('Manual')}</em>
+                  </div>
+                </div>
+
                 <div className="admin-access-meta">
                   <span>{t('Access')}</span>
-                  <code>{tpl.role === 'admin' ? t('Full platform access') : nsSummary(tpl.namespaces)}</code>
+                  <code>{tpl.role === 'admin' ? t('Full platform') : nsSummary(tpl.namespaces)}</code>
                 </div>
+
                 <div className="admin-access-flags">
                   {tpl.isDefault && <span>{t('Default')}</span>}
-                  <span>{tpl.role === 'admin' ? t('No namespace filter') : t('Namespace scoped')}</span>
+                  <span>{tpl.role === 'admin' ? t('Platform') : t('Namespace scoped')}</span>
                 </div>
                 <div className="admin-access-actions">
-                  <button className="btn btn-ghost btn-sm" onClick={() => setEditTemplate({ ...tpl, namespaces: [...tpl.namespaces] })}>{t('Edit')}</button>
-                  <button className="btn btn-ghost btn-sm" style={{ color: 'var(--accent-rose, #f43f5e)' }} onClick={() => removeTemplate(tpl.name)}>{t('Delete')}</button>
+                  <button className="admin-icon-action" onClick={() => setEditTemplate({ ...tpl, namespaces: [...tpl.namespaces] })} title={t('Edit')}>
+                    <AccessIcon name="edit" />
+                    {t('Edit')}
+                  </button>
+                  <button className="admin-icon-action danger" onClick={() => removeTemplate(tpl.name)} title={t('Delete')}>
+                    <AccessIcon name="trash" />
+                    {t('Delete')}
+                  </button>
                 </div>
               </div>
             ))}
@@ -263,38 +329,55 @@ export default function AdminUsers() {
                 <tr>
                   <th>{t('User')}</th>
                   <th>{t('Role')}</th>
-                  <th>{t('Namespace visibility')}</th>
+                  <th>{t('Scope')}</th>
                   <th>{t('Template')}</th>
                   <th>{t('Last login')}</th>
-                  <th style={{ textAlign: 'right' }}>{t('Actions')}</th>
+                  <th className="admin-actions-head">{t('Actions')}</th>
                 </tr>
               </thead>
               <tbody>
                 {users.map(u => (
-                  <tr key={u.username} className="hover-row">
+                  <tr key={u.username}>
                     <td>
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)' }}>{u.displayName || u.username}</span>
-                        <span className="mono" style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>{u.username}{u.email ? ` · ${u.email}` : ''}</span>
+                      <div className="admin-user-cell">
+                        <span className={`admin-user-avatar ${u.role === 'admin' ? 'admin' : ''}`}>{initials(u)}</span>
+                        <span className="admin-user-copy">
+                          <strong>{u.displayName || u.username}</strong>
+                          <em>{u.username}</em>
+                          {u.email && <small>{u.email}</small>}
+                        </span>
                       </div>
                     </td>
                     <td><RoleBadge role={u.role} /></td>
-                    <td style={{ maxWidth: '340px' }}>
-                      <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                        {u.role === 'admin' ? t('Full platform access') : nsSummary(u.namespaces)}
+                    <td>
+                      <span className={`admin-scope-cell ${u.role === 'admin' ? 'admin' : ''}`}>
+                        <AccessIcon name={u.role === 'admin' ? 'shield' : 'grid'} />
+                        <strong>{u.role === 'admin' ? t('Platform') : nsCount(u.namespaces)}</strong>
+                        <em>{u.role === 'admin' ? t('Full access') : nsSummary(u.namespaces)}</em>
                       </span>
                     </td>
                     <td>
-                      <span className="mono" style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{u.template || '—'}</span>
-                    </td>
-                    <td>
-                      <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                        {u.lastLogin && !u.lastLogin.startsWith('1970') ? new Date(u.lastLogin).toLocaleString() : '—'}
+                      <span className={`admin-template-tag ${u.template ? '' : 'empty'}`}>
+                        {u.template || t('Manual')}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => setEditUser({ ...u, namespaces: [...(u.namespaces || [ALL_NS])] })}>Edit</button>
-                      <button className="btn btn-ghost btn-sm" style={{ color: 'var(--accent-rose, #f43f5e)' }} onClick={() => removeUser(u.username)}>Remove</button>
+                    <td>
+                      <span className="admin-last-login">
+                        <AccessIcon name="clock" />
+                        {formatLastLogin(u.lastLogin)}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="admin-user-actions">
+                        <button className="admin-icon-action" onClick={() => setEditUser({ ...u, namespaces: [...(u.namespaces || [ALL_NS])] })}>
+                          <AccessIcon name="edit" />
+                          {t('Edit')}
+                        </button>
+                        <button className="admin-icon-action danger" onClick={() => removeUser(u.username)}>
+                          <AccessIcon name="trash" />
+                          {t('Remove')}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -306,71 +389,89 @@ export default function AdminUsers() {
 
       {editUser && createPortal(
         <div className="admin-modal-backdrop">
-          <div className="admin-modal-panel admin-access-modal">
-            <div className="admin-modal-header">
-              <h3 style={{ fontSize: '17px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-                Permissions — {editUser.displayName || editUser.username}
-              </h3>
-              <button className="btn btn-ghost" onClick={() => setEditUser(null)} style={{ fontSize: '18px', padding: '4px 8px' }}>✕</button>
+          <div className="admin-modal-panel admin-access-modal admin-permission-modal">
+            <div className="admin-permission-modal-head">
+              <div className="admin-modal-user-summary">
+                <span className={`admin-user-avatar large ${editUser.role === 'admin' ? 'admin' : ''}`}>{initials(editUser)}</span>
+                <div>
+                  <span>{t('Edit Permissions')}</span>
+                  <h3>{editUser.displayName || editUser.username}</h3>
+                  <p>{editUser.username}{editUser.email ? ` / ${editUser.email}` : ''}</p>
+                </div>
+              </div>
+              <button className="admin-modal-close-btn" onClick={() => setEditUser(null)}>x</button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div className="admin-setting-row" style={{ margin: 0 }}>
-                <div>
-                  <strong>{t('Admin access')}</strong>
-                  <span>{editUser.role === 'admin' ? t('Full access') : t('Namespace-scoped viewer')}</span>
+            <div className="admin-permission-grid">
+              <section className="admin-permission-card">
+                <span className="admin-field-label">{t('Role')}</span>
+                <div className="admin-role-choice-grid">
+                  <button
+                    type="button"
+                    className={`admin-role-choice ${editUser.role === 'viewer' ? 'active' : ''}`}
+                    onClick={() => setEditUser({ ...editUser, role: 'viewer', namespaces: editUser.namespaces?.length ? editUser.namespaces : [ALL_NS] })}
+                  >
+                    <AccessIcon name="eye" />
+                    <strong>{t('Viewer')}</strong>
+                    <span>{t('Namespace scoped')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`admin-role-choice admin ${editUser.role === 'admin' ? 'active' : ''}`}
+                    onClick={() => setEditUser({ ...editUser, role: 'admin', namespaces: [ALL_NS] })}
+                  >
+                    <AccessIcon name="shield" />
+                    <strong>{t('Admin')}</strong>
+                    <span>{t('Platform access')}</span>
+                  </button>
                 </div>
-                <AccessSwitch
-                  checked={editUser.role === 'admin'}
-                  onChange={() => setEditUser({
-                    ...editUser,
-                    role: editUser.role === 'admin' ? 'viewer' : 'admin',
-                    namespaces: [ALL_NS],
-                  })}
-                />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Apply template</label>
-                <div className="admin-template-picker">
+              </section>
+
+              <section className="admin-permission-card">
+                <span className="admin-field-label">{t('Apply Template')}</span>
+                <div className="admin-template-picker admin-template-choice-list">
                   {templates.map(template => (
                     <button
                       key={template.name}
                       type="button"
+                      className={editUser.template === template.name ? 'active' : ''}
                       onClick={() => setEditUser(applyTemplateToUser(editUser, template.name))}
                     >
-                      <span>{template.name}</span>
-                      {template.isDefault && <em>Default</em>}
+                      <span>
+                        <strong>{template.name}</strong>
+                        <small>{template.role === 'admin' ? t('Admin') : nsSummary(template.namespaces)}</small>
+                      </span>
+                      {template.isDefault && <em>{t('Default')}</em>}
                     </button>
                   ))}
-                  {templates.length === 0 && <span>No templates</span>}
+                  {templates.length === 0 && <span>{t('No templates')}</span>}
                 </div>
-              </div>
+              </section>
             </div>
 
             {editUser.role === 'admin' ? (
-              <div className="admin-access-full-card">
+              <div className="admin-access-full-card admin-access-full-card-lg">
+                <AccessIcon name="shield" />
                 <strong>{t('Full platform access')}</strong>
-                <span>{t('Namespace filters are not needed for administrators.')}</span>
+                <span>{t('All namespaces and admin pages')}</span>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                  Namespace visibility
-                </label>
+              <section className="admin-permission-card">
+                <span className="admin-field-label">{t('Namespace Visibility')}</span>
                 <NamespacePicker
                   selected={editUser.namespaces || []}
                   options={namespaceOptions}
                   onChange={ns => setEditUser({ ...editUser, namespaces: ns })}
                 />
                 {(editUser.namespaces || []).length === 0 && (
-                  <span style={{ fontSize: '11px', color: 'var(--accent-rose, #f43f5e)' }}>No namespaces selected — user sees nothing.</span>
+                  <span className="admin-inline-warning">{t('No namespaces selected.')}</span>
                 )}
-              </div>
+              </section>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border-primary)', paddingTop: '16px' }}>
-              <button className="btn btn-ghost" onClick={() => setEditUser(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={() => saveUser(editUser)}>Save Permissions</button>
+            <div className="admin-modal-actions">
+              <button className="btn btn-ghost" onClick={() => setEditUser(null)}>{t('Cancel')}</button>
+              <button className="btn btn-primary" onClick={() => saveUser(editUser)}>{t('Save Permissions')}</button>
             </div>
           </div>
         </div>,
@@ -379,92 +480,97 @@ export default function AdminUsers() {
 
       {editTemplate && createPortal(
         <div className="admin-modal-backdrop">
-          <div className="admin-modal-panel admin-access-modal">
-            <div className="admin-modal-header">
-              <h3 style={{ fontSize: '17px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-                {templates.some(t => t.name === editTemplate.name) ? `Edit Template — ${editTemplate.name}` : 'New Permission Template'}
-              </h3>
-              <button className="btn btn-ghost" onClick={() => setEditTemplate(null)} style={{ fontSize: '18px', padding: '4px 8px' }}>✕</button>
+          <div className="admin-modal-panel admin-access-modal admin-permission-modal">
+            <div className="admin-permission-modal-head">
+              <div className="admin-modal-user-summary">
+                <span className={`admin-user-avatar large ${editTemplate.role === 'admin' ? 'admin' : ''}`}>
+                  <AccessIcon name={editTemplate.role === 'admin' ? 'shield' : 'key'} />
+                </span>
+                <div>
+                  <span>{templates.some(t => t.name === editTemplate.name) ? t('Edit Template') : t('New Template')}</span>
+                  <h3>{editTemplate.name || t('Permission Template')}</h3>
+                  <p>{editTemplate.role === 'admin' ? t('Platform access') : t('Namespace scoped')}</p>
+                </div>
+              </div>
+              <button className="admin-modal-close-btn" onClick={() => setEditTemplate(null)}>x</button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Template name</label>
-                <input type="text" className="form-input" value={editTemplate.name} placeholder="e.g. econtract-team"
+            <div className="admin-template-form-grid">
+              <label className="admin-form-field">
+                <span className="admin-field-label">{t('Template Name')}</span>
+                <input type="text" className="form-input" value={editTemplate.name} placeholder="econtract-team"
                   disabled={templates.some(t => t.name === editTemplate.name)}
                   onChange={e => setEditTemplate({ ...editTemplate, name: e.target.value })} />
-              </div>
-              <div className="admin-setting-row" style={{ margin: 0 }}>
-                <div>
-                  <strong>{t('Admin template')}</strong>
-                  <span>{editTemplate.role === 'admin' ? t('Full access') : t('Viewer access')}</span>
-                </div>
+              </label>
+
+              <div className="admin-template-default-card">
+                <span>
+                  <strong>{t('Default Template')}</strong>
+                  <em>{editTemplate.isDefault ? t('Enabled') : t('Disabled')}</em>
+                </span>
                 <AccessSwitch
-                  checked={editTemplate.role === 'admin'}
-                  onChange={() => setEditTemplate({
-                    ...editTemplate,
-                    role: editTemplate.role === 'admin' ? 'viewer' : 'admin',
-                    namespaces: [ALL_NS],
-                  })}
+                  checked={editTemplate.isDefault}
+                  onChange={() => setEditTemplate({ ...editTemplate, isDefault: !editTemplate.isDefault })}
                 />
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Description</label>
+            <label className="admin-form-field">
+              <span className="admin-field-label">{t('Description')}</span>
               <input type="text" className="form-input" value={editTemplate.description} placeholder="Who is this template for?"
                 onChange={e => setEditTemplate({ ...editTemplate, description: e.target.value })} />
-            </div>
+            </label>
+
+            <section className="admin-permission-card">
+              <span className="admin-field-label">{t('Role')}</span>
+              <div className="admin-role-choice-grid">
+                <button
+                  type="button"
+                  className={`admin-role-choice ${editTemplate.role === 'viewer' ? 'active' : ''}`}
+                  onClick={() => setEditTemplate({ ...editTemplate, role: 'viewer', namespaces: editTemplate.namespaces?.length ? editTemplate.namespaces : [ALL_NS] })}
+                >
+                  <AccessIcon name="eye" />
+                  <strong>{t('Viewer')}</strong>
+                  <span>{t('Namespace scoped')}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`admin-role-choice admin ${editTemplate.role === 'admin' ? 'active' : ''}`}
+                  onClick={() => setEditTemplate({ ...editTemplate, role: 'admin', namespaces: [ALL_NS] })}
+                >
+                  <AccessIcon name="shield" />
+                  <strong>{t('Admin')}</strong>
+                  <span>{t('Platform access')}</span>
+                </button>
+              </div>
+            </section>
 
             {editTemplate.role === 'admin' ? (
-              <div className="admin-access-full-card">
+              <div className="admin-access-full-card admin-access-full-card-lg">
+                <AccessIcon name="shield" />
                 <strong>{t('Full platform access')}</strong>
-                <span>{t('Admin templates apply to the whole platform, so namespace selection is hidden.')}</span>
+                <span>{t('All namespaces and admin pages')}</span>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Namespace visibility</label>
+              <section className="admin-permission-card">
+                <span className="admin-field-label">{t('Namespace Visibility')}</span>
                 <NamespacePicker
                   selected={editTemplate.namespaces || []}
                   options={namespaceOptions}
                   onChange={ns => setEditTemplate({ ...editTemplate, namespaces: ns })}
                 />
-              </div>
+              </section>
             )}
 
-            <div className="admin-setting-row">
-              <div>
-                <strong>{t('Default template')}</strong>
-                <span>{t('Applied to new LDAP users on first login.')}</span>
-              </div>
-              <AccessSwitch
-                checked={editTemplate.isDefault}
-                onChange={() => setEditTemplate({ ...editTemplate, isDefault: !editTemplate.isDefault })}
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border-primary)', paddingTop: '16px' }}>
-              <button className="btn btn-ghost" onClick={() => setEditTemplate(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={() => saveTemplate(editTemplate)}>Save Template</button>
+            <div className="admin-modal-actions">
+              <button className="btn btn-ghost" onClick={() => setEditTemplate(null)}>{t('Cancel')}</button>
+              <button className="btn btn-primary" onClick={() => saveTemplate(editTemplate)}>{t('Save Template')}</button>
             </div>
           </div>
         </div>,
         document.body
       )}
 
-      <style>{`
-        .ns-chip {
-          font-size: 11px;
-          font-weight: 600;
-          padding: 4px 10px;
-          border-radius: 6px;
-          border: 1px solid var(--border-primary);
-          cursor: pointer;
-          transition: all 0.15s;
-          font-family: var(--font-mono);
-        }
-        .ns-chip:hover:not(:disabled) { transform: translateY(-1px); }
-      `}</style>
     </div>
   );
 }
