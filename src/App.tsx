@@ -1,4 +1,4 @@
-import React, { Suspense, useState, useEffect, useCallback } from 'react';
+import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import { api } from './api/client';
 import type { NamespaceStats } from './entities';
@@ -19,6 +19,88 @@ const Services = React.lazy(() => import('./pages/Services'));
 
 function PageFallback() {
   return <div style={{ minHeight: '240px' }} />;
+}
+
+type HeaderDropdownOption = {
+  value: string;
+  label: string;
+};
+
+function HeaderDropdown({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: HeaderDropdownOption[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const selected = options.find(option => option.value === value) || options[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
+  }, [open]);
+
+  return (
+    <div
+      className={`header-dropdown ${open ? 'open' : ''}`}
+      ref={rootRef}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          setOpen(false);
+        }
+      }}
+    >
+      <button
+        type="button"
+        className="header-dropdown-trigger"
+        aria-label={label}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen(current => !current)}
+      >
+        <span title={selected?.label}>{selected?.label}</span>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && (
+        <div className="header-dropdown-menu" role="listbox" aria-label={label}>
+          {options.map((option, index) => (
+            <button
+              key={`${option.value || '__all__'}-${index}`}
+              type="button"
+              role="option"
+              aria-selected={option.value === value}
+              className={option.value === value ? 'selected' : ''}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+            >
+              <span title={option.label}>{option.label}</span>
+              {option.value === value && (
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function App() {
@@ -284,19 +366,21 @@ export default function App() {
                 </svg>
               </span>
               <span className="header-filter-label">{t('Cluster')}</span>
-              <select
-                className="header-select"
+              <HeaderDropdown
+                label={t('Cluster')}
                 value={selectedCluster}
-                onChange={(e) => {
-                  handleClusterChange(e.target.value);
+                options={[
+                  { value: '', label: t('All Clusters') },
+                  ...clusters.map((cluster: any) => ({
+                    value: cluster.name,
+                    label: cluster.displayName || cluster.name,
+                  })),
+                ]}
+                onChange={(nextCluster) => {
+                  handleClusterChange(nextCluster);
                   handleNamespaceChange('');
                 }}
-              >
-                <option value="">{t('All Clusters')}</option>
-                {clusters.map((c: any) => (
-                  <option key={c.name} value={c.name}>{c.displayName || c.name}</option>
-                ))}
-              </select>
+              />
             </div>
 
             <div className="header-filter">
@@ -309,20 +393,20 @@ export default function App() {
                 </svg>
               </span>
               <span className="header-filter-label">{t('Namespace')}</span>
-              <select
-                className="header-select"
+              <HeaderDropdown
+                label={t('Namespace')}
                 value={selectedNamespace}
-                onChange={(e) => handleNamespaceChange(e.target.value)}
-              >
-                <option value="">{t('All Namespaces')}</option>
-                {namespaces
+                options={[
+                  { value: '', label: t('All Namespaces') },
+                  ...namespaces
                   .filter(ns => !selectedCluster || ns.cluster === selectedCluster)
-                  .map((ns) => (
-                    <option key={ns.namespace} value={ns.namespace}>
-                      {ns.namespace}
-                    </option>
-                  ))}
-              </select>
+                  .map((ns) => ({
+                    value: ns.namespace,
+                    label: ns.namespace,
+                  })),
+                ]}
+                onChange={handleNamespaceChange}
+              />
             </div>
 
             <button
