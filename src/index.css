@@ -7489,7 +7489,7 @@ body.dark-theme .apm-chart-overlay {
 .trace-filter-field > span,
 .traces-toolbar-actions label > span,
 .trace-metric span,
-.endpoint-impact span {
+.endpoint-impact > div > span {
   display: block;
   color: var(--text-tertiary);
   font-size: 10px;
@@ -7955,8 +7955,7 @@ body.dark-theme .apm-chart-overlay {
   overflow: hidden;
 }
 
-.trace-duration-bar i,
-.endpoint-impact i {
+.trace-duration-bar i {
   display: block;
   height: 100%;
   border-radius: inherit;
@@ -8008,6 +8007,36 @@ body.dark-theme .apm-chart-overlay {
 
 .endpoint-impact {
   min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  color: var(--accent-indigo);
+}
+
+.endpoint-impact.warning {
+  color: var(--accent-amber);
+}
+
+.endpoint-impact.critical {
+  color: var(--accent-rose);
+}
+
+.endpoint-impact-ring {
+  width: 32px;
+  height: 32px;
+  display: block;
+  margin: 0;
+  color: inherit;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at center, var(--bg-secondary) 0 54%, transparent 56%),
+    conic-gradient(currentColor var(--endpoint-impact-share), var(--bg-tertiary) 0);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.endpoint-impact > div {
+  min-width: 0;
 }
 
 .endpoint-impact strong {
@@ -8016,15 +8045,20 @@ body.dark-theme .apm-chart-overlay {
   font-family: var(--font-mono);
   font-size: 13.5px;
   font-weight: 850;
-  margin-top: 4px;
+  line-height: 1.15;
+  margin-top: 3px;
 }
 
-.endpoint-impact > div {
-  height: 7px;
-  margin-top: 7px;
-  border-radius: 999px;
-  background: var(--bg-tertiary);
+.endpoint-impact em {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 700;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .trace-pagination {
@@ -8044,70 +8078,244 @@ body.dark-theme .apm-chart-overlay {
   gap: 6px;
 }
 
+.trace-drawer-backdrop {
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 0;
+  background: rgba(3, 7, 18, 0.54);
+}
+
 .trace-quicklook {
-  width: min(620px, calc(100vw - 36px));
-  max-height: calc(100vh - 60px);
-  overflow-y: auto;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
+  width: min(560px, 100vw);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--border-primary);
   background: var(--bg-secondary);
-  box-shadow: var(--shadow-lg);
+  box-shadow: -24px 0 60px rgba(15, 23, 42, 0.18);
+  animation: slideInRight 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.trace-quicklook.critical {
+  border-left-color: rgba(225, 29, 72, 0.34);
 }
 
 .trace-quicklook-header {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px;
+  padding: 22px 24px 18px;
   border-bottom: 1px solid var(--border-primary);
+  background: linear-gradient(180deg, var(--bg-primary), var(--bg-secondary));
 }
 
-.trace-quicklook-header code {
-  display: block;
-  margin-top: 6px;
-  color: var(--accent-indigo-light);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  word-break: break-all;
+.trace-quicklook-title {
+  min-width: 0;
 }
 
-.trace-quicklook-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--border-primary);
-}
-
-.trace-quicklook-section,
-.trace-quicklook-error {
-  margin: 16px 18px 0;
-}
-
-.trace-quicklook-section > span {
+.trace-quicklook-kicker,
+.trace-quicklook-section > span,
+.trace-drawer-metric span,
+.trace-quicklook-meta dt {
   display: block;
   color: var(--text-tertiary);
   font-size: 10px;
   font-weight: 850;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  margin-bottom: 8px;
+}
+
+.trace-quicklook-title h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin: 7px 0 9px;
+  color: var(--text-primary);
+  font-size: 20px;
+  line-height: 1.18;
+  font-weight: 850;
+}
+
+.trace-quicklook-title h2 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-quicklook-id {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.trace-quicklook-id code {
+  max-width: 100%;
+  display: inline-flex;
+  border: 1px solid var(--border-primary);
+  border-radius: 7px;
+  background: var(--bg-tertiary);
+  color: var(--accent-indigo-light);
+  padding: 4px 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.trace-drawer-close {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.trace-quicklook-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.trace-quicklook-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.trace-drawer-metric {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  padding: 11px;
+}
+
+.trace-drawer-metric-icon {
+  width: 24px;
+  height: 24px;
+  color: var(--accent-indigo);
+}
+
+.trace-drawer-metric.warning .trace-drawer-metric-icon,
+.trace-drawer-metric.warning strong {
+  color: var(--accent-amber);
+}
+
+.trace-drawer-metric.critical .trace-drawer-metric-icon,
+.trace-drawer-metric.critical strong {
+  color: var(--accent-rose);
+}
+
+.trace-drawer-metric.healthy .trace-drawer-metric-icon,
+.trace-drawer-metric.healthy strong {
+  color: var(--accent-emerald);
+}
+
+.trace-drawer-metric.info .trace-drawer-metric-icon,
+.trace-drawer-metric.info strong {
+  color: var(--accent-blue);
+}
+
+.trace-drawer-metric strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.trace-drawer-metric em {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-quicklook-section,
+.trace-quicklook-error {
+  margin-top: 12px;
+}
+
+.trace-quicklook-section {
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  padding: 12px;
+}
+
+.trace-quicklook-section > span {
+  margin-bottom: 9px;
+}
+
+.trace-quicklook-meta > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.trace-quicklook-meta dl {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 7px;
+  background: var(--bg-secondary);
+  padding: 8px;
+}
+
+.trace-quicklook-meta dd {
+  margin: 4px 0 0;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-drawer-flow {
+  gap: 6px;
+}
+
+.trace-drawer-flow em {
+  max-width: 100%;
 }
 
 .trace-quicklook-error {
-  padding: 10px 12px;
-  border: 1px solid rgba(225, 29, 72, 0.18);
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(225, 29, 72, 0.24);
   border-radius: 8px;
-  background: rgba(225, 29, 72, 0.08);
+  background: rgba(225, 29, 72, 0.07);
+}
+
+.trace-drawer-error-icon {
+  width: 22px;
+  height: 22px;
+  color: var(--accent-rose);
 }
 
 .trace-quicklook-error strong {
   display: block;
   color: var(--accent-rose);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 850;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .trace-quicklook-error span {
@@ -8122,7 +8330,9 @@ body.dark-theme .apm-chart-overlay {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  padding: 16px 18px 18px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-primary);
 }
 
 @media (max-width: 1280px) {
@@ -8174,6 +8384,14 @@ body.dark-theme .apm-chart-overlay {
   }
 
   .trace-quicklook-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trace-quicklook {
+    width: 100vw;
+  }
+
+  .trace-quicklook-meta > div {
     grid-template-columns: 1fr;
   }
 }

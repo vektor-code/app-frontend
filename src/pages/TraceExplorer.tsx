@@ -5,6 +5,7 @@ import type { EndpointStat, TraceListItem } from '../entities';
 import { LoadingState, NoDataState } from '../components/DataState';
 import CustomSelect from '../components/CustomSelect';
 import LanguageIcon from '../components/LanguageIcon';
+import IconPack from '../components/IconPack';
 import { useTranslation } from '../utils/i18n';
 
 interface TraceExplorerProps {
@@ -22,6 +23,14 @@ const colorPalette = [
   '#2563eb', '#7c3aed', '#db2777', '#e11d48', '#ea580c',
   '#ca8a04', '#059669', '#0f766e', '#0891b2', '#4f46e5',
 ];
+
+const TRACE_DRAWER_ICONS = {
+  duration: '/observability-icons/clock-bolt.svg',
+  spans: '/observability-icons/route.svg',
+  status: '/observability-icons/shield-check.svg',
+  services: '/observability-icons/sitemap.svg',
+  alert: '/observability-icons/alert-triangle.svg'
+} as const;
 
 export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps) {
   const { t } = useTranslation();
@@ -208,7 +217,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
   const topTotalPages = Math.max(1, Math.ceil(topTraces.length / pageSize));
   const topPage = Math.min(page, topTotalPages);
   const pagedTopTraces = topTraces.slice((topPage - 1) * pageSize, topPage * pageSize);
-  const maxImpact = Math.max(...topTraces.map(item => item.impact), 1);
+  const totalImpact = topTraces.reduce((sum, item) => sum + item.impact, 0);
   const maxTraceDuration = Math.max(...sortedTraces.map(trace => trace.durationMs), 1);
 
   const summary = useMemo(() => {
@@ -348,7 +357,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
                 <EndpointRow
                   key={`${item.serviceName}:${item.operationName}`}
                   item={item}
-                  maxImpact={maxImpact}
+                  totalImpact={totalImpact}
                   language={serviceLanguages[item.serviceName]}
                   onService={() => {
                     setFilterVal('service', item.serviceName);
@@ -408,7 +417,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
 
 function EndpointRow({
   item,
-  maxImpact,
+  totalImpact,
   language,
   onService,
   onOperation,
@@ -424,14 +433,15 @@ function EndpointRow({
     tpm: number;
     impact: number;
   };
-  maxImpact: number;
+  totalImpact: number;
   language?: string;
   onService: () => void;
   onOperation: () => void;
 }) {
   const errorTone = item.errorRate > 5 ? 'critical' : item.errorRate > 0 ? 'warning' : 'healthy';
   const latencyTone = item.avgDurationMs > 1000 ? 'warning' : 'neutral';
-  const impactPct = Math.min(100, (item.impact / Math.max(maxImpact, 1)) * 100);
+  const impactShare = totalImpact > 0 ? (item.impact / totalImpact) * 100 : 0;
+  const impactTone = errorTone === 'critical' ? 'critical' : impactShare >= 25 || latencyTone === 'warning' ? 'warning' : 'neutral';
 
   return (
     <div className="endpoint-row">
@@ -445,10 +455,16 @@ function EndpointRow({
       <TraceMetric label="Avg latency" value={formatDuration(item.avgDurationMs)} detail={`P95 ${formatDuration(item.p95DurationMs)}`} tone={latencyTone} />
       <TraceMetric label="Throughput" value={`${formatNumber(item.tpm)} tpm`} detail={`${formatCompact(item.count)} traces`} tone="neutral" />
       <TraceMetric label="Errors" value={formatPercent(item.errorRate)} detail={`${formatCompact(item.errorCount)} failed`} tone={errorTone} />
-      <div className="endpoint-impact">
-        <span>Impact</span>
-        <strong>{impactPct.toFixed(0)}%</strong>
-        <div><i style={{ width: `${Math.max(2, impactPct)}%` }} /></div>
+      <div
+        className={`endpoint-impact ${impactTone}`}
+        style={{ '--endpoint-impact-share': `${Math.min(100, Math.max(0, impactShare))}%` } as React.CSSProperties}
+      >
+        <span className="endpoint-impact-ring" aria-hidden="true" />
+        <div>
+          <span>Impact share</span>
+          <strong>{formatShare(impactShare)}</strong>
+          <em>{formatTotalDuration(item.impact)} total</em>
+        </div>
       </div>
     </div>
   );
@@ -524,6 +540,10 @@ function TraceQuickLook({
 }) {
   const { t } = useTranslation();
   const flow = trace.serviceFlow && trace.serviceFlow.length > 0 ? trace.serviceFlow : (trace.services || []);
+  const title = trace.rootName || trace.serviceName;
+  const statusTone: Tone = trace.hasError ? 'critical' : 'healthy';
+  const statusText = trace.hasError ? t('Error') : t('Operational');
+  const serviceCount = new Set([trace.serviceName, ...flow].filter(Boolean)).size;
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -534,47 +554,123 @@ function TraceQuickLook({
   }, [onClose]);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="trace-quicklook" onClick={event => event.stopPropagation()}>
-        <div className="trace-quicklook-header">
-          <div>
-            <div className="trace-title-line">
-              <LanguageIcon language={serviceLanguages[trace.serviceName]} size={22} />
-              <strong>{trace.rootName || trace.serviceName}</strong>
-              <span className={`trace-status ${trace.hasError ? 'critical' : 'healthy'}`}>{trace.hasError ? 'ERROR' : 'OK'}</span>
-            </div>
-            <code>{trace.traceId}</code>
-          </div>
-          <button className="modal-close" onClick={onClose}>x</button>
-        </div>
-        <div className="trace-quicklook-grid">
-          <TraceMetric label={t('Duration')} value={formatDuration(trace.durationMs)} detail={formatTime(trace.startTime)} tone={trace.durationMs > 1000 ? 'warning' : 'neutral'} />
-          <TraceMetric label={t('Spans')} value={trace.spanCount.toString()} detail={formatNamespace(trace)} tone="neutral" />
-          <TraceMetric label={t('Status')} value={trace.hasError ? 'ERROR' : 'OK'} detail={trace.serviceName} tone={trace.hasError ? 'critical' : 'healthy'} />
-        </div>
-        {flow.length > 0 && (
-          <div className="trace-quicklook-section">
-            <span>{t('Request flow')}</span>
-            <div className="trace-flow expanded">
-              {flow.map((service, idx) => (
-                <React.Fragment key={`${service}:${idx}`}>
-                  {idx > 0 && <span className="trace-flow-arrow">{'->'}</span>}
-                  <em style={{ color: getServiceColor(service), background: `${getServiceColor(service)}18` }}>{service}</em>
-                </React.Fragment>
-              ))}
+    <div className="modal-backdrop trace-drawer-backdrop" onClick={onClose}>
+      <aside className={`trace-quicklook ${statusTone}`} onClick={event => event.stopPropagation()}>
+        <header className="trace-quicklook-header">
+          <div className="trace-quicklook-title">
+            <span className="trace-quicklook-kicker">{t('Trace detail')}</span>
+            <h2>
+              <LanguageIcon language={serviceLanguages[trace.serviceName]} size={24} />
+              <span>{title}</span>
+            </h2>
+            <div className="trace-quicklook-id">
+              <code>{trace.traceId}</code>
+              <span className={`trace-status ${statusTone}`}>{statusText}</span>
             </div>
           </div>
-        )}
-        {trace.hasError && trace.errorSummary && (
-          <div className="trace-quicklook-error">
-            <strong>{trace.errorType || t('Error')}</strong>
-            <span>{trace.errorSummary}</span>
+          <button className="modal-close trace-drawer-close" onClick={onClose}>x</button>
+        </header>
+
+        <div className="trace-quicklook-body">
+          <div className="trace-quicklook-grid">
+            <TraceDrawerMetric
+              icon="duration"
+              label={t('Duration')}
+              value={formatDuration(trace.durationMs)}
+              detail={formatTime(trace.startTime)}
+              tone={trace.durationMs > 1000 ? 'warning' : 'neutral'}
+            />
+            <TraceDrawerMetric
+              icon="spans"
+              label={t('Spans')}
+              value={trace.spanCount.toString()}
+              detail={formatNamespace(trace)}
+              tone="neutral"
+            />
+            <TraceDrawerMetric
+              icon={trace.hasError ? 'alert' : 'status'}
+              label={t('Status')}
+              value={statusText}
+              detail={trace.serviceName}
+              tone={statusTone}
+            />
+            <TraceDrawerMetric
+              icon="services"
+              label={t('Services')}
+              value={serviceCount.toString()}
+              detail={formatNamespace(trace)}
+              tone="info"
+            />
           </div>
-        )}
-        <div className="trace-quicklook-footer">
+
+          <section className="trace-quicklook-section trace-quicklook-meta">
+            <span>{t('Metadata')}</span>
+            <div>
+              <dl>
+                <dt>{t('Root service')}</dt>
+                <dd>{trace.serviceName}</dd>
+              </dl>
+              <dl>
+                <dt>{t('Namespace')}</dt>
+                <dd>{formatNamespace(trace)}</dd>
+              </dl>
+            </div>
+          </section>
+
+          {flow.length > 0 && (
+            <section className="trace-quicklook-section">
+              <span>{t('Request flow')}</span>
+              <div className="trace-flow expanded trace-drawer-flow">
+                {flow.map((service, idx) => (
+                  <React.Fragment key={`${service}:${idx}`}>
+                    {idx > 0 && <span className="trace-flow-arrow">{'->'}</span>}
+                    <em style={{ color: getServiceColor(service), background: `${getServiceColor(service)}18` }}>{service}</em>
+                  </React.Fragment>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {trace.hasError && trace.errorSummary && (
+            <section className="trace-quicklook-error">
+              <IconPack src={TRACE_DRAWER_ICONS.alert} className="trace-drawer-error-icon" />
+              <div>
+                <strong>{trace.errorType || t('Error')}</strong>
+                <span>{trace.errorSummary}</span>
+              </div>
+            </section>
+          )}
+        </div>
+
+        <footer className="trace-quicklook-footer">
           <button className="btn btn-ghost" onClick={onClose}>{t('Close')}</button>
           <button className="btn btn-primary" onClick={onOpenFull}>{t('View full trace')}</button>
-        </div>
+        </footer>
+      </aside>
+    </div>
+  );
+}
+
+function TraceDrawerMetric({
+  icon,
+  label,
+  value,
+  detail,
+  tone
+}: {
+  icon: keyof typeof TRACE_DRAWER_ICONS;
+  label: string;
+  value: string;
+  detail: string;
+  tone: Tone;
+}) {
+  return (
+    <div className={`trace-drawer-metric ${tone}`}>
+      <IconPack src={TRACE_DRAWER_ICONS[icon]} className="trace-drawer-metric-icon" />
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <em>{detail}</em>
       </div>
     </div>
   );
@@ -704,6 +800,13 @@ function formatDuration(ms: number) {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
+function formatTotalDuration(ms: number) {
+  if (!Number.isFinite(ms) || ms <= 0) return '0ms';
+  if (ms < 60_000) return formatDuration(ms);
+  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(ms < 600_000 ? 1 : 0)}m`;
+  return `${(ms / 3_600_000).toFixed(ms < 36_000_000 ? 1 : 0)}h`;
+}
+
 function formatTime(iso: string) {
   const date = new Date(iso);
   return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -724,6 +827,12 @@ function formatNumber(value: number) {
 
 function formatPercent(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0.0%';
+  return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
+}
+
+function formatShare(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0%';
+  if (value < 1) return '<1%';
   return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
 }
 
