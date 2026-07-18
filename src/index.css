@@ -9649,40 +9649,19 @@ body.dark-theme .apm-chart-overlay {
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 24px minmax(0, 1fr);
   align-items: center;
-  gap: 9px;
+  gap: 10px;
 }
 
-.dependency-health-signal {
-  width: 18px;
+.dependency-health-icon {
+  width: 22px;
   height: 22px;
-  display: grid;
-  grid-template-columns: repeat(3, 4px);
-  align-items: end;
-  gap: 3px;
-  color: var(--text-tertiary);
-}
-
-.dependency-health-signal i {
-  display: block;
-  width: 4px;
-  border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 auto;
   background: currentColor;
-  opacity: 0.18;
-  transition: opacity var(--transition-fast), height var(--transition-fast);
-}
-
-.dependency-health-signal i:nth-child(1) {
-  height: 8px;
-}
-
-.dependency-health-signal i:nth-child(2) {
-  height: 14px;
-}
-
-.dependency-health-signal i:nth-child(3) {
-  height: 20px;
+  mask: var(--dependency-health-icon) center / contain no-repeat;
+  -webkit-mask: var(--dependency-health-icon) center / contain no-repeat;
 }
 
 .dependency-health-card div {
@@ -9716,34 +9695,17 @@ body.dark-theme .apm-chart-overlay {
   color: var(--accent-emerald);
 }
 
-.dependency-health-card.health-good .dependency-health-signal i {
-  opacity: 1;
-}
-
 .dependency-health-card.health-slow,
 .dependency-health-card.health-warning {
   color: var(--accent-amber);
-}
-
-.dependency-health-card.health-slow .dependency-health-signal i:nth-child(-n + 2),
-.dependency-health-card.health-warning .dependency-health-signal i:nth-child(-n + 2) {
-  opacity: 1;
 }
 
 .dependency-health-card.health-danger {
   color: var(--accent-rose);
 }
 
-.dependency-health-card.health-danger .dependency-health-signal i:first-child {
-  opacity: 1;
-}
-
 .dependency-health-card.health-muted {
   color: var(--text-tertiary);
-}
-
-.dependency-health-card.health-muted .dependency-health-signal i {
-  opacity: 0.32;
 }
 
 .dependency-cell,
@@ -9795,6 +9757,11 @@ body.dark-theme .apm-chart-overlay {
 .dependency-cell.health .dependency-health-card strong,
 .dependency-cell.health .dependency-health-card small {
   font-family: var(--font-sans);
+}
+
+.dependency-cell.health .dependency-health-icon {
+  margin-top: 0;
+  color: inherit;
 }
 
 .dependency-sparkline {

@@ -241,6 +241,16 @@ const formatDependencyRate = (value: number) => {
   return `${value.toFixed(value >= 10 ? 1 : 2)}%`;
 };
 
+const HEALTH_STATUS_ICONS = {
+  operational: '/status-icons/circle-check.svg',
+  inactive: '/status-icons/circle-dashed.svg',
+  degraded: '/status-icons/alert-triangle.svg',
+  latency: '/status-icons/clock-exclamation.svg',
+  failing: '/status-icons/circle-x.svg'
+} as const;
+
+type HealthStatusIconName = keyof typeof HEALTH_STATUS_ICONS;
+
 // Infrastructure parser with production-focused naming details.
 const parseRawName = (rawName: string, ns: string = 'default') => {
   const match = rawName.match(/^([^(]+)\(([^)]+)\)$/);
@@ -564,18 +574,43 @@ export default function Dependencies({ namespace }: DependenciesProps) {
 
   const getHealthMeta = (item: AccumulatedDependency) => {
     if (!item.isActive) {
-      return { label: t('Quiet'), detail: t('no recent calls'), className: 'health-muted' };
+      return {
+        label: t('Inactive'),
+        detail: t('no recent traffic'),
+        className: 'health-muted',
+        icon: 'inactive' as HealthStatusIconName
+      };
     }
     if (item.errorRate >= 10) {
-      return { label: t('Failing'), detail: `${formatDependencyRate(item.errorRate)} ${t('errors')}`, className: 'health-danger' };
+      return {
+        label: t('Failing'),
+        detail: `${formatDependencyRate(item.errorRate)} ${t('error rate')}`,
+        className: 'health-danger',
+        icon: 'failing' as HealthStatusIconName
+      };
     }
     if (item.errorRate > 0) {
-      return { label: t('Degraded'), detail: `${formatDependencyRate(item.errorRate)} ${t('errors')}`, className: 'health-warning' };
+      return {
+        label: t('Degraded'),
+        detail: `${formatDependencyRate(item.errorRate)} ${t('error rate')}`,
+        className: 'health-warning',
+        icon: 'degraded' as HealthStatusIconName
+      };
     }
     if (item.avgDurationMs >= 1000) {
-      return { label: t('Slow'), detail: `${formatDependencyLatency(item.avgDurationMs)} ${t('avg')}`, className: 'health-slow' };
+      return {
+        label: t('High latency'),
+        detail: `${formatDependencyLatency(item.avgDurationMs)} ${t('average')}`,
+        className: 'health-slow',
+        icon: 'latency' as HealthStatusIconName
+      };
     }
-    return { label: t('Passing'), detail: t('0 errors'), className: 'health-good' };
+    return {
+      label: t('Operational'),
+      detail: t('no errors observed'),
+      className: 'health-good',
+      icon: 'operational' as HealthStatusIconName
+    };
   };
 
   const namespaceOptions = [
@@ -748,11 +783,11 @@ export default function Dependencies({ namespace }: DependenciesProps) {
 
                   <div className="dependency-cell health">
                     <div className={`dependency-health-card ${health.className}`}>
-                      <span className="dependency-health-signal" aria-hidden="true">
-                        <i />
-                        <i />
-                        <i />
-                      </span>
+                      <span
+                        className="dependency-health-icon"
+                        aria-hidden="true"
+                        style={{ '--dependency-health-icon': `url("${HEALTH_STATUS_ICONS[health.icon]}")` } as React.CSSProperties}
+                      />
                       <div>
                         <strong>{health.label}</strong>
                         <small>{health.detail}</small>
