@@ -3389,10 +3389,10 @@ body.dark-theme .flowing-line {
 }
 
 .admin-hero h1 {
-  margin: 8px 0 5px;
+  margin: 4px 0 0;
   color: var(--text-primary);
-  font-size: clamp(28px, 3vw, 42px);
-  line-height: 1;
+  font-size: 24px;
+  line-height: 1.16;
   font-weight: 850;
   letter-spacing: 0;
 }
@@ -6261,7 +6261,17 @@ button.admin-integration-card:hover {
   color: var(--text-primary);
 }
 
-.apm-panel-topline svg {
+.dashboard-svg-icon {
+  width: 21px;
+  height: 21px;
+  display: inline-block;
+  flex: 0 0 auto;
+  background: currentColor;
+  mask: var(--dashboard-icon-url) center / contain no-repeat;
+  -webkit-mask: var(--dashboard-icon-url) center / contain no-repeat;
+}
+
+.apm-panel-topline .dashboard-svg-icon {
   color: var(--accent-indigo);
 }
 
