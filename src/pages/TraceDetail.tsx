@@ -2410,20 +2410,6 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
               </div>
             </div>
 
-            {explanation.causes.length > 0 && (
-              <div className="attr-group-card failure-causes-card">
-                <h4 className="attr-group-title">{t('Likely causes')}</h4>
-                <div className="failure-cause-list">
-                  {explanation.causes.slice(0, 4).map((cause, idx) => (
-                    <div key={idx} className="failure-cause-item">
-                      <span>{idx + 1}</span>
-                      <p>{cause}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* {t('Evidence')} — the concrete facts from the span */}
             {explanation.evidence.length > 0 && (
               <div className="attr-group-card">
@@ -3014,12 +3000,6 @@ export default function TraceDetail() {
                       <span>{t('Kind')} <strong>{span.kind.toLowerCase()}</strong></span>
                     </div>
 
-                    {explanation.causes[0] && (
-                      <div className="problem-cause">
-                        <span className="problem-cause-label">{t('Most likely cause')}</span>
-                        {explanation.causes[0]}
-                      </div>
-                    )}
                   </button>
                 ))}
               </div>
@@ -3778,19 +3758,6 @@ export default function TraceDetail() {
           line-height: 1.5;
           color: var(--text-primary);
         }
-        .problem-cause {
-          font-size: 11.5px;
-          line-height: 1.5;
-          color: var(--text-secondary);
-          background: var(--bg-tertiary);
-          border-radius: 6px;
-          padding: 6px 9px;
-        }
-        .problem-cause-label {
-          font-weight: 700;
-          color: var(--accent-amber, #f59e0b);
-        }
-
         /* Failure Details Diagnostic Card Styles */
         .failure-banner {
           background: rgba(244, 63, 94, 0.04);
@@ -3869,35 +3836,10 @@ export default function TraceDetail() {
           text-overflow: ellipsis;
           white-space: nowrap;
         }
-        .failure-cause-list,
         .failure-evidence-list {
           display: flex;
           flex-direction: column;
           gap: 8px;
-        }
-        .failure-cause-item {
-          display: grid;
-          grid-template-columns: 22px minmax(0, 1fr);
-          gap: 8px;
-          align-items: flex-start;
-        }
-        .failure-cause-item span {
-          width: 22px;
-          height: 22px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 999px;
-          background: rgba(245, 158, 11, 0.14);
-          color: var(--accent-amber);
-          font-size: 10px;
-          font-weight: 850;
-        }
-        .failure-cause-item p {
-          margin: 0;
-          color: var(--text-secondary);
-          font-size: 12px;
-          line-height: 1.5;
         }
         .failure-evidence-row {
           display: grid;
