@@ -774,7 +774,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
             {t('Dependency Visibility')}
           </span>
           <h1>{t('Dependencies')}</h1>
-          <p>{t('Systems called by active services.')}</p>
         </div>
         <div className="dependencies-hero-actions">
           <span className="dependencies-scope-chip">

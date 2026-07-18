@@ -268,7 +268,6 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
         <div>
           <span className="traces-eyebrow">{namespace || t('All namespaces')}</span>
           <h1>{t('Traces')}</h1>
-          <p>{t('Find slow, failing, and high-impact transactions quickly.')}</p>
         </div>
         <div className="traces-header-actions">
           <MetricBox label={activeTab === 'top' ? t('Endpoints') : t('Traces')} value={formatCompact(summary.primaryCount)} />

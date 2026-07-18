@@ -309,9 +309,6 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
         <div>
           <span className="db-page-kicker">{t('Database telemetry')}</span>
           <h1 className="page-title">{t('Query Performance')}</h1>
-          <p className="page-subtitle">
-            {t('Query volume, latency, and failures by service.')}
-          </p>
         </div>
         <div className="db-page-scope">
           <span>{namespace ? t('Namespace') : t('Scope')}</span>
@@ -738,10 +735,6 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
         }
         .db-page-hero .page-title {
           margin: 5px 0 0;
-        }
-        .db-page-hero .page-subtitle {
-          max-width: 720px;
-          margin-bottom: 0;
         }
         .db-page-kicker {
           display: inline-flex;

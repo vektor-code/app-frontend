@@ -192,7 +192,6 @@ export default function Dashboard({ namespaces, selectedNamespace, onSelectNames
         <div className="apm-title-block">
           <span className="apm-eyebrow">{t('Telemetry Visibility')}</span>
           <h1>{selectedNamespace || t('All services')}</h1>
-          <p>{t('Requests, errors, latency, database pressure, and service hotspots.')}</p>
         </div>
 
         <div className="apm-header-meta">

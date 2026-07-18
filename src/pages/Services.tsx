@@ -248,7 +248,6 @@ export default function Services({ namespace }: ServicesProps) {
         <div>
           <span className="services-eyebrow">{namespace || t('All namespaces')}</span>
           <h1>{t('Services')}</h1>
-          <p>{t('Health, traffic, latency, and failures grouped by service.')}</p>
         </div>
         <div className="services-header-actions">
           <MetricBox label={t('Services')} value={summary.totalServices.toString()} />

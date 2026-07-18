@@ -2484,11 +2484,6 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             {t('Live topology')}
           </span>
           <h1>{t('Service Map')}</h1>
-          <p>
-            {namespace
-              ? t('Service dependencies in {{namespace}}').replace('{{namespace}}', namespace)
-              : t('Service dependencies across all namespaces')}
-          </p>
         </div>
         <div className="service-map-hero-actions">
           <button className="service-map-tool-button" onClick={handleFitView} disabled={activeNodes.length === 0}>
