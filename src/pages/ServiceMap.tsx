@@ -9,6 +9,7 @@ import { LoadingState, NoDataState } from '../components/DataState';
 import CustomSelect from '../components/CustomSelect';
 import { LANG_ICONS } from '../components/LanguageIcon';
 import { TECH_LOGOS } from '../components/TechIcon';
+import IconPack from '../components/IconPack';
 import { useTranslation } from '../utils/i18n';
 
 interface ServiceMapProps {
@@ -2911,6 +2912,24 @@ type ServiceMapIconName =
   | 'services'
   | 'trace';
 
+const SERVICE_MAP_ICONS: Record<ServiceMapIconName, string> = {
+  activity: '/observability-icons/activity.svg',
+  alert: '/observability-icons/alert-triangle.svg',
+  arrow: '/observability-icons/arrow-right.svg',
+  close: '/observability-icons/x.svg',
+  flow: '/observability-icons/git-branch.svg',
+  focus: '/observability-icons/focus-centered.svg',
+  latency: '/observability-icons/clock-bolt.svg',
+  metrics: '/observability-icons/chart-line.svg',
+  minus: '/observability-icons/minus.svg',
+  namespace: '/observability-icons/layout-grid.svg',
+  network: '/observability-icons/sitemap.svg',
+  plus: '/observability-icons/plus.svg',
+  reset: '/observability-icons/refresh.svg',
+  services: '/observability-icons/server.svg',
+  trace: '/observability-icons/route.svg'
+};
+
 function ServiceMapStatCard({
   icon,
   label,
@@ -3041,52 +3060,7 @@ function ServiceMapConnectionList({
 }
 
 function ServiceMapIcon({ name }: { name: ServiceMapIconName }) {
-  const common = {
-    width: 18,
-    height: 18,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 2,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    'aria-hidden': true,
-  };
-
-  switch (name) {
-    case 'activity':
-      return <svg {...common}><path d="M3 12h4l3-8 4 16 3-8h4" /></svg>;
-    case 'alert':
-      return <svg {...common}><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.3 3.6 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z" /></svg>;
-    case 'arrow':
-      return <svg {...common}><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>;
-    case 'close':
-      return <svg {...common}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>;
-    case 'flow':
-      return <svg {...common}><circle cx="5" cy="6" r="2.5" /><circle cx="19" cy="6" r="2.5" /><circle cx="12" cy="18" r="2.5" /><path d="M7.4 7.6 10.8 16" /><path d="m16.6 7.6-3.4 8.4" /><path d="M8 6h8" /></svg>;
-    case 'focus':
-      return <svg {...common}><path d="M4 8V5a1 1 0 0 1 1-1h3" /><path d="M16 4h3a1 1 0 0 1 1 1v3" /><path d="M20 16v3a1 1 0 0 1-1 1h-3" /><path d="M8 20H5a1 1 0 0 1-1-1v-3" /><circle cx="12" cy="12" r="3" /></svg>;
-    case 'latency':
-      return <svg {...common}><path d="M9 2h6" /><path d="M12 6v5l3 2" /><circle cx="12" cy="14" r="8" /></svg>;
-    case 'metrics':
-      return <svg {...common}><path d="M4 19V5" /><path d="M4 19h16" /><path d="M8 15v-4" /><path d="M12 15V8" /><path d="M16 15v-6" /></svg>;
-    case 'minus':
-      return <svg {...common}><path d="M5 12h14" /></svg>;
-    case 'namespace':
-      return <svg {...common}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>;
-    case 'network':
-      return <svg {...common}><path d="M12 3v5" /><path d="M6 13H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2" /><path d="M12 16v5" /><rect x="8" y="8" width="8" height="8" rx="2" /></svg>;
-    case 'plus':
-      return <svg {...common}><path d="M12 5v14" /><path d="M5 12h14" /></svg>;
-    case 'reset':
-      return <svg {...common}><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v6h6" /></svg>;
-    case 'services':
-      return <svg {...common}><path d="M12 2 4 6.5v9L12 20l8-4.5v-9L12 2Z" /><path d="m4.5 7 7.5 4.2L19.5 7" /><path d="M12 20v-8.8" /></svg>;
-    case 'trace':
-      return <svg {...common}><path d="M4 7h5" /><path d="M15 7h5" /><circle cx="12" cy="7" r="3" /><path d="M12 10v4" /><path d="M7 17h10" /><circle cx="5" cy="17" r="2" /><circle cx="19" cy="17" r="2" /></svg>;
-    default:
-      return <svg {...common}><path d="M4 12h16" /></svg>;
-  }
+  return <IconPack src={SERVICE_MAP_ICONS[name]} className="service-map-icon" size={18} />;
 }
 
 function getMapNodeHealth(node: ServiceStats): { tone: ServiceMapTone; score: number; label: string } {

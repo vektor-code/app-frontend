@@ -6,6 +6,7 @@ import TechIcon from '../components/TechIcon';
 import LanguageIcon from '../components/LanguageIcon';
 import { LoadingState } from '../components/DataState';
 import CustomSelect from '../components/CustomSelect';
+import IconPack from '../components/IconPack';
 
 interface DbAnalyticsProps {
   namespace: string;
@@ -14,28 +15,15 @@ interface DbAnalyticsProps {
 type DbMetricTone = 'indigo' | 'emerald' | 'amber' | 'rose';
 type DbMetricIconName = 'database' | 'clock' | 'alert' | 'peak';
 
-function DbMetricIcon({ name }: { name: DbMetricIconName }) {
-  const common = {
-    width: 20,
-    height: 20,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 2,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-  };
+const DB_METRIC_ICONS: Record<DbMetricIconName, string> = {
+  database: '/observability-icons/database.svg',
+  clock: '/observability-icons/clock-bolt.svg',
+  alert: '/observability-icons/alert-triangle.svg',
+  peak: '/observability-icons/chart-line.svg'
+};
 
-  switch (name) {
-    case 'database':
-      return <svg {...common}><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 10c0 1.7 3.6 3 8 3s8-1.3 8-3" /></svg>;
-    case 'clock':
-      return <svg {...common}><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2" /><path d="M9 2h6" /></svg>;
-    case 'alert':
-      return <svg {...common}><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.3 3.6 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z" /></svg>;
-    case 'peak':
-      return <svg {...common}><path d="M4 18V8" /><path d="M10 18v-5" /><path d="M16 18V6" /><path d="m4 8 6 5 6-7 4 3" /><path d="M20 9V5h-4" /></svg>;
-  }
+function DbMetricIcon({ name }: { name: DbMetricIconName }) {
+  return <IconPack src={DB_METRIC_ICONS[name]} className="db-metric-icon" />;
 }
 
 function DbMetricCard({
@@ -567,7 +555,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           letter-spacing: 0.08em;
           text-transform: uppercase;
         }
-        .db-metric-top svg {
+        .db-metric-icon {
           width: 24px;
           height: 24px;
           padding: 7px;
@@ -577,15 +565,15 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           box-sizing: content-box;
           flex: 0 0 auto;
         }
-        .db-metric-card.emerald .db-metric-top svg {
+        .db-metric-card.emerald .db-metric-icon {
           color: var(--accent-emerald);
           background: rgba(16, 185, 129, 0.09);
         }
-        .db-metric-card.amber .db-metric-top svg {
+        .db-metric-card.amber .db-metric-icon {
           color: var(--accent-amber);
           background: rgba(245, 158, 11, 0.10);
         }
-        .db-metric-card.rose .db-metric-top svg {
+        .db-metric-card.rose .db-metric-icon {
           color: var(--accent-rose);
           background: rgba(244, 63, 94, 0.10);
         }

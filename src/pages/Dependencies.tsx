@@ -6,6 +6,7 @@ import { useTranslation } from '../utils/i18n';
 import { LoadingState, NoDataState } from '../components/DataState';
 import CustomSelect from '../components/CustomSelect';
 import { techLogoFor } from '../components/TechIcon';
+import IconPack from '../components/IconPack';
 
 interface DependenciesProps {
   namespace: string;
@@ -240,6 +241,26 @@ const formatDependencyRate = (value: number) => {
   if (!Number.isFinite(value) || value <= 0) return '0.0%';
   return `${value.toFixed(value >= 10 ? 1 : 2)}%`;
 };
+
+const formatDependencyShare = (value: number) => {
+  if (!Number.isFinite(value) || value <= 0) return '0%';
+  if (value < 1) return '<1%';
+  return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
+};
+
+const DEPENDENCY_METRIC_ICONS = {
+  total: '/observability-icons/topology.svg',
+  latency: '/observability-icons/clock-bolt.svg',
+  traffic: '/observability-icons/chart-arrows-vertical.svg',
+  clean: '/observability-icons/shield-check.svg',
+  errors: '/observability-icons/alert-triangle.svg'
+} as const;
+
+type DependencyMetricIconName = keyof typeof DEPENDENCY_METRIC_ICONS;
+
+function DependencyMetricIcon({ name }: { name: DependencyMetricIconName }) {
+  return <IconPack src={DEPENDENCY_METRIC_ICONS[name]} className="dependency-metric-icon" />;
+}
 
 const HEALTH_STATUS_ICONS = {
   operational: '/status-icons/circle-check.svg',
@@ -565,13 +586,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
     };
   }, [filteredItems]);
 
-  const maxValues = useMemo(() => {
-    const list = Object.values(accumulated);
-    const maxLatency = Math.max(...list.map(i => i.avgDurationMs), 1);
-    const maxThroughput = Math.max(...list.map(i => i.requestCount), 1);
-    return { maxLatency, maxThroughput };
-  }, [accumulated]);
-
   const getHealthMeta = (item: AccumulatedDependency) => {
     if (!item.isActive) {
       return {
@@ -651,7 +665,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
         <div className="dependency-metric-card indigo">
           <div className="dependency-metric-top">
             <span>{t('Total Dependencies')}</span>
-            <DependencyIcon name="network" />
+            <DependencyMetricIcon name="total" />
           </div>
           <strong>{formatDependencyNumber(summaryMetrics.count)}</strong>
           <em>{formatDependencyNumber(filteredItems.filter(item => item.isActive).length)} {t('active')}</em>
@@ -659,7 +673,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
         <div className="dependency-metric-card emerald">
           <div className="dependency-metric-top">
             <span>{t('Avg Latency')}</span>
-            <DependencyIcon name="clock" />
+            <DependencyMetricIcon name="latency" />
           </div>
           <strong>{formatDependencyLatency(summaryMetrics.avgLatency)}</strong>
           <em>{t('weighted avg')}</em>
@@ -667,7 +681,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
         <div className="dependency-metric-card cyan">
           <div className="dependency-metric-top">
             <span>{t('Traffic')}</span>
-            <DependencyIcon name="traffic" />
+            <DependencyMetricIcon name="traffic" />
           </div>
           <strong>{formatDependencyNumber(summaryMetrics.calls)}</strong>
           <em>{t('calls')}</em>
@@ -675,7 +689,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
         <div className={`dependency-metric-card ${summaryMetrics.errorRate > 0 ? 'rose' : 'emerald'}`}>
           <div className="dependency-metric-top">
             <span>{t('Error Rate')}</span>
-            <DependencyIcon name={summaryMetrics.errorRate > 0 ? 'alert' : 'shield'} />
+            <DependencyMetricIcon name={summaryMetrics.errorRate > 0 ? 'errors' : 'clean'} />
           </div>
           <strong>{formatDependencyRate(summaryMetrics.errorRate)}</strong>
           <em>{summaryMetrics.errorRate > 0 ? t('errors') : t('clean')}</em>
@@ -740,12 +754,12 @@ export default function Dependencies({ namespace }: DependenciesProps) {
               <span>{t('Latency')}</span>
               <span>{t('Traffic')}</span>
               <span>{t('Errors')}</span>
-              <span>{t('Impact')}</span>
+              <span>{t('Share')}</span>
             </div>
 
             {filteredItems.map(item => {
               const health = getHealthMeta(item);
-              const impactPct = maxValues.maxThroughput > 0 ? (item.requestCount / maxValues.maxThroughput) * 100 : 0;
+              const trafficSharePct = summaryMetrics.calls > 0 && item.isActive ? (item.requestCount / summaryMetrics.calls) * 100 : 0;
               const tpmVal = item.isActive ? item.requestCount / 60 : 0;
               const topConsumer = item.consumers[0];
               const rowTone = !item.isActive
@@ -819,11 +833,14 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                     </div>
                   </div>
 
-                  <div className="dependency-impact">
-                    <strong>{formatDependencyNumber(item.requestCount)}</strong>
-                    <span>{t('calls')}</span>
-                    <div className="dependency-impact-bar">
-                      <i style={{ width: `${Math.max(4, Math.min(100, impactPct))}%` }} />
+                  <div
+                    className="dependency-impact"
+                    style={{ '--dependency-share': `${Math.min(100, Math.max(0, trafficSharePct))}%` } as React.CSSProperties}
+                  >
+                    <span className="dependency-impact-ring" aria-hidden="true" />
+                    <div>
+                      <strong>{formatDependencyShare(trafficSharePct)}</strong>
+                      <span>{formatDependencyNumber(item.isActive ? item.requestCount : 0)} {t('calls')}</span>
                     </div>
                   </div>
                 </article>
