@@ -1,25 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-label="Vektor Trace">
   <defs>
-    <linearGradient id="bg" x1="16" y1="10" x2="114" y2="118" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#312e81"/>
-      <stop offset="0.48" stop-color="#6366f1"/>
+    <linearGradient id="vektor-bg" x1="14" y1="8" x2="116" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0f172a"/>
+      <stop offset="0.52" stop-color="#2563eb"/>
       <stop offset="1" stop-color="#06b6d4"/>
     </linearGradient>
-    <linearGradient id="v" x1="31" y1="31" x2="97" y2="97" gradientUnits="userSpaceOnUse">
+    <linearGradient id="vektor-mark" x1="30" y1="31" x2="98" y2="100" gradientUnits="userSpaceOnUse">
       <stop stop-color="#ffffff"/>
-      <stop offset="0.58" stop-color="#ecfeff"/>
-      <stop offset="1" stop-color="#c7d2fe"/>
+      <stop offset="0.56" stop-color="#eef6ff"/>
+      <stop offset="1" stop-color="#bfdbfe"/>
     </linearGradient>
-    <linearGradient id="trace" x1="31" y1="44" x2="99" y2="44" gradientUnits="userSpaceOnUse">
+    <linearGradient id="vektor-route" x1="30" y1="45" x2="98" y2="45" gradientUnits="userSpaceOnUse">
       <stop stop-color="#67e8f9"/>
-      <stop offset="0.55" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#a78bfa"/>
+      <stop offset="0.5" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#93c5fd"/>
     </linearGradient>
+    <radialGradient id="vektor-node" cx="36%" cy="24%" r="70%">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#dbeafe"/>
+    </radialGradient>
   </defs>
-  <rect x="10" y="8" width="108" height="112" rx="28" fill="url(#bg)"/>
-  <path d="M34 34 64 96 94 34" stroke="url(#v)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M32 46c12 12 20 18 32 18 16 0 20-15 32-24" stroke="url(#trace)" stroke-width="5.5" stroke-linecap="round"/>
-  <circle cx="32" cy="46" r="5.2" fill="#ecfeff" stroke="#22d3ee" stroke-width="2"/>
-  <circle cx="64" cy="64" r="5.8" fill="#ffffff" stroke="#818cf8" stroke-width="2.2"/>
-  <circle cx="96" cy="40" r="5.2" fill="#f5f3ff" stroke="#a78bfa" stroke-width="2"/>
+  <rect x="8" y="8" width="112" height="112" rx="30" fill="url(#vektor-bg)"/>
+  <path d="M30 34 64 99 98 34" stroke="#020617" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" opacity="0.18"/>
+  <path d="M30 34 64 99 98 34" stroke="url(#vektor-mark)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M31 43c13 8 20 23 33 23 14 0 20-15 33-23" stroke="url(#vektor-route)" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="31" cy="43" r="6.2" fill="url(#vektor-node)" stroke="#22d3ee" stroke-width="2.1"/>
+  <circle cx="64" cy="66" r="6.2" fill="#ffffff" stroke="#60a5fa" stroke-width="2.1"/>
+  <circle cx="97" cy="43" r="6.2" fill="url(#vektor-node)" stroke="#93c5fd" stroke-width="2.1"/>
+  <circle cx="64" cy="99" r="5" fill="#ffffff" opacity="0.96"/>
 </svg>

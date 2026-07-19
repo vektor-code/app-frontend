@@ -40,12 +40,15 @@ const chartLeft = 54;
 const chartRight = 22;
 const chartTop = 22;
 const chartBottom = 38;
-const trafficColor = '#2563eb';
-const errorColor = '#e11d48';
-const latencyColor = '#0891b2';
-const tailLatencyColor = '#d97706';
-const dbColor = '#7c3aed';
-const dbLatencyColor = '#059669';
+const trafficColor = 'var(--accent-indigo)';
+const trafficStartColor = 'var(--accent-indigo-light)';
+const errorColor = 'var(--accent-rose)';
+const errorStartColor = '#fb7185';
+const latencyColor = 'var(--accent-cyan)';
+const tailLatencyColor = 'var(--accent-violet)';
+const dbColor = 'var(--accent-violet)';
+const dbStartColor = 'var(--accent-indigo-light)';
+const dbLatencyColor = 'var(--accent-cyan)';
 
 export default function Dashboard({ namespaces, selectedNamespace, onSelectNamespace }: DashboardProps) {
   const { t } = useTranslation();
@@ -552,11 +555,11 @@ function TrafficChart({
       <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="apm-svg-chart" onMouseLeave={() => setHoverIndex(null)}>
         <defs>
           <linearGradient id={`traffic-${id}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#60a5fa" />
+            <stop offset="0%" stopColor={trafficStartColor} />
             <stop offset="100%" stopColor={trafficColor} />
           </linearGradient>
           <linearGradient id={`errors-${id}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fb7185" />
+            <stop offset="0%" stopColor={errorStartColor} />
             <stop offset="100%" stopColor={errorColor} />
           </linearGradient>
         </defs>
@@ -708,7 +711,7 @@ function DatabaseChart({
       >
         <defs>
           <linearGradient id={`db-bars-${id}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#a78bfa" />
+            <stop offset="0%" stopColor={dbStartColor} />
             <stop offset="100%" stopColor={dbColor} />
           </linearGradient>
           <linearGradient id={`db-area-${id}`} x1="0" y1="0" x2="0" y2="1">
@@ -1054,7 +1057,7 @@ function toneColorFor(tone: ToneName) {
     case 'critical':
       return '#e11d48';
     case 'info':
-      return '#2563eb';
+      return 'var(--accent-indigo)';
     default:
       return '#64748b';
   }

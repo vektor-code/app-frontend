@@ -14,31 +14,46 @@
   
   --border-primary: #e2e8f0;
   --border-secondary: #cbd5e1;
-  --border-accent: rgba(79, 70, 229, 0.15);
+  --border-accent: rgba(99, 102, 241, 0.16);
   
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-tertiary: #64748b;
   --text-muted: #94a3b8;
   
-  --accent-indigo: #4f46e5;
-  --accent-indigo-light: #6366f1;
-  --accent-violet: #7c3aed;
+  --accent-indigo: #2563eb;
+  --accent-indigo-light: #3b82f6;
+  --accent-violet: #6366f1;
   --accent-cyan: #0891b2;
   --accent-emerald: #059669;
   --accent-amber: #d97706;
   --accent-rose: #e11d48;
   --accent-blue: #2563eb;
   
-  --gradient-primary: linear-gradient(135deg, #4f46e5, #7c3aed);
+  --gradient-primary: linear-gradient(135deg, #2563eb, #06b6d4);
   --gradient-header: linear-gradient(90deg, #ffffff 0%, #f8fafc 100%);
-  --gradient-card: linear-gradient(180deg, rgba(79, 70, 229, 0.02) 0%, transparent 100%);
-  --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(79, 70, 229, 0.04) 0%, transparent 60%);
+  --gradient-card: linear-gradient(180deg, rgba(99, 102, 241, 0.035) 0%, transparent 100%);
+  --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(37, 99, 235, 0.05) 0%, transparent 60%);
+  --card-glow-a: rgba(37, 99, 235, 0.035);
+  --card-glow-b: rgba(8, 145, 178, 0.025);
+  --card-glow-x: 100%;
+  --card-glow-y: 0%;
+  --card-glow-x2: 14%;
+  --card-glow-y2: 100%;
+  --card-glow-size: 36%;
+  --card-glow-size2: 42%;
+  --card-surface-angle: 145deg;
+  --card-edge-accent: var(--accent-indigo);
+  --card-brand-surface: radial-gradient(circle at var(--card-glow-x) var(--card-glow-y), var(--card-glow-a), transparent var(--card-glow-size)), radial-gradient(circle at var(--card-glow-x2) var(--card-glow-y2), var(--card-glow-b), transparent var(--card-glow-size2)), linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 98%, #ffffff), var(--bg-card));
+  --card-brand-surface-strong: radial-gradient(circle at var(--card-glow-x) var(--card-glow-y), rgba(37, 99, 235, 0.055), transparent calc(var(--card-glow-size) + 6%)), radial-gradient(circle at var(--card-glow-x2) var(--card-glow-y2), rgba(8, 145, 178, 0.04), transparent calc(var(--card-glow-size2) + 6%)), linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 98%, #ffffff), color-mix(in srgb, var(--bg-primary) 94%, #ffffff));
+  --card-brand-border: color-mix(in srgb, var(--card-edge-accent) 14%, var(--border-primary));
+  --card-brand-shadow: 0 12px 26px rgba(15, 23, 42, 0.055);
+  --card-brand-shadow-hover: 0 18px 40px rgba(15, 23, 42, 0.095);
   
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
-  --shadow-glow: 0 0 15px rgba(79, 70, 229, 0.1);
+  --shadow-glow: 0 0 15px rgba(37, 99, 235, 0.13);
   
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -71,24 +86,39 @@ body.dark-theme {
   --text-tertiary: #94a3b8;
   --text-muted: #64748b;
   
-  --accent-indigo: #6366f1;
-  --accent-indigo-light: #818cf8;
-  --accent-violet: #a78bfa;
-  --accent-cyan: #38bdf8;
+  --accent-indigo: #60a5fa;
+  --accent-indigo-light: #93c5fd;
+  --accent-violet: #818cf8;
+  --accent-cyan: #22d3ee;
   --accent-emerald: #34d399;
   --accent-amber: #fbbf24;
   --accent-rose: #fb7185;
   --accent-blue: #60a5fa;
   
-  --gradient-primary: linear-gradient(135deg, #818cf8 0%, #a78bfa 100%);
+  --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #22d3ee 100%);
   --gradient-header: linear-gradient(90deg, #090d16 0%, #0e1322 100%);
-  --gradient-card: linear-gradient(180deg, rgba(99, 102, 241, 0.08) 0%, rgba(99, 102, 241, 0.01) 100%);
-  --gradient-glow: radial-gradient(circle at top, rgba(99, 102, 241, 0.18) 0%, transparent 70%);
+  --gradient-card: linear-gradient(180deg, rgba(96, 165, 250, 0.075) 0%, rgba(96, 165, 250, 0.01) 100%);
+  --gradient-glow: radial-gradient(circle at top, rgba(96, 165, 250, 0.18) 0%, transparent 70%);
+  --card-glow-a: rgba(96, 165, 250, 0.075);
+  --card-glow-b: rgba(34, 211, 238, 0.045);
+  --card-glow-x: 100%;
+  --card-glow-y: 0%;
+  --card-glow-x2: 14%;
+  --card-glow-y2: 100%;
+  --card-glow-size: 38%;
+  --card-glow-size2: 44%;
+  --card-surface-angle: 145deg;
+  --card-edge-accent: var(--accent-indigo);
+  --card-brand-surface: radial-gradient(circle at var(--card-glow-x) var(--card-glow-y), var(--card-glow-a), transparent var(--card-glow-size)), radial-gradient(circle at var(--card-glow-x2) var(--card-glow-y2), var(--card-glow-b), transparent var(--card-glow-size2)), linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 94%, #111827), var(--bg-card));
+  --card-brand-surface-strong: radial-gradient(circle at var(--card-glow-x) var(--card-glow-y), rgba(96, 165, 250, 0.11), transparent calc(var(--card-glow-size) + 6%)), radial-gradient(circle at var(--card-glow-x2) var(--card-glow-y2), rgba(34, 211, 238, 0.07), transparent calc(var(--card-glow-size2) + 6%)), linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 92%, #111827), color-mix(in srgb, var(--bg-secondary) 88%, #020617));
+  --card-brand-border: color-mix(in srgb, var(--card-edge-accent) 30%, var(--border-primary));
+  --card-brand-shadow: 0 14px 34px rgba(2, 6, 23, 0.30);
+  --card-brand-shadow-hover: 0 22px 48px rgba(2, 6, 23, 0.42);
   
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.6);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.8);
-  --shadow-glow: 0 0 25px rgba(99, 102, 241, 0.2);
+  --shadow-glow: 0 0 25px rgba(96, 165, 250, 0.22);
 }
 
 /* Reset & Base */
@@ -372,7 +402,7 @@ body {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #6366f1, #3b82f6);
+  background: var(--gradient-primary);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -984,7 +1014,7 @@ thead th:last-child .resize-handle {
 }
 
 .waterfall-bar.client {
-  background: linear-gradient(90deg, var(--accent-cyan), #0891b2);
+  background: linear-gradient(90deg, var(--accent-cyan), color-mix(in srgb, var(--accent-cyan) 72%, var(--accent-indigo)));
   box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
 }
 
@@ -3881,7 +3911,7 @@ body.dark-theme .flowing-line {
 .admin-resource-card {
   position: relative;
   border-radius: 10px !important;
-  background: linear-gradient(135deg, var(--bg-secondary), color-mix(in srgb, var(--bg-tertiary) 28%, var(--bg-secondary))) !important;
+  background: var(--card-brand-surface) !important;
   box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
@@ -10917,6 +10947,232 @@ body.dark-theme .apm-chart-overlay {
   width: 13px;
   height: 13px;
   accent-color: var(--accent-blue);
+}
+
+/* Shared card surfaces */
+.card,
+.stat-card,
+.live-metric-card,
+.alert-stat-card,
+.admin-summary-card,
+.admin-resource-card,
+.admin-infra-card,
+.admin-cluster-card,
+.admin-integration-card,
+.admin-instrumentation-card,
+.admin-storage-card:not(.danger),
+.admin-access-card,
+.admin-users-table-card,
+.admin-access-full-card,
+.admin-access-full-card-lg,
+.admin-template-scope-card,
+.admin-permission-card,
+.admin-template-default-card,
+.admin-empty-card,
+.apm-health-panel,
+.apm-signal-card,
+.apm-chart-panel,
+.apm-list-panel,
+.service-map-stat-card,
+.service-map-node-card,
+.service-map-path-card,
+.service-map-trace-card,
+.service-map-connection-card,
+.dependency-metric-card,
+.dependency-health-card,
+.trace-detail-metric-card,
+.trace-service-card,
+.trace-waterfall-controls {
+  background: var(--card-brand-surface);
+  border-color: color-mix(in srgb, var(--card-edge-accent) 8%, var(--border-primary));
+  box-shadow: var(--shadow-sm), var(--card-brand-shadow);
+}
+
+:where(
+  .stats-grid,
+  .live-metric-grid,
+  .admin-summary-grid,
+  .admin-infra-grid,
+  .admin-cluster-grid,
+  .admin-integration-grid,
+  .dependency-metric-grid,
+  .service-map-kpi-grid,
+  .trace-detail-metric-grid,
+  .apm-signal-grid,
+  .apm-chart-grid,
+  .trace-service-card-list,
+  .service-map-node-list,
+  .service-map-path-list,
+  .service-map-trace-list,
+  .service-map-connection-list
+) > *:nth-child(3n + 1) {
+  --card-glow-a: rgba(37, 99, 235, 0.04);
+  --card-glow-b: rgba(8, 145, 178, 0.022);
+  --card-edge-accent: var(--accent-indigo);
+  --card-glow-x: 100%;
+  --card-glow-y: 0%;
+  --card-glow-x2: 0%;
+  --card-glow-y2: 100%;
+}
+
+:where(
+  .stats-grid,
+  .live-metric-grid,
+  .admin-summary-grid,
+  .admin-infra-grid,
+  .admin-cluster-grid,
+  .admin-integration-grid,
+  .dependency-metric-grid,
+  .service-map-kpi-grid,
+  .trace-detail-metric-grid,
+  .apm-signal-grid,
+  .apm-chart-grid,
+  .trace-service-card-list,
+  .service-map-node-list,
+  .service-map-path-list,
+  .service-map-trace-list,
+  .service-map-connection-list
+) > *:nth-child(3n + 2) {
+  --card-glow-a: rgba(8, 145, 178, 0.04);
+  --card-glow-b: rgba(37, 99, 235, 0.024);
+  --card-edge-accent: var(--accent-cyan);
+  --card-glow-x: 0%;
+  --card-glow-y: 0%;
+  --card-glow-x2: 100%;
+  --card-glow-y2: 100%;
+}
+
+:where(
+  .stats-grid,
+  .live-metric-grid,
+  .admin-summary-grid,
+  .admin-infra-grid,
+  .admin-cluster-grid,
+  .admin-integration-grid,
+  .dependency-metric-grid,
+  .service-map-kpi-grid,
+  .trace-detail-metric-grid,
+  .apm-signal-grid,
+  .apm-chart-grid,
+  .trace-service-card-list,
+  .service-map-node-list,
+  .service-map-path-list,
+  .service-map-trace-list,
+  .service-map-connection-list
+) > *:nth-child(3n) {
+  --card-glow-a: rgba(99, 102, 241, 0.035);
+  --card-glow-b: rgba(8, 145, 178, 0.024);
+  --card-edge-accent: var(--accent-violet);
+  --card-glow-x: 100%;
+  --card-glow-y: 100%;
+  --card-glow-x2: 8%;
+  --card-glow-y2: 0%;
+}
+
+body.dark-theme :where(
+  .stats-grid,
+  .live-metric-grid,
+  .admin-summary-grid,
+  .admin-infra-grid,
+  .admin-cluster-grid,
+  .admin-integration-grid,
+  .dependency-metric-grid,
+  .service-map-kpi-grid,
+  .trace-detail-metric-grid,
+  .apm-signal-grid,
+  .apm-chart-grid,
+  .trace-service-card-list,
+  .service-map-node-list,
+  .service-map-path-list,
+  .service-map-trace-list,
+  .service-map-connection-list
+) > *:nth-child(3n + 1) {
+  --card-glow-a: rgba(96, 165, 250, 0.08);
+  --card-glow-b: rgba(34, 211, 238, 0.04);
+}
+
+body.dark-theme :where(
+  .stats-grid,
+  .live-metric-grid,
+  .admin-summary-grid,
+  .admin-infra-grid,
+  .admin-cluster-grid,
+  .admin-integration-grid,
+  .dependency-metric-grid,
+  .service-map-kpi-grid,
+  .trace-detail-metric-grid,
+  .apm-signal-grid,
+  .apm-chart-grid,
+  .trace-service-card-list,
+  .service-map-node-list,
+  .service-map-path-list,
+  .service-map-trace-list,
+  .service-map-connection-list
+) > *:nth-child(3n + 2) {
+  --card-glow-a: rgba(34, 211, 238, 0.075);
+  --card-glow-b: rgba(96, 165, 250, 0.045);
+}
+
+.stat-card.indigo,
+.admin-summary-card.indigo,
+.admin-resource-card,
+.admin-infra-card,
+.admin-cluster-card.editing,
+.admin-storage-card.primary,
+.apm-chart-panel,
+.dependency-metric-card.cyan,
+.trace-detail-metric-card:not(.healthy):not(.warning):not(.critical) {
+  background: var(--card-brand-surface-strong);
+}
+
+.apm-signal-card.healthy,
+.service-map-stat-card.healthy,
+.dependency-metric-card.emerald,
+.trace-detail-metric-card.healthy {
+  --card-edge-accent: var(--accent-emerald);
+  --card-glow-a: rgba(5, 150, 105, 0.045);
+}
+
+.apm-signal-card.warning,
+.service-map-stat-card.warning,
+.trace-detail-metric-card.warning {
+  --card-edge-accent: var(--accent-amber);
+  --card-glow-a: rgba(217, 119, 6, 0.045);
+}
+
+.apm-signal-card.critical,
+.service-map-stat-card.critical,
+.dependency-metric-card.rose,
+.trace-detail-metric-card.critical {
+  --card-edge-accent: var(--accent-rose);
+  --card-glow-a: rgba(225, 29, 72, 0.04);
+}
+
+.card:hover,
+.stat-card:hover,
+.live-metric-card:hover,
+.admin-summary-card:hover,
+.admin-resource-card:hover,
+.admin-infra-card:hover,
+.admin-cluster-card:hover,
+.admin-integration-card:hover,
+.admin-storage-card:not(.danger):hover,
+.admin-access-card:hover,
+.apm-signal-card:hover,
+.apm-chart-panel:hover,
+.service-map-stat-card:hover,
+.dependency-metric-card:hover,
+.trace-detail-metric-card:hover,
+.trace-service-card:hover {
+  border-color: var(--card-brand-border);
+  box-shadow: var(--shadow-md), var(--card-brand-shadow-hover);
+}
+
+.apm-signal-icon,
+.service-map-stat-icon,
+.trace-detail-metric-icon {
+  background: color-mix(in srgb, var(--card-edge-accent) 10%, transparent);
+  color: var(--card-edge-accent);
 }
 
 @media (max-width: 1100px) {
