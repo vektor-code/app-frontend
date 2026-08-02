@@ -41,12 +41,23 @@ class ApiClient {
     const res = await fetch(url, { ...options, headers });
     if (res.status === 401) {
       localStorage.removeItem('token');
-      if (!path.includes('/auth/login') && !path.includes('/auth/me')) {
+      if (!path.includes('/auth/login') && !path.includes('/auth/lookup') && !path.includes('/auth/me')) {
         window.location.reload();
       }
       throw new Error('Unauthorized');
     }
-    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+    if (!res.ok) {
+      let message = `API ${res.status}: ${res.statusText}`;
+      try {
+        const body = await res.json();
+        if (typeof body?.error === 'string' && body.error.trim()) {
+          message = body.error;
+        }
+      } catch {
+        // keep status text
+      }
+      throw new Error(message);
+    }
     return res.json();
   }
 
@@ -63,6 +74,10 @@ class ApiClient {
 
   login(credentials: { username: string; password: string; mode: string }) {
     return this.post<{ token: string; user: any }>('/auth/login', credentials);
+  }
+
+  lookupAccount(payload: { username: string; mode: string }) {
+    return this.post<{ exists: boolean }>('/auth/lookup', payload);
   }
 
   getCurrentUser() {

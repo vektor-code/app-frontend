@@ -185,10 +185,7 @@ export function AuthVisual() {
     <aside className="apm-auth-visual" aria-hidden="true">
       <div className="apm-auth-visual-brand">
         <img src="/branding/crnet-apm-mark.png" alt="" className="apm-auth-visual-brand__mark" />
-        <div>
-          <strong>CRNET APM</strong>
-          <span>Application performance monitoring</span>
-        </div>
+        <strong>CRNET APM</strong>
       </div>
 
       <div
@@ -229,6 +226,10 @@ export function AuthVisual() {
               `,
             }}
           >
+            <div className="apm-visual-live">
+              <b>LIVE</b>
+              <span>12.4k spans / min</span>
+            </div>
             <div className="apm-visual-card-top">
               <strong>42</strong>
               <span className="apm-visual-delta">ms p95</span>
@@ -238,10 +239,6 @@ export function AuthVisual() {
               <i className="ok" />
               <i className="warn" />
               <i className="slow" />
-            </div>
-            <div className="apm-visual-tooltip">
-              <b>LIVE</b>
-              <span>12.4k spans / min</span>
             </div>
           </div>
         </div>

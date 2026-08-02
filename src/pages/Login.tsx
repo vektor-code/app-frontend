@@ -1,4 +1,5 @@
-import React, { useState, type CSSProperties } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { KeyRound, Users } from 'lucide-react';
 import { api } from '../api/client';
 import { useTranslation } from '../utils/i18n';
 import { AuthVisual } from '../components/AuthVisual';
@@ -30,11 +31,18 @@ export default function Login({ onLogin }: LoginProps) {
   const [username, setUsername] = useState(remembered.username);
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(remembered.remember);
-  // Local is primary; LDAP stays available but disabled by default in Vault.
   const [mode, setMode] = useState<'local' | 'ldap'>('local');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(() => document.body.classList.contains('dark-theme'));
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!passwordVisible) return;
+    const frame = requestAnimationFrame(() => passwordRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [passwordVisible]);
 
   const toggleTheme = () => {
     if (isDark) {
@@ -48,16 +56,59 @@ export default function Login({ onLogin }: LoginProps) {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!username || !password) return;
+  const resetPasswordStep = () => {
+    setPasswordVisible(false);
+    setPassword('');
+  };
 
-    try {
-      setLoading(true);
+  const onUsernameChange = (value: string) => {
+    setUsername(value);
+    if (passwordVisible) {
+      resetPasswordStep();
       setError(null);
-      const data = await api.login({ username, password, mode });
+    }
+  };
+
+  const switchMode = (next: 'local' | 'ldap') => {
+    if (next === mode) return;
+    setMode(next);
+    setError(null);
+    resetPasswordStep();
+  };
+
+  const revealPassword = async () => {
+    setError(null);
+    const trimmed = username.trim();
+    if (!trimmed) {
+      setError(t('Enter your username to continue.'));
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await api.lookupAccount({ username: trimmed, mode });
+      if (!result?.exists) {
+        setError(t('No account found for this username.'));
+        resetPasswordStep();
+        return;
+      }
+      setUsername(trimmed);
+      setPasswordVisible(true);
+    } catch (err: any) {
+      setError(err.message || t('Unable to verify account'));
+      resetPasswordStep();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signIn = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const data = await api.login({ username: username.trim(), password, mode });
       if (remember) {
-        localStorage.setItem(REMEMBER_KEY, JSON.stringify({ username, remember: true }));
+        localStorage.setItem(REMEMBER_KEY, JSON.stringify({ username: username.trim(), remember: true }));
       } else {
         localStorage.removeItem(REMEMBER_KEY);
       }
@@ -67,6 +118,16 @@ export default function Login({ onLogin }: LoginProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordVisible) {
+      await revealPassword();
+      return;
+    }
+    if (!password) return;
+    await signIn();
   };
 
   return (
@@ -104,30 +165,22 @@ export default function Login({ onLogin }: LoginProps) {
         <form className="apm-auth-form" onSubmit={handleSubmit}>
           <h1>{t('Welcome back')}</h1>
 
-          <div className="apm-auth-tabs">
+          <div className="apm-auth-tabs" data-mode={mode}>
+            <span className="apm-auth-tab-pill" aria-hidden="true" />
             <button
               type="button"
               className={`apm-auth-tab ${mode === 'local' ? 'active' : ''}`}
-              onClick={() => {
-                setMode('local');
-                setError(null);
-              }}
+              onClick={() => switchMode('local')}
             >
-              <span
-                className="apm-auth-tab-icon"
-                style={{ '--tab-icon': 'url("/dashboard-icons/shield-check.svg")' } as CSSProperties}
-              />
+              <KeyRound size={15} strokeWidth={2.2} aria-hidden />
               <span>{t('Local')}</span>
             </button>
             <button
               type="button"
               className={`apm-auth-tab ${mode === 'ldap' ? 'active' : ''}`}
-              onClick={() => {
-                setMode('ldap');
-                setError(null);
-              }}
+              onClick={() => switchMode('ldap')}
             >
-              <img src="/logos/active-directory.svg" alt="" />
+              <Users size={15} strokeWidth={2.2} aria-hidden />
               <span>{t('LDAP')}</span>
             </button>
           </div>
@@ -142,24 +195,30 @@ export default function Login({ onLogin }: LoginProps) {
             autoComplete="username"
             autoFocus
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(e) => onUsernameChange(e.target.value)}
             placeholder="admin"
             disabled={loading}
             required
           />
 
-          <label htmlFor="password">{t('Password')}</label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            disabled={loading}
-            required
-          />
+          <div className={`apm-auth-password-slot${passwordVisible ? ' is-open' : ''}`}>
+            <div className="apm-auth-password-inner">
+              <label htmlFor="password">{t('Password')}</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                ref={passwordRef}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                disabled={loading}
+                required={passwordVisible}
+                tabIndex={passwordVisible ? 0 : -1}
+              />
+            </div>
+          </div>
 
           <label className="apm-auth-remember">
             <input
@@ -171,7 +230,13 @@ export default function Login({ onLogin }: LoginProps) {
           </label>
 
           <button className="apm-auth-submit" type="submit" disabled={loading}>
-            {loading ? t('Signing in…') : t('Sign in')}
+            {loading
+              ? passwordVisible
+                ? t('Signing in…')
+                : t('Checking…')
+              : passwordVisible
+                ? t('Sign in')
+                : t('Continue')}
           </button>
         </form>
       </main>
