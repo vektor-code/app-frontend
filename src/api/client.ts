@@ -20,7 +20,33 @@ import type {
 
 const API_BASE = '/api';
 
+type JwtClaims = { exp?: number; sub?: string };
+
+function decodeToken(token: string): JwtClaims | null {
+  try {
+    const part = token.split('.')[1];
+    if (!part) return null;
+    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function tokenMsUntilExpiry(token: string): number {
+  const claims = decodeToken(token);
+  if (!claims?.exp) return -Infinity;
+  return claims.exp * 1000 - Date.now();
+}
+
+function shouldRefreshToken(token: string, skewMs = 60_000): boolean {
+  if (!token) return false;
+  return tokenMsUntilExpiry(token) <= skewMs;
+}
+
 class ApiClient {
+  private refreshPromise: Promise<string> | null = null;
+
   private getHeaders(): HeadersInit {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -32,16 +58,78 @@ class ApiClient {
     return headers;
   }
 
-  async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  private async refreshAccessToken(): Promise<string> {
+    if (this.refreshPromise) return this.refreshPromise;
+
+    this.refreshPromise = (async () => {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Unauthorized');
+
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) {
+        localStorage.removeItem('token');
+        throw new Error('Unauthorized');
+      }
+      const data = await res.json();
+      if (typeof data?.token !== 'string' || !data.token) {
+        localStorage.removeItem('token');
+        throw new Error('Unauthorized');
+      }
+      localStorage.setItem('token', data.token);
+      return data.token as string;
+    })();
+
+    try {
+      return await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
+    }
+  }
+
+  async request<T>(path: string, options: RequestInit = {}, _retried = false): Promise<T> {
+    const isAuthPublic =
+      path.includes('/auth/login') ||
+      path.includes('/auth/lookup') ||
+      path.includes('/auth/refresh');
+
+    if (!isAuthPublic) {
+      const token = localStorage.getItem('token');
+      if (token && shouldRefreshToken(token)) {
+        try {
+          await this.refreshAccessToken();
+        } catch {
+          // Fall through; request may still succeed or return 401.
+        }
+      }
+    }
+
     const url = `${API_BASE}${path}`;
     const headers = {
       ...this.getHeaders(),
       ...options.headers,
     };
     const res = await fetch(url, { ...options, headers });
+
+    if (res.status === 401 && !isAuthPublic && !_retried) {
+      try {
+        await this.refreshAccessToken();
+        return this.request<T>(path, options, true);
+      } catch {
+        localStorage.removeItem('token');
+        window.location.reload();
+        throw new Error('Unauthorized');
+      }
+    }
+
     if (res.status === 401) {
       localStorage.removeItem('token');
-      if (!path.includes('/auth/login') && !path.includes('/auth/lookup') && !path.includes('/auth/me')) {
+      if (!isAuthPublic && !path.includes('/auth/me')) {
         window.location.reload();
       }
       throw new Error('Unauthorized');
@@ -73,11 +161,15 @@ class ApiClient {
   }
 
   login(credentials: { username: string; password: string; mode: string }) {
-    return this.post<{ token: string; user: any }>('/auth/login', credentials);
+    return this.post<{ token: string; user: any; expires_in?: number }>('/auth/login', credentials);
   }
 
   lookupAccount(payload: { username: string; mode: string }) {
     return this.post<{ exists: boolean }>('/auth/lookup', payload);
+  }
+
+  refresh() {
+    return this.refreshAccessToken();
   }
 
   getCurrentUser() {

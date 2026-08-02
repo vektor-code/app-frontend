@@ -117,48 +117,210 @@
 .apm-model-scene {
   position: relative;
   z-index: 3;
-  width: min(300px, 82%);
-  margin-bottom: -4px;
-  perspective: 1200px;
+  width: min(280px, 78%);
+  height: 260px;
+  margin-bottom: 8px;
+  perspective: 1400px;
   transform-style: preserve-3d;
+  display: grid;
+  place-items: center;
 }
 
 .apm-model-pivot {
   position: relative;
+  width: 160px;
+  height: 160px;
   transform-style: preserve-3d;
   transform:
     translate3d(var(--model-translate-x, 0px), var(--model-translate-y, 0px), 24px)
-    rotateX(var(--model-rotate-x, 12deg))
-    rotateY(var(--model-rotate-y, -18deg))
+    rotateX(var(--model-rotate-x, 18deg))
+    rotateY(var(--model-rotate-y, -28deg))
     scale(var(--model-scale, 1));
   will-change: transform;
 }
 
-.apm-model {
+.apm-crystal {
   position: relative;
-  display: block;
   width: 100%;
-  height: auto;
-  filter: drop-shadow(var(--model-shadow-x, -10px) var(--model-shadow-y, 24px) 24px color-mix(in srgb, #0e7490 30%, transparent));
-  pointer-events: none;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.apm-crystal-cube {
+  position: absolute;
+  inset: 18px;
+  transform-style: preserve-3d;
+  transform: translateZ(0);
+}
+
+.apm-crystal-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 10px;
+  background:
+    linear-gradient(145deg, rgba(165, 243, 252, 0.42), rgba(14, 116, 144, 0.55) 55%, rgba(15, 118, 110, 0.62));
+  box-shadow:
+    inset 0 0 24px rgba(255, 255, 255, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(2px);
+  overflow: hidden;
+}
+
+.apm-crystal-face--front { transform: translateZ(62px); }
+.apm-crystal-face--back {
+  transform: rotateY(180deg) translateZ(62px);
+  background: linear-gradient(160deg, rgba(8, 145, 178, 0.55), rgba(15, 23, 42, 0.45));
+}
+.apm-crystal-face--right {
+  transform: rotateY(90deg) translateZ(62px);
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.4), rgba(15, 118, 110, 0.7));
+}
+.apm-crystal-face--left {
+  transform: rotateY(-90deg) translateZ(62px);
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.45), rgba(21, 94, 117, 0.72));
+}
+.apm-crystal-face--top {
+  transform: rotateX(90deg) translateZ(62px);
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.55), transparent 42%),
+    linear-gradient(135deg, #a5f3fc, #22d3ee 45%, #0e7490);
+}
+.apm-crystal-face--bottom {
+  transform: rotateX(-90deg) translateZ(62px);
+  background: linear-gradient(180deg, rgba(15, 118, 110, 0.7), rgba(15, 23, 42, 0.55));
+}
+
+.apm-face-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 58%;
+  width: 62%;
+}
+
+.apm-face-bars i {
+  flex: 1;
+  border-radius: 3px 3px 1px 1px;
+  background: linear-gradient(180deg, #ecfeff, rgba(103, 232, 249, 0.55));
+  box-shadow: 0 0 10px rgba(165, 243, 252, 0.45);
+  transform-origin: bottom center;
+  animation: apm-bar-pulse 2.8s ease-in-out infinite;
+}
+
+.apm-face-bars i:nth-child(2) { animation-delay: 0.2s; }
+.apm-face-bars i:nth-child(3) { animation-delay: 0.4s; }
+.apm-face-bars i:nth-child(4) { animation-delay: 0.15s; }
+.apm-face-bars i:nth-child(5) { animation-delay: 0.35s; }
+
+.apm-face-bars--dense {
+  gap: 5px;
+  width: 55%;
+}
+
+.apm-face-wave {
+  width: 70%;
+  height: 42%;
+  border-radius: 999px;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(255, 255, 255, 0.55), transparent 40%),
+    linear-gradient(90deg, transparent, rgba(236, 254, 255, 0.7), transparent);
+  opacity: 0.85;
+  animation: apm-wave-drift 3.6s ease-in-out infinite;
+}
+
+.apm-face-trace {
+  width: 78%;
+  height: 78%;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.45));
 }
 
 .apm-trace-pulse {
-  stroke-dasharray: 2 14;
-  animation: apm-trace-flow 7s linear infinite;
+  stroke-dasharray: 2 12;
+  animation: apm-trace-flow 6s linear infinite;
+}
+
+.apm-crystal-core {
+  position: absolute;
+  inset: 42px;
+  border-radius: 18px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.55), rgba(34, 211, 238, 0.2) 45%, transparent 70%);
+  transform: translateZ(0);
+  filter: blur(1px);
+  animation: apm-core-glow 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.apm-crystal-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  border: 1.5px solid rgba(103, 232, 249, 0.45);
+  box-shadow:
+    0 0 18px rgba(34, 211, 238, 0.25),
+    inset 0 0 12px rgba(165, 243, 252, 0.15);
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+
+.apm-crystal-ring--outer {
+  width: 210px;
+  height: 210px;
+  margin: -105px 0 0 -105px;
+  transform: rotateX(72deg) translateZ(-8px);
+  animation: apm-ring-spin-outer 18s linear infinite;
+}
+
+.apm-crystal-ring--inner {
+  width: 168px;
+  height: 168px;
+  margin: -84px 0 0 -84px;
+  border-style: dashed;
+  border-color: rgba(45, 212, 191, 0.5);
+  transform: rotateX(72deg) translateZ(10px);
+  animation: apm-ring-spin-inner 12s linear infinite reverse;
+}
+
+.apm-crystal-nodes {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+
+.apm-node {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ecfeff;
+  box-shadow: 0 0 12px rgba(103, 232, 249, 0.9);
+  animation: apm-node-pulse 2.4s ease-in-out infinite;
+}
+
+.apm-node-a { top: 8%; left: 46%; transform: translateZ(90px); }
+.apm-node-b { top: 48%; right: 2%; transform: translateZ(70px); animation-delay: 0.3s; background: #67e8f9; }
+.apm-node-c { bottom: 10%; left: 18%; transform: translateZ(55px); animation-delay: 0.6s; background: #5eead4; }
+.apm-node-d { top: 22%; left: 6%; transform: translateZ(75px); animation-delay: 0.15s; background: #a5f3fc; }
+
+.apm-model-scene.is-breathing .apm-crystal-core {
+  animation-duration: 2.6s;
 }
 
 .apm-model-floor {
   position: absolute;
-  left: 16%;
-  right: 16%;
-  bottom: -6px;
-  height: 18px;
+  left: -18%;
+  right: -18%;
+  bottom: -28px;
+  height: 28px;
   border-radius: 50%;
-  background: radial-gradient(ellipse at center, color-mix(in srgb, #0e7490 28%, transparent), transparent 72%);
-  transform: translateZ(-48px) rotateX(78deg);
-  filter: blur(3px);
-  opacity: 0.75;
+  background: radial-gradient(ellipse at center, color-mix(in srgb, #0e7490 38%, transparent), transparent 72%);
+  transform: translateZ(-70px) rotateX(78deg);
+  filter: blur(4px);
+  opacity: 0.85;
   pointer-events: none;
 }
 
@@ -486,6 +648,36 @@
   to { stroke-dashoffset: -120; }
 }
 
+@keyframes apm-ring-spin-outer {
+  from { transform: rotateX(72deg) rotateZ(0deg) translateZ(-8px); }
+  to { transform: rotateX(72deg) rotateZ(360deg) translateZ(-8px); }
+}
+
+@keyframes apm-ring-spin-inner {
+  from { transform: rotateX(72deg) rotateZ(0deg) translateZ(10px); }
+  to { transform: rotateX(72deg) rotateZ(360deg) translateZ(10px); }
+}
+
+@keyframes apm-bar-pulse {
+  0%, 100% { transform: scaleY(1); opacity: 0.75; }
+  50% { transform: scaleY(1.18); opacity: 1; }
+}
+
+@keyframes apm-wave-drift {
+  0%, 100% { transform: translateX(-6%) scaleX(0.92); opacity: 0.65; }
+  50% { transform: translateX(6%) scaleX(1.05); opacity: 1; }
+}
+
+@keyframes apm-core-glow {
+  0%, 100% { opacity: 0.55; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+@keyframes apm-node-pulse {
+  0%, 100% { opacity: 0.5; box-shadow: 0 0 8px rgba(103, 232, 249, 0.45); }
+  50% { opacity: 1; box-shadow: 0 0 18px rgba(165, 243, 252, 0.95); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .apm-orb,
   .apm-icon-tile,
@@ -493,7 +685,12 @@
   .apm-hero-stack,
   .apm-visual-live,
   .apm-auth-tab-pill,
-  .apm-auth-password-slot {
+  .apm-auth-password-slot,
+  .apm-crystal-ring,
+  .apm-crystal-core,
+  .apm-face-bars i,
+  .apm-face-wave,
+  .apm-node {
     animation: none !important;
     transition: none !important;
   }
