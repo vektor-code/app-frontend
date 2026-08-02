@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { api } from '../api/client';
 import { useTranslation } from '../utils/i18n';
-import VektorMark from '../components/VektorMark';
 
 interface LoginProps {
   onLogin: (user: any, token: string) => void;
@@ -51,11 +50,8 @@ export default function Login({ onLogin }: LoginProps) {
       <div className="login-shell">
         <aside className="login-brand-panel">
           <div className="login-brand-lockup">
-            <VektorMark size={72} />
-            <div>
-              <span>Vektor Trace</span>
-              <strong>APM</strong>
-            </div>
+            <img src="/branding/crnet-apm-dark.png" alt="CRNET APM" />
+            <span>Application performance monitoring</span>
           </div>
           <div className="login-brand-visual" aria-hidden="true">
             <div className="login-visual-card">
@@ -280,26 +276,25 @@ export default function Login({ onLogin }: LoginProps) {
         .login-brand-lockup {
           position: relative;
           z-index: 2;
-          display: flex;
-          align-items: center;
-          gap: 14px;
-        }
-        .login-brand-lockup span,
-        .login-brand-lockup strong {
+          width: 278px;
           display: block;
         }
-        .login-brand-lockup span {
-          font-size: 13px;
-          font-weight: 850;
-          letter-spacing: 0.05em;
-          text-transform: uppercase;
-          opacity: 0.76;
+        .login-brand-lockup img {
+          width: 278px;
+          height: 72px;
+          display: block;
+          object-fit: cover;
+          object-position: center;
+          filter: drop-shadow(0 8px 20px rgba(49, 87, 246, 0.24));
         }
-        .login-brand-lockup strong {
-          margin-top: 3px;
-          font-size: 32px;
-          line-height: 1;
-          font-weight: 900;
+        .login-brand-lockup span {
+          display: block;
+          margin: -3px 0 0 29px;
+          color: rgba(226, 232, 240, 0.68);
+          font-size: 9px;
+          font-weight: 800;
+          letter-spacing: 0.13em;
+          text-transform: uppercase;
         }
         .login-brand-visual {
           position: absolute;

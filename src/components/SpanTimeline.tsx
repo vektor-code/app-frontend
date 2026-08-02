@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import type { Span } from '../entities';
 import { isSpanError } from '../utils/spanStatus';
 import { normalizeHttpMethod } from '../utils/httpTelemetry';
+import { getSpanDependency, isDatabaseSpan, getQueryText, getQuerySummary } from '../utils/dependency';
 
 export interface DestinationInfo {
   type: 'infra' | '3rdparty' | 'service' | null;
@@ -11,11 +12,12 @@ export interface DestinationInfo {
 export function getSpanDestination(span: Span): DestinationInfo {
   const attrs = span.attributes || {};
   
-  // 1. Database infrastructure
-  if (attrs['db.system']) {
-    const dbSys = attrs['db.system'];
+  // 1. Data stores, caches and other classified infrastructure. The system was
+  //    identified once at ingest; this only formats it.
+  const dep = getSpanDependency(attrs);
+  if (dep.kind === 'database' || dep.kind === 'cache') {
     const dbName = attrs['db.name'];
-    const name = dbName ? `${dbSys} (${dbName})` : dbSys;
+    const name = dbName ? `${dep.system} (${dbName})` : dep.system;
     return { type: 'infra', name };
   }
   
@@ -90,13 +92,13 @@ export function getSpanInlineSummary(span: Span): string | null {
   }
   
   // 2. Database calls
-  if (attrs['db.system']) {
-    const statement = attrs['db.statement'];
+  if (isDatabaseSpan(attrs)) {
+    const statement = getQueryText(attrs);
     if (statement) {
-      // Truncate SQL query to show first 40 chars
+      // Truncate to keep the row readable; literals are already redacted.
       return statement.length > 40 ? `${statement.slice(0, 40)}...` : statement;
     }
-    return attrs['db.system'];
+    return getQuerySummary(attrs) || getSpanDependency(attrs).system;
   }
   
   // 3. RPC calls
@@ -209,7 +211,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
 
     spans.forEach(s => {
       const a = s.attributes || {};
-      if (a['db.system'] || a['db.statement']) {
+      if (isDatabaseSpan(a)) {
         dbTime += s.durationMs;
       } else if (a['http.url'] || a['http.method'] || a['http.request.method']) {
         httpTime += s.durationMs;
@@ -271,7 +273,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
     const dest = getSpanDestination(span);
     const inlineSummary = getSpanInlineSummary(span);
 
-    const isDbOrInternal = span.kind === 'INTERNAL' || kindInfo.label === 'INT' || kindInfo.label === 'CLI' || !!attrs['db.system'] || !!attrs['db.statement'];
+    const isDbOrInternal = span.kind === 'INTERNAL' || kindInfo.label === 'INT' || kindInfo.label === 'CLI' || isDatabaseSpan(attrs);
     if (hideInternalDb && isDbOrInternal) {
       return (
         <React.Fragment key={span.spanId}>
@@ -368,7 +370,14 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
             opacity: isDimmed ? 0.35 : 1,
             cursor: 'pointer',
             borderLeft: isError ? '3px solid var(--accent-rose)' : isCritical ? '3px solid var(--accent-amber)' : '3px solid transparent',
-            background: isSelected ? 'rgba(99, 102, 241, 0.08)' : undefined,
+            // Failed spans carry the same faint wash the trace and service lists
+            // use, so a failure reads identically wherever it appears. Selection
+            // still wins: it is the thing the user just acted on.
+            background: isSelected
+              ? 'rgba(99, 102, 241, 0.08)'
+              : isError
+                ? 'color-mix(in srgb, var(--accent-rose) 6%, transparent)'
+                : undefined,
             transition: 'opacity 0.2s, background 0.15s',
             display: 'flex',
             alignItems: 'center',
@@ -519,7 +528,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
                     overflow: 'hidden',
                     whiteSpace: 'nowrap',
                     maxWidth: '180px'
-                  }} title={span.attributes?.['db.statement'] || inlineSummary}>
+                  }} title={getQueryText(span.attributes) || inlineSummary}>
                     {inlineSummary}
                   </span>
                 )}

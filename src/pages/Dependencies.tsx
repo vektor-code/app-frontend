@@ -1,5 +1,23 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  type CSSProperties,
+  type KeyboardEvent,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
+import {
+  ArrowDown,
+  ArrowRight,
+  ArrowUp,
+  GripVertical,
+  Network,
+  RotateCcw,
+  Search,
+  X,
+} from 'lucide-react';
 import { api } from '../api/client';
 import type { ServiceMapData } from '../entities';
 import { useTranslation } from '../utils/i18n';
@@ -7,6 +25,7 @@ import { LoadingState, NoDataState } from '../components/DataState';
 import CustomSelect from '../components/CustomSelect';
 import { techLogoFor } from '../components/TechIcon';
 import IconPack from '../components/IconPack';
+import { useColumnResize } from '../utils/useColumnResize';
 
 interface DependenciesProps {
   namespace: string;
@@ -34,10 +53,41 @@ interface AccumulatedDependency extends DependencyItem {
   isActive: boolean;
 }
 
-// Sparkline SVG renderer
-function Sparkline({ data, color }: { data: number[]; color: string }) {
-  const gradId = `spark-grad-${color.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+type DependencyViewMode = 'list' | 'cards';
+type DependencyHealthFilter = 'all' | 'healthy' | 'warning' | 'critical' | 'idle';
+type DependencySortField = 'name' | 'health' | 'latency' | 'traffic' | 'errors' | 'share';
+type DependencySortDir = 'asc' | 'desc';
+type DependencyColumn = 'dependency' | 'health' | 'latency' | 'traffic' | 'errors' | 'share';
 
+const defaultDependencyColumnWidths: Record<DependencyColumn, number> = {
+  dependency: 340,
+  health: 170,
+  latency: 190,
+  traffic: 190,
+  errors: 190,
+  share: 150,
+};
+
+const dependencyColumnMinimums: Record<DependencyColumn, number> = {
+  dependency: 260,
+  health: 145,
+  latency: 150,
+  traffic: 150,
+  errors: 150,
+  share: 125,
+};
+
+const dependencyColumnOrder: DependencyColumn[] = ['dependency', 'health', 'latency', 'traffic', 'errors', 'share'];
+
+interface DependencyHealthMeta {
+  label: string;
+  detail: string;
+  className: string;
+  icon: HealthStatusIconName;
+}
+
+// Sparkline SVG renderer
+const Sparkline = React.memo(function Sparkline({ data, color }: { data: number[]; color: string }) {
   if (!data || data.length < 2) {
     return (
       <svg className="dependency-sparkline" width="68" height="24" viewBox="0 0 68 24" style={{ opacity: 0.35 }}>
@@ -65,17 +115,11 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
 
   return (
     <svg className="dependency-sparkline" width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.0" />
-        </linearGradient>
-      </defs>
-      <path d={areaD} fill={`url(#${gradId})`} />
-      <path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={areaD} fill={color} opacity="0.10" />
+      <path d={pathD} fill="none" stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
-}
+});
 
 const getDependencyType = (name: string): 'database' | 'messaging' | '3rdparty' | 'other' => {
   const n = name.toLowerCase();
@@ -258,8 +302,17 @@ const DEPENDENCY_METRIC_ICONS = {
 
 type DependencyMetricIconName = keyof typeof DEPENDENCY_METRIC_ICONS;
 
+// The tinted chip has to be a wrapper around the icon, not the icon itself:
+// IconPack paints its glyph with `background: currentColor` behind a mask, so
+// setting a background on it repaints the glyph rather than putting a surface
+// behind it — which is why these icons rendered at 8% opacity, i.e. invisible.
+// Same structure as trace-detail-metric-icon and service-map-stat-icon.
 function DependencyMetricIcon({ name }: { name: DependencyMetricIconName }) {
-  return <IconPack src={DEPENDENCY_METRIC_ICONS[name]} className="dependency-metric-icon" />;
+  return (
+    <span className="dependency-metric-icon">
+      <IconPack src={DEPENDENCY_METRIC_ICONS[name]} />
+    </span>
+  );
 }
 
 const HEALTH_STATUS_ICONS = {
@@ -326,8 +379,18 @@ export default function Dependencies({ namespace }: DependenciesProps) {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<string>('all');
+  const [healthFilter, setHealthFilter] = useState<DependencyHealthFilter>('all');
   const [activeNamespaceFilter, setActiveNamespaceFilter] = useState<string>('all');
   const [enabledNamespaces, setEnabledNamespaces] = useState<Set<string> | null>(null);
+  const [viewMode, setViewMode] = useState<DependencyViewMode>('list');
+  const [itemLimit, setItemLimit] = useState(120);
+  const [sortField, setSortField] = useState<DependencySortField>('health');
+  const [sortDir, setSortDir] = useState<DependencySortDir>('desc');
+  const [selectedDependencyId, setSelectedDependencyId] = useState<string | null>(null);
+  const { widths, startResize, resizeBy, resetWidths } = useColumnResize(defaultDependencyColumnWidths, {
+    minWidths: dependencyColumnMinimums,
+    storageKey: 'dependencyInventoryColumnsV1',
+  });
 
   // Elastic-style accumulated items to prevent older connections from disappearing
   const [accumulated, setAccumulated] = useState<Record<string, AccumulatedDependency>>(() => {
@@ -545,12 +608,14 @@ export default function Dependencies({ namespace }: DependenciesProps) {
     return Object.values(accumulated).filter(item => isNamespaceActive(item.namespace));
   }, [accumulated, isNamespaceActive]);
 
-  // Filtered and searched items based on accumulated list
-  const filteredItems = useMemo(() => {
+  // Scope first, then layer health and ordering so filter counts remain useful.
+  const baseFilteredItems = useMemo(() => {
     return accumulatedList.filter(item => {
-      const matchesSearch = 
+      const matchesSearch =
         item.system.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.rawName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.details.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.namespace.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.consumers.some(c => c.serviceName.toLowerCase().includes(searchTerm.toLowerCase()));
 
       const matchesType = selectedType === 'all' || item.type === selectedType;
@@ -559,6 +624,41 @@ export default function Dependencies({ namespace }: DependenciesProps) {
       return matchesSearch && matchesType && matchesNamespace;
     });
   }, [accumulatedList, searchTerm, selectedType, activeNamespaceFilter]);
+
+  const healthCounts = useMemo(() => {
+    return baseFilteredItems.reduce(
+      (counts, item) => {
+        const tone = dependencyTone(item);
+        counts.all += 1;
+        counts[tone] += 1;
+        return counts;
+      },
+      { all: 0, healthy: 0, warning: 0, critical: 0, idle: 0 }
+    );
+  }, [baseFilteredItems]);
+
+  const filteredItems = useMemo(() => {
+    const healthFiltered = healthFilter === 'all'
+      ? baseFilteredItems
+      : baseFilteredItems.filter(item => dependencyTone(item) === healthFilter);
+    const direction = sortDir === 'asc' ? 1 : -1;
+    const healthRank: Record<ReturnType<typeof dependencyTone>, number> = {
+      idle: 0,
+      healthy: 1,
+      warning: 2,
+      critical: 3,
+    };
+
+    return [...healthFiltered].sort((a, b) => {
+      let comparison = 0;
+      if (sortField === 'name') comparison = a.system.localeCompare(b.system);
+      else if (sortField === 'health') comparison = healthRank[dependencyTone(a)] - healthRank[dependencyTone(b)];
+      else if (sortField === 'latency') comparison = a.avgDurationMs - b.avgDurationMs;
+      else if (sortField === 'traffic' || sortField === 'share') comparison = a.requestCount - b.requestCount;
+      else if (sortField === 'errors') comparison = a.errorRate - b.errorRate;
+      return comparison * direction;
+    });
+  }, [baseFilteredItems, healthFilter, sortField, sortDir]);
 
   // Aggregate metrics for summary cards
   const summaryMetrics = useMemo(() => {
@@ -586,7 +686,41 @@ export default function Dependencies({ namespace }: DependenciesProps) {
     };
   }, [filteredItems]);
 
-  const getHealthMeta = (item: AccumulatedDependency) => {
+  const visibleItems = useMemo(() => filteredItems.slice(0, itemLimit), [filteredItems, itemLimit]);
+  const selectedDependency = selectedDependencyId
+    ? accumulatedList.find(item => item.id === selectedDependencyId) || null
+    : null;
+  const tableGridStyle = useMemo<CSSProperties>(() => ({
+    gridTemplateColumns: dependencyColumnOrder
+      .map(column => `minmax(${dependencyColumnMinimums[column]}px, ${widths[column]}fr)`)
+      .join(' '),
+  }), [widths]);
+
+  useEffect(() => {
+    setItemLimit(viewMode === 'cards' ? 60 : 120);
+  }, [namespace, searchTerm, selectedType, healthFilter, activeNamespaceFilter, viewMode]);
+
+  useEffect(() => {
+    document.body.classList.toggle('drawer-open', Boolean(selectedDependencyId));
+    return () => document.body.classList.remove('drawer-open');
+  }, [selectedDependencyId]);
+
+  const setSort = (field: DependencySortField) => {
+    if (sortField === field) {
+      setSortDir(current => current === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    setSortField(field);
+    setSortDir(field === 'name' ? 'asc' : 'desc');
+  };
+
+  const resizeColumnWithKeyboard = (event: KeyboardEvent<HTMLButtonElement>, column: DependencyColumn) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    resizeBy(column, event.key === 'ArrowRight' ? 16 : -16);
+  };
+
+  const getHealthMeta = (item: AccumulatedDependency): DependencyHealthMeta => {
     if (!item.isActive) {
       return {
         label: t('Inactive'),
@@ -626,6 +760,14 @@ export default function Dependencies({ namespace }: DependenciesProps) {
       icon: 'operational' as HealthStatusIconName
     };
   };
+  const selectedDependencyHealth = selectedDependency ? getHealthMeta(selectedDependency) : null;
+  const activeCallTotal = accumulatedList.reduce(
+    (total, item) => total + (item.isActive ? item.requestCount : 0),
+    0,
+  );
+  const selectedDependencyShare = selectedDependency && selectedDependency.isActive && activeCallTotal > 0
+    ? (selectedDependency.requestCount / activeCallTotal) * 100
+    : 0;
 
   const namespaceOptions = [
     { value: 'all', label: t('All Namespaces') },
@@ -639,21 +781,25 @@ export default function Dependencies({ namespace }: DependenciesProps) {
     { value: '3rdparty', label: t('3rd-Party APIs') },
     { value: 'other', label: t('Other') }
   ];
+  const dependencyTrafficLeaders = [...filteredItems]
+    .filter(item => item.isActive && item.requestCount > 0)
+    .sort((a, b) => b.requestCount - a.requestCount)
+    .slice(0, 5);
 
   return (
-    <div className="animate-fade-in dependencies-page">
-      <section className="dependencies-hero">
-        <div>
-          <span className="dependencies-eyebrow">
-            <DependencyIcon name="network" />
-            {t('Dependency Visibility')}
+    <div className="animate-fade-in dependencies-page apm-dashboard">
+      <section className="apm-dashboard-header dependencies-dashboard-header">
+        <div className="apm-title-block">
+          <span className="apm-title-icon dependencies-title-icon">
+            <Network size={20} />
           </span>
           <h1>{t('Dependencies')}</h1>
         </div>
-        <div className="dependencies-hero-actions">
-          <span className="dependencies-scope-chip">
-            {namespace ? namespace : t('All Namespaces')}
-          </span>
+        <div className="apm-header-meta">
+          <div className="apm-live-pill">
+            <span />
+            {t('Live')}
+          </div>
           <button className="dependencies-map-link" onClick={() => navigate('/servicemap')}>
             <DependencyIcon name="network" />
             {t('Service Map')}
@@ -664,50 +810,94 @@ export default function Dependencies({ namespace }: DependenciesProps) {
       <section className="dependency-metric-grid">
         <div className="dependency-metric-card indigo">
           <div className="dependency-metric-top">
-            <span>{t('Total Dependencies')}</span>
             <DependencyMetricIcon name="total" />
+            <span>{t('Total Dependencies')}</span>
+            <i />
           </div>
           <strong>{formatDependencyNumber(summaryMetrics.count)}</strong>
           <em>{formatDependencyNumber(filteredItems.filter(item => item.isActive).length)} {t('active')}</em>
         </div>
         <div className="dependency-metric-card emerald">
           <div className="dependency-metric-top">
-            <span>{t('Avg Latency')}</span>
             <DependencyMetricIcon name="latency" />
+            <span>{t('Avg Latency')}</span>
+            <i />
           </div>
           <strong>{formatDependencyLatency(summaryMetrics.avgLatency)}</strong>
           <em>{t('weighted avg')}</em>
         </div>
         <div className="dependency-metric-card cyan">
           <div className="dependency-metric-top">
-            <span>{t('Traffic')}</span>
             <DependencyMetricIcon name="traffic" />
+            <span>{t('Traffic')}</span>
+            <i />
           </div>
           <strong>{formatDependencyNumber(summaryMetrics.calls)}</strong>
           <em>{t('calls')}</em>
         </div>
         <div className={`dependency-metric-card ${summaryMetrics.errorRate > 0 ? 'rose' : 'emerald'}`}>
           <div className="dependency-metric-top">
-            <span>{t('Error Rate')}</span>
             <DependencyMetricIcon name={summaryMetrics.errorRate > 0 ? 'errors' : 'clean'} />
+            <span>{t('Error Rate')}</span>
+            <i />
           </div>
           <strong>{formatDependencyRate(summaryMetrics.errorRate)}</strong>
           <em>{summaryMetrics.errorRate > 0 ? t('errors') : t('clean')}</em>
         </div>
       </section>
 
+      <section className="dependency-insight-grid">
+        <DependencyHealthChart
+          counts={healthCounts}
+          total={healthCounts.all}
+          t={t}
+        />
+        <DependencyTrafficChart
+          items={dependencyTrafficLeaders}
+          totalCalls={summaryMetrics.calls}
+          t={t}
+        />
+      </section>
+
       <section className="dependencies-toolbar">
         <div className="dependency-search">
-          <DependencyIcon name="external" />
+          <Search size={16} aria-hidden="true" />
           <input
-            type="text"
+            type="search"
             placeholder={t('Search dependencies or consumers...')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            aria-label={t('Search dependencies')}
           />
+          {searchTerm && (
+            <button type="button" onClick={() => setSearchTerm('')} aria-label={t('Clear search')}>
+              <X size={14} />
+            </button>
+          )}
         </div>
 
         <div className="dependencies-filter-group">
+          <div className="dependency-health-tabs" role="group" aria-label={t('Filter by health')}>
+            {([
+              ['all', t('All'), healthCounts.all],
+              ['healthy', t('Healthy'), healthCounts.healthy],
+              ['warning', t('Watch'), healthCounts.warning],
+              ['critical', t('Critical'), healthCounts.critical],
+              ['idle', t('Inactive'), healthCounts.idle],
+            ] as Array<[DependencyHealthFilter, string, number]>).map(([value, label, count]) => (
+              <button
+                type="button"
+                key={value}
+                className={`${healthFilter === value ? 'active' : ''} ${value}`}
+                onClick={() => setHealthFilter(value)}
+              >
+                <i />
+                {label}
+                <span>{count}</span>
+              </button>
+            ))}
+          </div>
+
           {!namespace && (
             <CustomSelect
               className="dependency-filter-select"
@@ -727,6 +917,8 @@ export default function Dependencies({ namespace }: DependenciesProps) {
             onChange={setSelectedType}
             placeholder={t('All Types')}
           />
+
+          <DependencyViewSwitch value={viewMode} onChange={setViewMode} t={t} />
         </div>
       </section>
 
@@ -734,8 +926,17 @@ export default function Dependencies({ namespace }: DependenciesProps) {
         <div className="dependency-list-header">
           <div>
             <span>{t('Dependency Metrics')}</span>
-            <h2>{formatDependencyNumber(filteredItems.length)} {t('connection targets')}</h2>
+            <h2>{formatDependencyNumber(visibleItems.length)} / {formatDependencyNumber(filteredItems.length)} {t('connection targets')}</h2>
           </div>
+          {viewMode === 'list' && (
+            <div className="dependency-list-tools">
+              <span><GripVertical size={13} /> {t('Drag column edges to resize')}</span>
+              <button type="button" onClick={resetWidths}>
+                <RotateCcw size={13} />
+                {t('Reset columns')}
+              </button>
+            </div>
+          )}
         </div>
 
         {loading && filteredItems.length === 0 ? (
@@ -747,108 +948,590 @@ export default function Dependencies({ namespace }: DependenciesProps) {
             hint={t('Dependencies appear after services call databases, queues, caches, or external systems.')}
           />
         ) : (
-          <div className="dependency-list">
-            <div className="dependency-list-labels">
-              <span>{t('Dependency')}</span>
-              <span>{t('Health')}</span>
-              <span>{t('Latency')}</span>
-              <span>{t('Traffic')}</span>
-              <span>{t('Errors')}</span>
-              <span>{t('Share')}</span>
-            </div>
+          <>
+            {viewMode === 'list' ? (
+              <div className="dependency-table-scroller">
+                <div className="dependency-list">
+                <div className="dependency-list-labels" style={tableGridStyle} role="row">
+                  <DependencyColumnHeader column="dependency" label={t('Dependency')} sortField="name" activeSort={sortField} dir={sortDir} onSort={setSort} onResize={startResize} onResizeKey={resizeColumnWithKeyboard} onReset={resetWidths} />
+                  <DependencyColumnHeader column="health" label={t('Health')} sortField="health" activeSort={sortField} dir={sortDir} onSort={setSort} onResize={startResize} onResizeKey={resizeColumnWithKeyboard} onReset={resetWidths} />
+                  <DependencyColumnHeader column="latency" label={t('Latency')} sortField="latency" activeSort={sortField} dir={sortDir} onSort={setSort} onResize={startResize} onResizeKey={resizeColumnWithKeyboard} onReset={resetWidths} />
+                  <DependencyColumnHeader column="traffic" label={t('Traffic')} sortField="traffic" activeSort={sortField} dir={sortDir} onSort={setSort} onResize={startResize} onResizeKey={resizeColumnWithKeyboard} onReset={resetWidths} />
+                  <DependencyColumnHeader column="errors" label={t('Errors')} sortField="errors" activeSort={sortField} dir={sortDir} onSort={setSort} onResize={startResize} onResizeKey={resizeColumnWithKeyboard} onReset={resetWidths} />
+                  <DependencyColumnHeader column="share" label={t('Share')} sortField="share" activeSort={sortField} dir={sortDir} onSort={setSort} onResize={startResize} onResizeKey={resizeColumnWithKeyboard} onReset={resetWidths} />
+                </div>
 
-            {filteredItems.map(item => {
-              const health = getHealthMeta(item);
-              const trafficSharePct = summaryMetrics.calls > 0 && item.isActive ? (item.requestCount / summaryMetrics.calls) * 100 : 0;
-              const tpmVal = item.isActive ? item.requestCount / 60 : 0;
-              const topConsumer = item.consumers[0];
-              const rowTone = !item.isActive
-                ? 'idle'
-                : item.errorRate >= 10
-                  ? 'critical'
-                  : item.errorRate > 0 || item.avgDurationMs >= 1000
-                    ? 'warning'
-                    : 'healthy';
+                {visibleItems.map(item => (
+                  <DependencyRow
+                    key={item.id}
+                    item={item}
+                    health={getHealthMeta(item)}
+                    totalCalls={summaryMetrics.calls}
+                    gridStyle={tableGridStyle}
+                    onSelect={() => setSelectedDependencyId(item.id)}
+                    t={t}
+                  />
+                ))}
+                </div>
+              </div>
+            ) : (
+              <div className="dependency-card-grid">
+                {visibleItems.map(item => (
+                  <DependencyCard
+                    key={item.id}
+                    item={item}
+                    health={getHealthMeta(item)}
+                    totalCalls={summaryMetrics.calls}
+                    onSelect={() => setSelectedDependencyId(item.id)}
+                    t={t}
+                  />
+                ))}
+              </div>
+            )}
 
-              return (
-                <article key={item.id} className={`dependency-row ${rowTone}`}>
-                  <div className="dependency-identity">
-                    <div className={`dependency-logo ${item.type === '3rdparty' ? 'external' : item.type}`}>
-                      <DependencyLogo item={item} />
-                    </div>
-                    <div className="dependency-name-block">
-                      <div className="dependency-name-line">
-                        <strong title={item.rawName}>{item.system}</strong>
-                        <span>{item.type === '3rdparty' ? t('external') : item.type}</span>
-                      </div>
-                      <p title={item.details || item.namespace}>
-                        {item.details || item.namespace}
-                      </p>
-                      <div className="dependency-consumer-line">
-                        <span>{item.namespace}</span>
-                        <em>
-                          {topConsumer
-                            ? `${topConsumer.serviceName} / ${formatDependencyNumber(item.consumers.length)} consumers`
-                            : t('No active consumers')}
-                        </em>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="dependency-cell health">
-                    <div className={`dependency-health-card ${health.className}`}>
-                      <span
-                        className="dependency-health-icon"
-                        aria-hidden="true"
-                        style={{ '--dependency-health-icon': `url("${HEALTH_STATUS_ICONS[health.icon]}")` } as React.CSSProperties}
-                      />
-                      <div>
-                        <strong>{health.label}</strong>
-                        <small>{health.detail}</small>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="dependency-cell metric">
-                    <Sparkline data={item.latencyHistory} color="#3b82f6" />
-                    <div>
-                      <strong>{formatDependencyLatency(item.avgDurationMs)}</strong>
-                      <span>{t('avg')}</span>
-                    </div>
-                  </div>
-
-                  <div className="dependency-cell metric">
-                    <Sparkline data={item.throughputHistory} color="#10b981" />
-                    <div>
-                      <strong>{tpmVal.toFixed(1)}</strong>
-                      <span>{t('tpm')}</span>
-                    </div>
-                  </div>
-
-                  <div className="dependency-cell metric">
-                    <Sparkline data={item.errorsHistory} color="#ef4444" />
-                    <div>
-                      <strong className={item.errorRate > 0 ? 'danger' : ''}>{formatDependencyRate(item.errorRate)}</strong>
-                      <span>{formatDependencyNumber(item.errorCount)} {t('errors')}</span>
-                    </div>
-                  </div>
-
-                  <div
-                    className="dependency-impact"
-                    style={{ '--dependency-share': `${Math.min(100, Math.max(0, trafficSharePct))}%` } as React.CSSProperties}
-                  >
-                    <span className="dependency-impact-ring" aria-hidden="true" />
-                    <div>
-                      <strong>{formatDependencyShare(trafficSharePct)}</strong>
-                      <span>{formatDependencyNumber(item.isActive ? item.requestCount : 0)} {t('calls')}</span>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+            {visibleItems.length < filteredItems.length && (
+              <div className="dependency-show-more-wrap">
+                <button type="button" className="dependency-show-more" onClick={() => setItemLimit(current => current + (viewMode === 'cards' ? 60 : 120))}>
+                  {t('Show more dependencies')}
+                  <span>{formatDependencyNumber(filteredItems.length - visibleItems.length)} {t('remaining')}</span>
+                </button>
+              </div>
+            )}
+          </>
         )}
       </section>
+
+      {typeof document !== 'undefined' && createPortal(
+        <>
+          <div
+            className={`dependency-drawer-backdrop ${selectedDependency ? 'open' : ''}`}
+            onClick={() => setSelectedDependencyId(null)}
+          />
+          <aside
+            className={`dependency-drawer ${selectedDependency ? 'open' : ''}`}
+            role="dialog"
+            aria-modal="true"
+            aria-hidden={!selectedDependency}
+            aria-label={selectedDependency ? `${selectedDependency.system} ${t('details')}` : t('Dependency details')}
+          >
+            {selectedDependency && selectedDependencyHealth && (
+              <>
+                <header className="dependency-drawer-header">
+                  <div className={`dependency-logo ${selectedDependency.type === '3rdparty' ? 'external' : selectedDependency.type}`}>
+                    <DependencyLogo item={selectedDependency} />
+                  </div>
+                  <div className="dependency-drawer-title">
+                    <span>{selectedDependency.namespace} · {selectedDependency.type === '3rdparty' ? t('external') : selectedDependency.type}</span>
+                    <h2>{selectedDependency.system}</h2>
+                    <p title={selectedDependency.details || selectedDependency.rawName}>
+                      {selectedDependency.details || selectedDependency.rawName}
+                    </p>
+                  </div>
+                  <button type="button" className="dependency-drawer-close" onClick={() => setSelectedDependencyId(null)} aria-label={t('Close')}>
+                    <X size={18} />
+                  </button>
+                </header>
+
+                <div className="dependency-drawer-content">
+                  <section className={`dependency-drawer-health ${selectedDependencyHealth.className}`}>
+                    <span
+                      className="dependency-health-icon"
+                      aria-hidden="true"
+                      style={{ '--dependency-health-icon': `url("${HEALTH_STATUS_ICONS[selectedDependencyHealth.icon]}")` } as React.CSSProperties}
+                    />
+                    <div>
+                      <span>{t('Current health')}</span>
+                      <strong>{selectedDependencyHealth.label}</strong>
+                      <p>{selectedDependencyHealth.detail}</p>
+                    </div>
+                    <em>{selectedDependency.isActive ? t('Receiving traffic') : t('No recent traffic')}</em>
+                  </section>
+
+                  <section className="dependency-drawer-metrics" aria-label={t('Dependency metrics')}>
+                    <DependencyDrawerMetric label={t('Avg latency')} value={formatDependencyLatency(selectedDependency.avgDurationMs)} detail={t('weighted by calls')} tone={selectedDependency.avgDurationMs >= 1000 ? 'warning' : 'neutral'} />
+                    <DependencyDrawerMetric label={t('Throughput')} value={`${(selectedDependency.isActive ? selectedDependency.requestCount / 60 : 0).toFixed(1)} tpm`} detail={`${formatDependencyNumber(selectedDependency.requestCount)} ${t('calls')}`} />
+                    <DependencyDrawerMetric label={t('Error rate')} value={formatDependencyRate(selectedDependency.errorRate)} detail={`${formatDependencyNumber(selectedDependency.errorCount)} ${t('errors')}`} tone={selectedDependency.errorRate > 0 ? 'critical' : 'healthy'} />
+                    <DependencyDrawerMetric label={t('Traffic share')} value={formatDependencyShare(selectedDependencyShare)} detail={`${formatDependencyNumber(selectedDependency.consumers.length)} ${t('calling services')}`} />
+                  </section>
+
+                  <section className="dependency-drawer-section">
+                    <div className="dependency-drawer-section-heading">
+                      <div>
+                        <span>{t('Live signals')}</span>
+                        <h3>{t('Recent dependency behavior')}</h3>
+                      </div>
+                      <em>{selectedDependency.lastSeen ? new Date(selectedDependency.lastSeen).toLocaleString() : t('Last seen unavailable')}</em>
+                    </div>
+                    <div className="dependency-drawer-trends">
+                      <DependencyTrend label={t('Latency')} value={formatDependencyLatency(selectedDependency.avgDurationMs)} data={selectedDependency.latencyHistory} color="#3b82f6" />
+                      <DependencyTrend label={t('Traffic')} value={`${(selectedDependency.isActive ? selectedDependency.requestCount / 60 : 0).toFixed(1)} tpm`} data={selectedDependency.throughputHistory} color="#10b981" />
+                      <DependencyTrend label={t('Errors')} value={formatDependencyRate(selectedDependency.errorRate)} data={selectedDependency.errorsHistory} color="#ef4444" />
+                    </div>
+                  </section>
+
+                  <section className="dependency-drawer-section">
+                    <div className="dependency-drawer-section-heading">
+                      <div>
+                        <span>{t('Upstream impact')}</span>
+                        <h3>{t('Calling services')}</h3>
+                      </div>
+                      <strong>{formatDependencyNumber(selectedDependency.consumers.length)}</strong>
+                    </div>
+                    {selectedDependency.consumers.length > 0 ? (
+                      <div className="dependency-consumer-list">
+                        {selectedDependency.consumers.map((consumer, index) => (
+                          <button
+                            type="button"
+                            key={consumer.serviceName}
+                            onClick={() => navigate(`/traces?service=${encodeURIComponent(consumer.serviceName)}`)}
+                          >
+                            <span className="dependency-consumer-rank">{index + 1}</span>
+                            <span className="dependency-consumer-name">
+                              <strong>{consumer.serviceName}</strong>
+                              <em>{t('Open related traces')}</em>
+                            </span>
+                            <span className="dependency-consumer-metric">
+                              <strong>{formatDependencyNumber(consumer.count)}</strong>
+                              <em>{t('calls')}</em>
+                            </span>
+                            <span className="dependency-consumer-metric">
+                              <strong>{formatDependencyLatency(consumer.duration)}</strong>
+                              <em>{t('avg')}</em>
+                            </span>
+                            <ArrowRight size={15} />
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="dependency-consumer-empty">
+                        <DependencyIcon name="network" />
+                        <strong>{t('No active callers')}</strong>
+                        <span>{t('This dependency is retained from an earlier observation window.')}</span>
+                      </div>
+                    )}
+                  </section>
+                </div>
+
+                <footer className="dependency-drawer-actions">
+                  <button type="button" onClick={() => navigate('/servicemap')}>
+                    <Network size={16} />
+                    {t('View in service map')}
+                  </button>
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={!selectedDependency.consumers[0]}
+                    onClick={() => {
+                      const caller = selectedDependency.consumers[0];
+                      if (caller) navigate(`/traces?service=${encodeURIComponent(caller.serviceName)}`);
+                    }}
+                  >
+                    <ArrowRight size={16} />
+                    {t('Investigate top caller')}
+                  </button>
+                </footer>
+              </>
+            )}
+          </aside>
+        </>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+function DependencyHealthChart({
+  counts,
+  total,
+  t,
+}: {
+  counts: { all: number; healthy: number; warning: number; critical: number; idle: number };
+  total: number;
+  t: (k: string) => string;
+}) {
+  const segments = [
+    { label: t('Healthy'), value: counts.healthy, color: '#10b981' },
+    { label: t('Watch'), value: counts.warning, color: '#f59e0b' },
+    { label: t('Critical'), value: counts.critical, color: '#f43f5e' },
+    { label: t('Inactive'), value: counts.idle, color: '#cbd5e1' },
+  ];
+
+  return (
+    <article className="dependency-insight-card dependency-health-chart">
+      <div className="dependency-chart-heading">
+        <div>
+          <span>{t('Reliability')}</span>
+          <h2>{t('Dependency health')}</h2>
+        </div>
+        <em>{formatDependencyNumber(total)} {t('targets')}</em>
+      </div>
+      <div className="dependency-health-chart-body">
+        <div className="dependency-health-total">
+          <strong>{formatDependencyNumber(total)}</strong>
+          <span>{t('monitored targets')}</span>
+        </div>
+        <div className="dependency-status-bar" aria-label={t('Dependency health distribution')}>
+          {segments.map(segment => (
+            <i
+              key={segment.label}
+              title={`${segment.label}: ${segment.value}`}
+              style={{
+                width: `${total > 0 ? (segment.value / total) * 100 : 0}%`,
+                background: segment.color,
+              }}
+            />
+          ))}
+        </div>
+        <div className="dependency-chart-legend">
+          {segments.map(segment => (
+            <div key={segment.label}>
+              <i style={{ background: segment.color }} />
+              <span>{segment.label}</span>
+              <strong>{formatDependencyNumber(segment.value)}</strong>
+              <em>{total > 0 ? `${Math.round((segment.value / total) * 100)}%` : '0%'}</em>
+            </div>
+          ))}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function DependencyTrafficChart({
+  items,
+  totalCalls,
+  t,
+}: {
+  items: AccumulatedDependency[];
+  totalCalls: number;
+  t: (k: string) => string;
+}) {
+  const colors = ['#3157f6', '#7558ff', '#19beea', '#10b981', '#f59e0b'];
+  const maxCalls = Math.max(1, ...items.map(item => item.requestCount));
+
+  return (
+    <article className="dependency-insight-card dependency-traffic-chart">
+      <div className="dependency-chart-heading">
+        <div>
+          <span>{t('Traffic')}</span>
+          <h2>{t('Dependency concentration')}</h2>
+        </div>
+        <em>{formatDependencyNumber(totalCalls)} {t('calls')}</em>
+      </div>
+      <div className="dependency-ranking-chart">
+        {items.length > 0 ? items.map((item, index) => {
+          const share = totalCalls > 0 ? (item.requestCount / totalCalls) * 100 : 0;
+          return (
+            <div className="dependency-ranking-row" key={item.id}>
+              <span className="dependency-ranking-index">{String(index + 1).padStart(2, '0')}</span>
+              <div className="dependency-ranking-main">
+                <div>
+                  <strong title={item.rawName}>{item.system}</strong>
+                  <span>{item.namespace} · {formatDependencyLatency(item.avgDurationMs)}</span>
+                </div>
+                <div className="dependency-ranking-track">
+                  <i
+                    style={{
+                      width: `${Math.max(3, (item.requestCount / maxCalls) * 100)}%`,
+                      background: colors[index],
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="dependency-ranking-value">
+                <strong>{formatDependencyNumber(item.requestCount)}</strong>
+                <span>{formatDependencyShare(share)}</span>
+              </div>
+            </div>
+          );
+        }) : (
+          <div className="dependency-chart-empty">{t('No active dependency traffic')}</div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function dependencyTone(item: AccumulatedDependency): 'idle' | 'critical' | 'warning' | 'healthy' {
+  if (!item.isActive) return 'idle';
+  if (item.errorRate >= 10) return 'critical';
+  if (item.errorRate > 0 || item.avgDurationMs >= 1000) return 'warning';
+  return 'healthy';
+}
+
+function DependencyViewSwitch({ value, onChange, t }: { value: DependencyViewMode; onChange: (value: DependencyViewMode) => void; t: (k: string) => string }) {
+  return (
+    <div className="dependency-view-switch" role="group" aria-label={t('View mode')}>
+      <button type="button" className={value === 'list' ? 'active' : ''} onClick={() => onChange('list')}>
+        <IconPack src="/observability-icons/sitemap.svg" size={14} />
+        {t('List')}
+      </button>
+      <button type="button" className={value === 'cards' ? 'active' : ''} onClick={() => onChange('cards')}>
+        <IconPack src="/observability-icons/layout-grid.svg" size={14} />
+        {t('Cards')}
+      </button>
+    </div>
+  );
+}
+
+function DependencyColumnHeader({
+  column,
+  label,
+  sortField,
+  activeSort,
+  dir,
+  onSort,
+  onResize,
+  onResizeKey,
+  onReset,
+}: {
+  column: DependencyColumn;
+  label: string;
+  sortField: DependencySortField;
+  activeSort: DependencySortField;
+  dir: DependencySortDir;
+  onSort: (field: DependencySortField) => void;
+  onResize: (event: React.MouseEvent, column: DependencyColumn) => void;
+  onResizeKey: (event: KeyboardEvent<HTMLButtonElement>, column: DependencyColumn) => void;
+  onReset: () => void;
+}) {
+  const active = activeSort === sortField;
+
+  return (
+    <div className={`dependency-column-head ${active ? 'active' : ''}`} role="columnheader" aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" className="dependency-column-sort" onClick={() => onSort(sortField)}>
+        {label}
+        {active && (dir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+      </button>
+      {column !== 'share' && (
+        <button
+          type="button"
+          className="dependency-column-resizer"
+          aria-label={`Resize ${label} column`}
+          title="Drag to resize · Arrow keys resize · Double click resets"
+          onMouseDown={event => onResize(event, column)}
+          onKeyDown={event => onResizeKey(event, column)}
+          onDoubleClick={event => {
+            event.preventDefault();
+            event.stopPropagation();
+            onReset();
+          }}
+        >
+          <GripVertical size={13} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DependencyRow({
+  item,
+  health,
+  totalCalls,
+  gridStyle,
+  onSelect,
+  t,
+}: {
+  item: AccumulatedDependency;
+  health: DependencyHealthMeta;
+  totalCalls: number;
+  gridStyle: CSSProperties;
+  onSelect: () => void;
+  t: (k: string) => string;
+}) {
+  const trafficSharePct = totalCalls > 0 && item.isActive ? (item.requestCount / totalCalls) * 100 : 0;
+  const tpmVal = item.isActive ? item.requestCount / 60 : 0;
+  const topConsumer = item.consumers[0];
+  const rowTone = dependencyTone(item);
+
+  return (
+    <button type="button" className={`dependency-row ${rowTone}`} style={gridStyle} onClick={onSelect}>
+      <div className="dependency-identity">
+        <div className={`dependency-logo ${item.type === '3rdparty' ? 'external' : item.type}`}>
+          <DependencyLogo item={item} />
+        </div>
+        <div className="dependency-name-block">
+          <div className="dependency-name-line">
+            <strong title={item.rawName}>{item.system}</strong>
+            <span>{item.type === '3rdparty' ? t('external') : item.type}</span>
+          </div>
+          <p title={item.details || item.namespace}>
+            {item.details || item.namespace}
+          </p>
+          <div className="dependency-consumer-line">
+            <span>{item.namespace}</span>
+            <em>
+              {topConsumer
+                ? `${topConsumer.serviceName} / ${formatDependencyNumber(item.consumers.length)} consumers`
+                : t('No active consumers')}
+            </em>
+          </div>
+        </div>
+      </div>
+
+      <div className="dependency-cell health">
+        <div className={`dependency-health-card ${health.className}`}>
+          <span
+            className="dependency-health-icon"
+            aria-hidden="true"
+            style={{ '--dependency-health-icon': `url("${HEALTH_STATUS_ICONS[health.icon]}")` } as React.CSSProperties}
+          />
+          <div>
+            <strong>{health.label}</strong>
+            <small>{health.detail}</small>
+          </div>
+        </div>
+      </div>
+
+      <div className="dependency-cell metric">
+        <Sparkline data={item.latencyHistory} color="#3b82f6" />
+        <div>
+          <strong>{formatDependencyLatency(item.avgDurationMs)}</strong>
+          <span>{t('avg')}</span>
+        </div>
+      </div>
+
+      <div className="dependency-cell metric">
+        <Sparkline data={item.throughputHistory} color="#10b981" />
+        <div>
+          <strong>{tpmVal.toFixed(1)}</strong>
+          <span>{t('tpm')}</span>
+        </div>
+      </div>
+
+      <div className="dependency-cell metric">
+        <Sparkline data={item.errorsHistory} color="#ef4444" />
+        <div>
+          <strong className={item.errorRate > 0 ? 'danger' : ''}>{formatDependencyRate(item.errorRate)}</strong>
+          <span>{formatDependencyNumber(item.errorCount)} {t('errors')}</span>
+        </div>
+      </div>
+
+      <div className="dependency-impact">
+        <div>
+          <strong>{formatDependencyShare(trafficSharePct)}</strong>
+          <span>{formatDependencyNumber(item.isActive ? item.requestCount : 0)} {t('calls')}</span>
+        </div>
+        <ArrowRight className="dependency-row-arrow" size={15} aria-hidden="true" />
+      </div>
+    </button>
+  );
+}
+
+function DependencyCard({
+  item,
+  health,
+  totalCalls,
+  onSelect,
+  t,
+}: {
+  item: AccumulatedDependency;
+  health: DependencyHealthMeta;
+  totalCalls: number;
+  onSelect: () => void;
+  t: (k: string) => string;
+}) {
+  const trafficSharePct = totalCalls > 0 && item.isActive ? (item.requestCount / totalCalls) * 100 : 0;
+  const tpmVal = item.isActive ? item.requestCount / 60 : 0;
+  const topConsumer = item.consumers[0];
+  const tone = dependencyTone(item);
+
+  return (
+    <button type="button" className={`dependency-card ${tone}`} onClick={onSelect}>
+      <div className="dependency-card-head">
+        <div className="dependency-identity">
+          <div className={`dependency-logo ${item.type === '3rdparty' ? 'external' : item.type}`}>
+            <DependencyLogo item={item} />
+          </div>
+          <div className="dependency-name-block">
+            <div className="dependency-name-line">
+              <strong title={item.rawName}>{item.system}</strong>
+              <span>{item.type === '3rdparty' ? t('external') : item.type}</span>
+            </div>
+            <p title={item.details || item.namespace}>{item.details || item.namespace}</p>
+          </div>
+        </div>
+        <div className={`dependency-health-card ${health.className}`}>
+          <span
+            className="dependency-health-icon"
+            aria-hidden="true"
+            style={{ '--dependency-health-icon': `url("${HEALTH_STATUS_ICONS[health.icon]}")` } as React.CSSProperties}
+          />
+          <div>
+            <strong>{health.label}</strong>
+            <small>{health.detail}</small>
+          </div>
+        </div>
+      </div>
+
+      <div className="dependency-card-metrics">
+        <Metric label={t('Latency')} value={formatDependencyLatency(item.avgDurationMs)} hint={t('avg')} danger={false} />
+        <Metric label={t('Traffic')} value={tpmVal.toFixed(1)} hint={t('tpm')} danger={false} />
+        <Metric label={t('Errors')} value={formatDependencyRate(item.errorRate)} hint={`${formatDependencyNumber(item.errorCount)} ${t('errors')}`} danger={item.errorRate > 0} />
+        <Metric label={t('Share')} value={formatDependencyShare(trafficSharePct)} hint={`${formatDependencyNumber(item.isActive ? item.requestCount : 0)} ${t('calls')}`} danger={false} />
+      </div>
+
+      <div className="dependency-card-foot">
+        <span>{item.namespace}</span>
+        <em>
+          {topConsumer
+            ? `${topConsumer.serviceName} / ${formatDependencyNumber(item.consumers.length)} consumers`
+            : t('No active consumers')}
+        </em>
+        <ArrowRight className="dependency-card-arrow" size={15} aria-hidden="true" />
+      </div>
+    </button>
+  );
+}
+
+function Metric({ label, value, hint, danger }: { label: string; value: string; hint: string; danger: boolean }) {
+  return (
+    <span className="dependency-card-metric">
+      <em>{label}</em>
+      <strong className={danger ? 'danger' : ''}>{value}</strong>
+      <small>{hint}</small>
+    </span>
+  );
+}
+
+function DependencyDrawerMetric({
+  label,
+  value,
+  detail,
+  tone = 'neutral',
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: 'neutral' | 'healthy' | 'warning' | 'critical';
+}) {
+  return (
+    <div className={`dependency-drawer-metric ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <em>{detail}</em>
+    </div>
+  );
+}
+
+function DependencyTrend({
+  label,
+  value,
+  data,
+  color,
+}: {
+  label: string;
+  value: string;
+  data: number[];
+  color: string;
+}) {
+  return (
+    <div className="dependency-drawer-trend">
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+      <Sparkline data={data} color={color} />
     </div>
   );
 }

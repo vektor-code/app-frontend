@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-label="CRNET APM">
+  <defs>
+    <linearGradient id="swift-wing" x1="12" y1="24" x2="86" y2="104" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF7635"/>
+      <stop offset="1" stop-color="#FF4B22"/>
+    </linearGradient>
+    <linearGradient id="swift-tail" x1="58" y1="108" x2="112" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF3D64"/>
+      <stop offset="1" stop-color="#FF5A45"/>
+    </linearGradient>
+  </defs>
+  <path d="M12 24 76 35 98 53 64 58 81 75 28 111 44 69 12 24Z" fill="url(#swift-wing)" stroke="#FF5427" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="m58 108 39-49c2.8-3.5 8-3.7 11-.5l8 8.3c3.7 3.8 2.3 10.2-2.7 12.1L58 110Z" fill="url(#swift-tail)" stroke="#FF315C" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="m65 59 23-4-13 16-10-12Z" fill="#21C7A8"/>
+  <path d="m69 60 13-2.3-7.5 9.2-5.5-6.9Z" fill="#9BF3DD" opacity=".62"/>
+</svg>

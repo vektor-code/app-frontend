@@ -1,12 +1,42 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api/client';
 import type { PermissionTemplate, UserPermission } from '../entities';
 import { useTranslation } from '../utils/i18n';
+import { StandardColumnHeader, StandardTableToolbar, type StandardSortDirection } from '../components/StandardTable';
+import { useColumnResize } from '../utils/useColumnResize';
 
 const ALL_NS = '*';
 
 type AccessIconName = 'check' | 'clock' | 'edit' | 'eye' | 'grid' | 'key' | 'shield' | 'trash' | 'users';
+type AdminUserColumn = 'user' | 'role' | 'scope' | 'template' | 'lastLogin' | 'actions';
+type AdminUserSortField = Exclude<AdminUserColumn, 'actions'>;
+
+const adminUserColumnWidths: Record<AdminUserColumn, number> = {
+  user: 280,
+  role: 130,
+  scope: 230,
+  template: 160,
+  lastLogin: 190,
+  actions: 190,
+};
+
+const adminUserColumnMinimums: Record<AdminUserColumn, number> = {
+  user: 220,
+  role: 110,
+  scope: 180,
+  template: 130,
+  lastLogin: 150,
+  actions: 160,
+};
+
+const adminUserColumnOrder: AdminUserColumn[] = ['user', 'role', 'scope', 'template', 'lastLogin', 'actions'];
 
 function AccessIcon({ name }: { name: AccessIconName }) {
   const common = {
@@ -143,6 +173,12 @@ function formatLastLogin(value?: string): string {
   return date.toLocaleString();
 }
 
+function lastLoginTimestamp(value?: string): number {
+  if (!value || value.startsWith('1970')) return 0;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 export default function AdminUsers() {
   const { t } = useTranslation();
   const [users, setUsers] = useState<UserPermission[]>([]);
@@ -150,6 +186,12 @@ export default function AdminUsers() {
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [userSortField, setUserSortField] = useState<AdminUserSortField>('user');
+  const [userSortDir, setUserSortDir] = useState<StandardSortDirection>('asc');
+  const userColumns = useColumnResize(adminUserColumnWidths, {
+    minWidths: adminUserColumnMinimums,
+    storageKey: 'adminUserColumnsV1',
+  });
 
   const [editUser, setEditUser] = useState<UserPermission | null>(null);
   const [editTemplate, setEditTemplate] = useState<PermissionTemplate | null>(null);
@@ -229,6 +271,52 @@ export default function AdminUsers() {
     const tpl = templates.find(t => t.name === tplName);
     if (!tpl) return u;
     return { ...u, role: tpl.role, namespaces: tpl.role === 'admin' ? [ALL_NS] : [...tpl.namespaces], template: tpl.name };
+  };
+
+  const sortedUsers = useMemo(() => [...users].sort((a, b) => {
+    let comparison = 0;
+    switch (userSortField) {
+      case 'user':
+        comparison = (a.displayName || a.username).localeCompare(b.displayName || b.username);
+        break;
+      case 'role':
+        comparison = a.role.localeCompare(b.role);
+        break;
+      case 'scope':
+        comparison = nsSummary(a.namespaces).localeCompare(nsSummary(b.namespaces));
+        break;
+      case 'template':
+        comparison = (a.template || '').localeCompare(b.template || '');
+        break;
+      case 'lastLogin':
+        comparison = lastLoginTimestamp(a.lastLogin) - lastLoginTimestamp(b.lastLogin);
+        break;
+    }
+    return userSortDir === 'asc' ? comparison : -comparison;
+  }), [userSortDir, userSortField, users]);
+
+  const setUserSort = (field: AdminUserSortField) => {
+    if (field === userSortField) {
+      setUserSortDir(current => current === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    setUserSortField(field);
+    setUserSortDir(field === 'lastLogin' ? 'desc' : 'asc');
+  };
+
+  const resizeUserColumnWithKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>, column: AdminUserColumn) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    userColumns.resizeBy(column, event.key === 'ArrowRight' ? 16 : -16);
+  };
+
+  const userHeaderProps = {
+    activeSort: userSortField,
+    direction: userSortDir,
+    onSort: setUserSort,
+    onResize: userColumns.startResize,
+    onResizeKey: resizeUserColumnWithKeyboard,
+    onReset: userColumns.resetWidths,
   };
 
   if (loading) {
@@ -324,19 +412,30 @@ export default function AdminUsers() {
           </div>
         ) : (
           <div className="admin-users-table-card">
-            <table className="admin-users-table">
+            <StandardTableToolbar
+              title={t('User inventory')}
+              count={`${sortedUsers.length} ${t('users')}`}
+              onReset={userColumns.resetWidths}
+              resetLabel={t('Reset columns')}
+              resizeHint={t('Drag column edges to resize')}
+            />
+            <div className="standard-native-table-scroller">
+            <table className="admin-users-table standard-native-table">
+              <colgroup>
+                {adminUserColumnOrder.map(column => <col key={column} style={{ width: userColumns.widths[column] }} />)}
+              </colgroup>
               <thead>
                 <tr>
-                  <th>{t('User')}</th>
-                  <th>{t('Role')}</th>
-                  <th>{t('Scope')}</th>
-                  <th>{t('Template')}</th>
-                  <th>{t('Last login')}</th>
-                  <th className="admin-actions-head">{t('Actions')}</th>
+                  <th><StandardColumnHeader column="user" label={t('User')} sortField="user" {...userHeaderProps} /></th>
+                  <th><StandardColumnHeader column="role" label={t('Role')} sortField="role" {...userHeaderProps} /></th>
+                  <th><StandardColumnHeader column="scope" label={t('Scope')} sortField="scope" {...userHeaderProps} /></th>
+                  <th><StandardColumnHeader column="template" label={t('Template')} sortField="template" {...userHeaderProps} /></th>
+                  <th><StandardColumnHeader column="lastLogin" label={t('Last login')} sortField="lastLogin" {...userHeaderProps} /></th>
+                  <th className="admin-actions-head"><StandardColumnHeader column="actions" label={t('Actions')} isLast {...userHeaderProps} /></th>
                 </tr>
               </thead>
               <tbody>
-                {users.map(u => (
+                {sortedUsers.map(u => (
                   <tr key={u.username}>
                     <td>
                       <div className="admin-user-cell">
@@ -383,6 +482,7 @@ export default function AdminUsers() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>

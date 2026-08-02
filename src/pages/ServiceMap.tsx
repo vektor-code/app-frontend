@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Search, X } from 'lucide-react';
 import { api } from '../api/client';
 import { connectLiveStream } from '../api/liveStream';
 import type { ServiceMapData, ServiceStats, Span, TraceListItem } from '../entities';
@@ -16,6 +17,9 @@ interface ServiceMapProps {
   namespace: string;
   collapsed?: boolean;
 }
+
+type MapHealthFilter = 'all' | 'healthy' | 'warning' | 'critical';
+type MapEntityFilter = 'all' | 'services' | 'infrastructure';
 
 interface Particle {
   id: string;
@@ -714,6 +718,9 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
   const [visibleNamespaces, setVisibleNamespaces] = useState<string[]>([]);
   const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
   const [activityFilter, setActivityFilter] = useState<string>('all');
+  const [nodeSearch, setNodeSearch] = useState('');
+  const [healthFilter, setHealthFilter] = useState<MapHealthFilter>('all');
+  const [entityFilter, setEntityFilter] = useState<MapEntityFilter>('all');
   const [enabledNamespaces, setEnabledNamespaces] = useState<Set<string> | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1211,7 +1218,51 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
     return activeNamespacesSet.has(n.namespace || 'default');
   }, [data, namespace, selectedNamespaces, activeNamespacesSet, activityFilter]);
 
-  const activeNodes = (data?.nodes || []).filter(isNodeActive);
+  const scopedNodes = (data?.nodes || []).filter(isNodeActive);
+  const healthCounts = scopedNodes
+    .filter(node => node.serviceName !== 'Internet')
+    .reduce(
+      (counts, node) => {
+        counts.all += 1;
+        counts[getMapNodeHealth(node).tone] += 1;
+        return counts;
+      },
+      { all: 0, healthy: 0, warning: 0, critical: 0, neutral: 0, info: 0 }
+    );
+  const filteredNodes = scopedNodes.filter(node => {
+    const health = getMapNodeHealth(node);
+    if (healthFilter !== 'all' && health.tone !== healthFilter) return false;
+    if (entityFilter === 'services' && (node.serviceName === 'Internet' || isInfraNode(node))) return false;
+    if (entityFilter === 'infrastructure' && !isInfraNode(node)) return false;
+    return true;
+  });
+  const normalizedNodeSearch = nodeSearch.trim().toLowerCase();
+  const filteredNodeKeys = new Set(filteredNodes.map(node => getNodeKey(node)));
+  const directSearchKeys = new Set<string>();
+
+  if (normalizedNodeSearch) {
+    filteredNodes.forEach(node => {
+      const searchable = `${node.serviceName} ${node.namespace || 'default'} ${node.language || ''}`.toLowerCase();
+      if (searchable.includes(normalizedNodeSearch)) {
+        directSearchKeys.add(getNodeKey(node));
+      }
+    });
+  }
+
+  const searchVisibleKeys = new Set(directSearchKeys);
+
+  if (normalizedNodeSearch) {
+    (data?.edges || []).forEach(edge => {
+      const sourceKey = getNodeKey({ serviceName: edge.source, namespace: edge.sourceNamespace || namespace });
+      const targetKey = getNodeKey({ serviceName: edge.target, namespace: edge.targetNamespace || namespace });
+      if (directSearchKeys.has(sourceKey) && filteredNodeKeys.has(targetKey)) searchVisibleKeys.add(targetKey);
+      if (directSearchKeys.has(targetKey) && filteredNodeKeys.has(sourceKey)) searchVisibleKeys.add(sourceKey);
+    });
+  }
+
+  const activeNodes = normalizedNodeSearch
+    ? filteredNodes.filter(node => searchVisibleKeys.has(getNodeKey(node)))
+    : filteredNodes;
   const activeNodeKeys = new Set(activeNodes.map(n => getNodeKey(n)));
   const activeEdges = (data?.edges || []).filter(e => {
     const sourceKey = getNodeKey({ serviceName: e.source, namespace: e.sourceNamespace || namespace });
@@ -1490,7 +1541,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       const isDark = document.body.classList.contains('dark-theme');
 
       // Background
-      ctx.fillStyle = isDark ? '#0f172a' : '#f8fafc';
+      ctx.fillStyle = isDark ? '#0b1120' : '#ffffff';
       ctx.fillRect(0, 0, width, height);
 
       // Apply zoom and pan transforms
@@ -1498,9 +1549,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       ctx.translate(currentPan.x, currentPan.y);
       ctx.scale(currentZoom, currentZoom);
 
-      // Grid (in world space)
-      ctx.strokeStyle = isDark ? 'rgba(30, 41, 59, 0.4)' : 'rgba(226, 232, 240, 0.8)';
-      ctx.lineWidth = 0.5 / currentZoom;
+      // Quiet point grid keeps the canvas navigable without competing with edges.
       const gridSize = 40;
       const worldLeft = -currentPan.x / currentZoom;
       const worldTop = -currentPan.y / currentZoom;
@@ -1510,10 +1559,12 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       const gridStartY = Math.floor(worldTop / gridSize) * gridSize;
 
       for (let x = gridStartX; x <= worldRight; x += gridSize) {
-        ctx.beginPath(); ctx.moveTo(x, worldTop); ctx.lineTo(x, worldBottom); ctx.stroke();
-      }
-      for (let y = gridStartY; y <= worldBottom; y += gridSize) {
-        ctx.beginPath(); ctx.moveTo(worldLeft, y); ctx.lineTo(worldRight, y); ctx.stroke();
+        for (let y = gridStartY; y <= worldBottom; y += gridSize) {
+          ctx.beginPath();
+          ctx.arc(x, y, 1 / currentZoom, 0, Math.PI * 2);
+          ctx.fillStyle = isDark ? 'rgba(100, 116, 139, 0.22)' : 'rgba(148, 163, 184, 0.30)';
+          ctx.fill();
+        }
       }
 
       if (activeNodes.length === 0) {
@@ -2438,10 +2489,10 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
   const topServices = [...activeNodes]
     .filter(node => node.serviceName !== 'Internet')
     .sort((a, b) => getMapNodeRisk(b) - getMapNodeRisk(a))
-    .slice(0, 8);
+    .slice(0, 5);
   const topPaths = [...activeEdges]
     .sort((a, b) => getMapEdgeWeight(b) - getMapEdgeWeight(a))
-    .slice(0, 6);
+    .slice(0, 5);
   const mapStatusTone = data === null
     ? 'neutral'
     : criticalNodes.length > 0
@@ -2460,26 +2511,27 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         : degradedNodes.length > 0
           ? t('Watch')
           : t('Healthy');
+  const hasActiveNodeFilters = Boolean(
+    normalizedNodeSearch ||
+    healthFilter !== 'all' ||
+    entityFilter !== 'all' ||
+    activityFilter !== 'all'
+  );
 
   return (
-    <div className="service-map-page animate-fade-in">
-      <section className="service-map-hero">
-        <div className="service-map-title-block">
-          <span className="service-map-eyebrow">
+    <div className="service-map-page apm-dashboard animate-fade-in">
+      <section className="apm-dashboard-header service-map-dashboard-header">
+        <div className="apm-title-block">
+          <span className="apm-title-icon service-map-title-icon">
             <ServiceMapIcon name="network" />
-            {t('Live topology')}
           </span>
           <h1>{t('Service Map')}</h1>
         </div>
-        <div className="service-map-hero-actions">
-          <button className="service-map-tool-button" onClick={handleFitView} disabled={activeNodes.length === 0}>
-            <ServiceMapIcon name="focus" />
-            {t('Fit')}
-          </button>
-          <button className="service-map-tool-button" onClick={handleReset}>
-            <ServiceMapIcon name="reset" />
-            {t('Reset')}
-          </button>
+        <div className="apm-header-meta">
+          <div className={`service-map-live-state ${mapStatusTone}`}>
+            <i />
+            {mapStatusLabel}
+          </div>
         </div>
       </section>
 
@@ -2524,6 +2576,88 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
       )}
 
       <section className="service-map-toolbar">
+        <div className="service-map-toolbar-primary">
+          <label className="service-map-search-field">
+            <Search size={16} aria-hidden="true" />
+            <input
+              type="search"
+              value={nodeSearch}
+              onChange={event => setNodeSearch(event.target.value)}
+              placeholder={t('Find a service or namespace')}
+              aria-label={t('Search map')}
+            />
+            {nodeSearch && (
+              <button type="button" onClick={() => setNodeSearch('')} aria-label={t('Clear search')}>
+                <X size={14} />
+              </button>
+            )}
+          </label>
+
+          <div className="service-map-filter-tabs" aria-label={t('Filter by health')}>
+            {([
+              ['all', t('All'), healthCounts.all],
+              ['healthy', t('Healthy'), healthCounts.healthy],
+              ['warning', t('Watch'), healthCounts.warning],
+              ['critical', t('Critical'), healthCounts.critical],
+            ] as Array<[MapHealthFilter, string, number]>).map(([value, label, count]) => (
+              <button
+                type="button"
+                key={value}
+                className={`${healthFilter === value ? 'active' : ''} ${value}`}
+                onClick={() => setHealthFilter(value)}
+              >
+                <i />
+                {label}
+                <span>{count}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="service-map-entity-tabs" aria-label={t('Filter by component type')}>
+            {([
+              ['all', t('All types')],
+              ['services', t('Services')],
+              ['infrastructure', t('Infrastructure')],
+            ] as Array<[MapEntityFilter, string]>).map(([value, label]) => (
+              <button
+                type="button"
+                key={value}
+                className={entityFilter === value ? 'active' : ''}
+                onClick={() => setEntityFilter(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <label className="service-map-select-field">
+            <span>{t('Activity')}</span>
+            <CustomSelect
+              className="service-map-activity-select"
+              ariaLabel={t('Activity')}
+              value={activityFilter}
+              onChange={setActivityFilter}
+              options={[
+                { value: 'all', label: t('All activity') },
+                { value: '5m', label: t('Last 5m') },
+                { value: '15m', label: t('Last 15m') },
+                { value: '1h', label: t('Last 1h') },
+              ]}
+            />
+          </label>
+
+          <div className="service-map-toolbar-actions">
+            <button className="service-map-tool-button" onClick={handleFitView} disabled={activeNodes.length === 0}>
+              <ServiceMapIcon name="focus" />
+              {t('Fit')}
+            </button>
+            <button className="service-map-tool-button" onClick={handleReset}>
+              <ServiceMapIcon name="reset" />
+              {t('Reset')}
+            </button>
+          </div>
+        </div>
+
         <div className="service-map-filter-group">
           <span className="service-map-filter-label">
             <ServiceMapIcon name="namespace" />
@@ -2561,34 +2695,35 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             <span className="service-map-scope-pill">{namespace || t('All namespaces')}</span>
           )}
         </div>
-
-        <label className="service-map-select-field">
-          <span>{t('Activity')}</span>
-          <CustomSelect
-            className="service-map-activity-select"
-            ariaLabel={t('Activity')}
-            value={activityFilter}
-            onChange={setActivityFilter}
-            options={[
-              { value: 'all', label: t('All nodes') },
-              { value: '5m', label: t('Last 5m') },
-              { value: '15m', label: t('Last 15m') },
-              { value: '1h', label: t('Last 1h') },
-            ]}
-          />
-        </label>
       </section>
 
-      <section className="service-map-shell">
-        <div className="service-map-shell-header">
-          <div>
-            <span className={`service-map-status-pill ${mapStatusTone}`}>
-              <i />
-              {mapStatusLabel}
-            </span>
-            <h2>{t('Service Topology')}</h2>
-          </div>
+      <section className="service-map-workbench">
+        <section className="service-map-shell">
+          <div className="service-map-shell-header">
+            <div className="service-map-shell-title">
+              <span className="service-map-shell-icon">
+                <ServiceMapIcon name="flow" />
+              </span>
+              <div>
+                <h2>{t('Service Topology')}</h2>
+                <span className={`service-map-status-pill ${mapStatusTone}`}>
+                  <i />
+                  {mapStatusLabel}
+                </span>
+              </div>
+            </div>
           <div className="service-map-shell-meta">
+            {highlightedService && (
+              <button
+                type="button"
+                className="service-map-focus-pill"
+                onClick={() => setHighlightedService(null)}
+                title={t('Clear focus')}
+              >
+                {t('Focused')}: {highlightedService}
+                <X size={12} />
+              </button>
+            )}
             <span>{formatMapNumber(activeNodes.length)} {t('nodes')}</span>
             <span>{formatMapNumber(activeEdges.length)} {t('edges')}</span>
             <span>{Math.round(zoom * 100)}%</span>
@@ -2609,8 +2744,8 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
               ) : (
                 <NoDataState
                   height={220}
-                  title={t("No services discovered yet")}
-                  hint={t("Enable tracing and send traffic to draw the map.")}
+                  title={t(hasActiveNodeFilters ? 'No nodes match these filters' : 'No services discovered yet')}
+                  hint={t(hasActiveNodeFilters ? 'Clear or broaden the filters to restore the topology.' : 'Enable tracing and send traffic to draw the map.')}
                   icon={
                     <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round">
                       <circle cx="5" cy="6" r="2.2" /><circle cx="19" cy="6" r="2.2" /><circle cx="12" cy="18" r="2.2" />
@@ -2657,10 +2792,10 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             ))}
           </div>
         </div>
-      </section>
+        </section>
 
-      {activeNodes.length > 0 && (
-        <section className="service-map-insights-grid">
+        {activeNodes.length > 0 && (
+          <aside className="service-map-insights-rail">
           <div className="service-map-panel">
             <div className="service-map-panel-header">
               <div>
@@ -2708,7 +2843,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
                     </div>
                     <div className="service-map-path-metrics">
                       <span>{formatMapNumber(edge.callCount)} {t('calls')}</span>
-                      <span>{formatMapMs(edge.avgDurationMs)}</span>
+                      <span>{formatMapMs(edge.avgDurationMs)} {t('avg')}</span>
                       <span>{formatMapNumber(edge.errorCount)} {t('errors')}</span>
                     </div>
                   </button>
@@ -2716,8 +2851,9 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
               )}
             </div>
           </div>
-        </section>
-      )}
+          </aside>
+        )}
+      </section>
 
       {/* Context Menu */}
       {contextMenu && (
@@ -2985,9 +3121,7 @@ function ServiceMapNodeCard({ node, onClick }: { node: ServiceStats; onClick: ()
         <span>{formatMapNumber(node.requestCount)} calls</span>
         <span>{formatMapPercent(node.errorRate)} err</span>
         <span>{formatMapMs(node.p95Ms)} p95</span>
-      </div>
-      <div className="service-map-health-bar">
-        <i className={health.tone} style={{ width: `${Math.max(4, health.score)}%` }} />
+        <strong className={health.tone}>{health.label}</strong>
       </div>
     </button>
   );

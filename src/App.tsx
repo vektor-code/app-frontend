@@ -1,5 +1,6 @@
 import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react';
-import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { api } from './api/client';
 import type { NamespaceStats } from './entities';
 import Sidebar from './components/Sidebar';
@@ -15,6 +16,7 @@ const Login = React.lazy(() => import('./pages/Login'));
 const Dependencies = React.lazy(() => import('./pages/Dependencies'));
 const Admin = React.lazy(() => import('./pages/Admin'));
 const Alerts = React.lazy(() => import('./pages/Alerts'));
+const Infrastructure = React.lazy(() => import('./pages/Infrastructure'));
 const Services = React.lazy(() => import('./pages/Services'));
 
 function PageFallback() {
@@ -26,31 +28,109 @@ type HeaderDropdownOption = {
   label: string;
 };
 
+function clusterOption(cluster: string | { name?: string; displayName?: string }): HeaderDropdownOption | null {
+  if (typeof cluster === 'string') {
+    return cluster ? { value: cluster, label: cluster } : null;
+  }
+  const name = cluster.name || '';
+  if (!name) return null;
+  return {
+    value: name,
+    label: cluster.displayName || name,
+  };
+}
+
 function HeaderDropdown({
   label,
   value,
   options,
+  icon,
   onChange,
 }: {
   label: string;
   value: string;
   options: HeaderDropdownOption[];
+  icon?: React.ReactNode;
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number; width: number } | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const selected = options.find(option => option.value === value) || options[0];
+
+  const updateMenuPosition = useCallback(() => {
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const viewportPadding = 12;
+    const width = Math.min(Math.max(rect.width, 220), window.innerWidth - viewportPadding * 2, 300);
+    const left = Math.min(
+      Math.max(viewportPadding, rect.right - width),
+      window.innerWidth - width - viewportPadding
+    );
+    setMenuPosition({
+      top: rect.bottom + 8,
+      left,
+      width
+    });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) {
         setOpen(false);
       }
     };
+    const reposition = () => updateMenuPosition();
+    updateMenuPosition();
     document.addEventListener('pointerdown', closeOnOutsideClick);
-    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
-  }, [open]);
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [open, updateMenuPosition]);
+
+  const menu = (
+    <div
+      ref={menuRef}
+      className="header-dropdown-menu"
+      role="listbox"
+      aria-label={label}
+      style={menuPosition ? { top: menuPosition.top, left: menuPosition.left, width: menuPosition.width } : undefined}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          setOpen(false);
+          rootRef.current?.querySelector('button')?.focus();
+        }
+      }}
+    >
+      {options.map((option, index) => (
+        <button
+          key={`${option.value || '__all__'}-${index}`}
+          type="button"
+          role="option"
+          aria-selected={option.value === value}
+          className={option.value === value ? 'selected' : ''}
+          onClick={() => {
+            onChange(option.value);
+            setOpen(false);
+          }}
+        >
+          <span title={option.label}>{option.label}</span>
+          {option.value === value && (
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          )}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div
@@ -68,37 +148,18 @@ function HeaderDropdown({
         aria-label={label}
         aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() => setOpen(current => !current)}
+        onClick={() => {
+        if (!open) updateMenuPosition();
+          setOpen(current => !current);
+        }}
       >
-        <span title={selected?.label}>{selected?.label}</span>
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {icon && <span className="header-filter-icon" aria-hidden="true">{icon}</span>}
+        <span className="header-dropdown-value" title={selected?.label}>{selected?.label}</span>
+        <svg className="header-dropdown-chevron" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
-      {open && (
-        <div className="header-dropdown-menu" role="listbox" aria-label={label}>
-          {options.map((option, index) => (
-            <button
-              key={`${option.value || '__all__'}-${index}`}
-              type="button"
-              role="option"
-              aria-selected={option.value === value}
-              className={option.value === value ? 'selected' : ''}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-            >
-              <span title={option.label}>{option.label}</span>
-              {option.value === value && (
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+      {open && createPortal(menu, document.body)}
     </div>
   );
 }
@@ -128,7 +189,11 @@ export default function App() {
   }, []);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    return localStorage.getItem('sidebarCollapsed') === 'true';
+    const savedPreference = localStorage.getItem('sidebarCollapsed');
+    if (savedPreference !== null) {
+      return savedPreference === 'true';
+    }
+    return window.innerWidth <= 900;
   });
 
   const handleToggleSidebar = useCallback(() => {
@@ -139,9 +204,7 @@ export default function App() {
     });
   }, []);
 
-  const [isDark, setIsDark] = useState(false);
-  const navigate = useNavigate();
-
+  const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') === 'dark');
   // Auth check on mount
   useEffect(() => {
     const checkAuth = async () => {
@@ -162,6 +225,7 @@ export default function App() {
 
   const handleLogin = useCallback((loggedInUser: any, token: string) => {
     localStorage.setItem('token', token);
+    setIsDark(localStorage.getItem('theme') === 'dark');
     setUser(loggedInUser);
   }, []);
 
@@ -178,15 +242,22 @@ export default function App() {
       const [statsData, nsData, clustersData] = await Promise.all([
         api.getStats(),
         api.getNamespaces(clusterQuery).catch(() => ({ namespaces: [] as string[] })),
-        api.getClusters().catch(() => ({ clusters: [] as string[] })),
+        api.getClusters().catch(() => ({ clusters: [] })),
       ]);
       const statsNs = statsData.namespaces || [];
       const statsMap = new Map(statsNs.map(ns => [ns.namespace, ns]));
+      const discoveredNamespaces = nsData.namespaces || [];
 
-      for (const ns of (nsData.namespaces || [])) {
-        if (!statsMap.has(ns)) {
-          statsNs.push({
+      for (const ns of discoveredNamespaces) {
+        const existing = statsMap.get(ns);
+        if (existing) {
+          if (selectedCluster) {
+            existing.cluster = selectedCluster;
+          }
+        } else {
+          const discoveredStat: NamespaceStats = {
             namespace: ns,
+            cluster: selectedCluster || undefined,
             traceCount: 0,
             errorCount: 0,
             errorRate: 0,
@@ -194,7 +265,9 @@ export default function App() {
             services: [],
             podCount: 0,
             lastActivity: '',
-          });
+          };
+          statsNs.push(discoveredStat);
+          statsMap.set(ns, discoveredStat);
         }
       }
 
@@ -214,15 +287,8 @@ export default function App() {
   }, [loadStats, user]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('theme');
-    if (saved === 'dark') {
-      setIsDark(true);
-      document.body.classList.add('dark-theme');
-    } else {
-      setIsDark(false);
-      document.body.classList.remove('dark-theme');
-    }
-  }, []);
+    document.body.classList.toggle('dark-theme', isDark);
+  }, [isDark]);
 
   const toggleTheme = () => {
     if (isDark) {
@@ -336,45 +402,30 @@ export default function App() {
   return (
     <div className={`app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <Sidebar
-        namespaces={namespaces}
-        selectedNamespace={selectedNamespace}
-        onNamespaceChange={(ns) => {
-          handleNamespaceChange(ns);
-          navigate('/');
-        }}
         collapsed={sidebarCollapsed}
         onToggleCollapse={handleToggleSidebar}
         user={user}
         onLogout={handleLogout}
+        isDark={isDark}
+        onToggleTheme={toggleTheme}
       />
       <div className="app-main">
         <header className="app-header">
-          <div className="header-context">
-            <span className="header-kicker">{t('Telemetry scope')}</span>
-            <div className="header-title">
-              <span className="header-title-dot" />
-              <span>{selectedNamespace || t('All Namespaces')}</span>
-            </div>
-          </div>
           <div className="header-actions">
             <div className="header-filter">
-              <span className="header-filter-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3Z" />
-                  <path d="m4.5 8 7.5 4.2L19.5 8" />
-                  <path d="M12 21v-8.8" />
-                </svg>
-              </span>
-              <span className="header-filter-label">{t('Cluster')}</span>
               <HeaderDropdown
                 label={t('Cluster')}
                 value={selectedCluster}
+                icon={(
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3Z" />
+                    <path d="m4.5 8 7.5 4.2L19.5 8" />
+                    <path d="M12 21v-8.8" />
+                  </svg>
+                )}
                 options={[
                   { value: '', label: t('All Clusters') },
-                  ...clusters.map((cluster: any) => ({
-                    value: cluster.name,
-                    label: cluster.displayName || cluster.name,
-                  })),
+                  ...clusters.map(clusterOption).filter((option): option is HeaderDropdownOption => Boolean(option)),
                 ]}
                 onChange={(nextCluster) => {
                   handleClusterChange(nextCluster);
@@ -384,18 +435,17 @@ export default function App() {
             </div>
 
             <div className="header-filter">
-              <span className="header-filter-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
-                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
-                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
-                </svg>
-              </span>
-              <span className="header-filter-label">{t('Namespace')}</span>
               <HeaderDropdown
                 label={t('Namespace')}
                 value={selectedNamespace}
+                icon={(
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                  </svg>
+                )}
                 options={[
                   { value: '', label: t('All Namespaces') },
                   ...namespaces
@@ -409,50 +459,19 @@ export default function App() {
               />
             </div>
 
-            <button
-              className="header-icon-btn"
-              onClick={toggleTheme}
-              title={isDark ? t('Switch to light mode') : t('Switch to dark mode')}
-            >
-              {isDark ? (
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="5" />
-                  <line x1="12" y1="1" x2="12" y2="3" />
-                  <line x1="12" y1="21" x2="12" y2="23" />
-                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                  <line x1="1" y1="12" x2="3" y2="12" />
-                  <line x1="21" y1="12" x2="23" y2="12" />
-                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-                </svg>
-              ) : (
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                </svg>
-              )}
-            </button>
-            <div className="header-user-chip" title={`${user?.name || user?.username || 'User'}${user?.email ? ` · ${user.email}` : ''}`}>
-              <div className="header-user-avatar">
-                {String(user?.name || user?.username || 'U').trim().split(/\s+/).slice(0, 2).map((w: string) => w[0]?.toUpperCase() || '').join('') || 'U'}
-              </div>
-              <div className="header-user-meta">
-                <span className="header-user-name">{user?.name || user?.username || 'User'}</span>
-                <span className="header-user-role">{user?.role === 'admin' ? t('Administrator') : t('Viewer')}</span>
-              </div>
-            </div>
           </div>
         </header>
         <main className="app-content">
           <Suspense fallback={<PageFallback />}>
             <Routes>
-              <Route path="/" element={<Dashboard namespaces={namespaces} selectedNamespace={selectedNamespace} onSelectNamespace={handleNamespaceChange} />} />
+              <Route path="/" element={<Dashboard namespaces={namespaces} selectedNamespace={selectedNamespace} />} />
               <Route path="/services" element={<Services namespace={selectedNamespace} />} />
               <Route path="/traces" element={<TraceExplorer namespace={selectedNamespace} cluster={selectedCluster} />} />
               <Route path="/traces/:traceId" element={<TraceDetail />} />
               <Route path="/servicemap" element={<ServiceMap namespace={selectedNamespace} collapsed={sidebarCollapsed} />} />
               <Route path="/dependencies" element={<Dependencies namespace={selectedNamespace} />} />
               <Route path="/database" element={<DbAnalytics namespace={selectedNamespace} />} />
+              <Route path="/infrastructure" element={<Infrastructure namespace={selectedNamespace} />} />
               <Route path="/live" element={<LiveStream namespace={selectedNamespace} />} />
               <Route path="/alerts" element={<Alerts namespace={selectedNamespace} />} />
               <Route path="/admin" element={user?.role === 'admin' ? <Admin /> : <Navigate to="/" replace />} />

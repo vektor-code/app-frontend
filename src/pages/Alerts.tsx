@@ -1,10 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { ServiceStats } from '../entities';
 import { LoadingState } from '../components/DataState';
 import CustomSelect from '../components/CustomSelect';
 import { useTranslation } from '../utils/i18n';
+import { StandardColumnHeader, StandardTableToolbar, type StandardSortDirection } from '../components/StandardTable';
+import { useColumnResize } from '../utils/useColumnResize';
 
 // Interfaces
 interface AlertRule {
@@ -55,6 +63,29 @@ interface AlertsProps {
   namespace: string;
 }
 
+type SilenceColumn = 'service' | 'reason' | 'startTime' | 'endTime' | 'status' | 'actions';
+type SilenceSortField = 'service' | 'reason' | 'startTime' | 'endTime' | 'duration';
+
+const silenceColumnWidths: Record<SilenceColumn, number> = {
+  service: 220,
+  reason: 300,
+  startTime: 180,
+  endTime: 180,
+  status: 170,
+  actions: 150,
+};
+
+const silenceColumnMinimums: Record<SilenceColumn, number> = {
+  service: 170,
+  reason: 220,
+  startTime: 150,
+  endTime: 150,
+  status: 140,
+  actions: 120,
+};
+
+const silenceColumnOrder: SilenceColumn[] = ['service', 'reason', 'startTime', 'endTime', 'status', 'actions'];
+
 // No default/demo rules or channels — everything the user sees is what they
 // actually configured, evaluated against real service telemetry.
 
@@ -83,6 +114,12 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
   const [silences, setSilences] = useState<SilenceRule[]>(() => {
     const saved = localStorage.getItem('alert_silences');
     return saved ? JSON.parse(saved) : [];
+  });
+  const [silenceSortField, setSilenceSortField] = useState<SilenceSortField>('endTime');
+  const [silenceSortDir, setSilenceSortDir] = useState<StandardSortDirection>('asc');
+  const silenceColumns = useColumnResize(silenceColumnWidths, {
+    minWidths: silenceColumnMinimums,
+    storageKey: 'alertSilenceColumnsV1',
   });
 
   const [acknowledgedAlerts, setAcknowledgedAlerts] = useState<string[]>(() => {
@@ -368,6 +405,36 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
   const totalFiring = visibleAlerts.filter(a => a.status === 'Firing').length;
   const totalAcked = visibleAlerts.filter(a => a.status === 'Acknowledged').length;
   const totalSilenced = visibleAlerts.filter(a => a.status === 'Silenced').length;
+  const sortedSilences = useMemo(() => [...silences].sort((a, b) => {
+    const left = a[silenceSortField] || '';
+    const right = b[silenceSortField] || '';
+    const comparison = left.localeCompare(right);
+    return silenceSortDir === 'asc' ? comparison : -comparison;
+  }), [silenceSortDir, silenceSortField, silences]);
+
+  const setSilenceSort = (field: SilenceSortField) => {
+    if (field === silenceSortField) {
+      setSilenceSortDir(current => current === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    setSilenceSortField(field);
+    setSilenceSortDir('asc');
+  };
+
+  const resizeSilenceColumnWithKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>, column: SilenceColumn) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    silenceColumns.resizeBy(column, event.key === 'ArrowRight' ? 16 : -16);
+  };
+
+  const silenceHeaderProps = {
+    activeSort: silenceSortField,
+    direction: silenceSortDir,
+    onSort: setSilenceSort,
+    onResize: silenceColumns.startResize,
+    onResizeKey: resizeSilenceColumnWithKeyboard,
+    onReset: silenceColumns.resetWidths,
+  };
 
   return (
     <div className="animate-fade-in alerts-page" style={{ paddingBottom: '40px' }}>
@@ -889,7 +956,7 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
 
         {/* Silences Panel */}
         {activeTab === 'silences' && (
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="card alerts-silence-table-card" style={{ padding: 0, overflow: 'hidden' }}>
             <div className="table-wrapper">
               {silences.length === 0 ? (
                 <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
@@ -900,34 +967,46 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
                   <div style={{ fontSize: '12px', marginTop: '4px' }}>Alert rules trigger warning pages and notify endpoints normally.</div>
                 </div>
               ) : (
-                <table className="table">
+                <>
+                <StandardTableToolbar
+                  title={t('Active silences')}
+                  count={`${sortedSilences.length} ${t('results')}`}
+                  onReset={silenceColumns.resetWidths}
+                  resetLabel={t('Reset columns')}
+                  resizeHint={t('Drag column edges to resize')}
+                />
+                <div className="standard-native-table-scroller">
+                <table className="table standard-native-table alerts-silence-table">
+                  <colgroup>
+                    {silenceColumnOrder.map(column => <col key={column} style={{ width: silenceColumns.widths[column] }} />)}
+                  </colgroup>
                   <thead>
-                    <tr style={{ textAlign: 'left', background: 'var(--bg-tertiary)' }}>
-                      <th style={{ padding: '12px 20px' }}>Service Name Target</th>
-                      <th style={{ padding: '12px 20px' }}>Reason/Ticket ID</th>
-                      <th style={{ padding: '12px 20px' }}>Muted Since</th>
-                      <th style={{ padding: '12px 20px' }}>Expires At</th>
-                      <th style={{ padding: '12px 20px' }}>Status</th>
-                      <th style={{ padding: '12px 20px', textAlign: 'right' }}>Actions</th>
+                    <tr>
+                      <th><StandardColumnHeader column="service" label={t('Service')} sortField="service" {...silenceHeaderProps} /></th>
+                      <th><StandardColumnHeader column="reason" label={t('Reason / ticket ID')} sortField="reason" {...silenceHeaderProps} /></th>
+                      <th><StandardColumnHeader column="startTime" label={t('Muted since')} sortField="startTime" {...silenceHeaderProps} /></th>
+                      <th><StandardColumnHeader column="endTime" label={t('Expires at')} sortField="endTime" {...silenceHeaderProps} /></th>
+                      <th><StandardColumnHeader column="status" label={t('Status')} sortField="duration" {...silenceHeaderProps} /></th>
+                      <th><StandardColumnHeader column="actions" label={t('Actions')} align="right" isLast {...silenceHeaderProps} /></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {silences.map(silence => (
-                      <tr key={silence.id} style={{ borderBottom: '1px solid var(--border-primary)' }}>
-                        <td style={{ padding: '12px 20px' }}>
+                    {sortedSilences.map(silence => (
+                      <tr key={silence.id}>
+                        <td>
                           <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-primary)' }}>
                             {silence.service}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 20px' }}>{silence.reason}</td>
-                        <td style={{ padding: '12px 20px' }}>{silence.startTime}</td>
-                        <td style={{ padding: '12px 20px' }}>{silence.endTime}</td>
-                        <td style={{ padding: '12px 20px' }}>
+                        <td>{silence.reason}</td>
+                        <td>{silence.startTime}</td>
+                        <td>{silence.endTime}</td>
+                        <td>
                           <span className="badge badge-warning" style={{ fontSize: '10px', fontWeight: 700 }}>
                             {silence.duration}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 20px', textAlign: 'right' }}>
+                        <td style={{ textAlign: 'right' }}>
                           <button
                             className="btn btn-ghost"
                             onClick={() => handleRemoveSilence(silence.id)}
@@ -944,6 +1023,8 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
                     ))}
                   </tbody>
                 </table>
+                </div>
+                </>
               )}
             </div>
           </div>

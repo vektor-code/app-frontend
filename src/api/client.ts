@@ -11,6 +11,8 @@ import type {
   ServiceMapData,
   ServiceStats,
   TimeseriesData,
+  LatencyDistribution,
+  InfrastructureMetrics,
   Trace,
   TraceListItem,
   UserPermission,
@@ -80,7 +82,23 @@ class ApiClient {
     params.set('minutes', String(minutes));
     return this.get<TimeseriesData>(`/metrics/timeseries?${params.toString()}`);
   }
-  getClusters() { return this.get<{ clusters: string[] }>('/clusters'); }
+
+  getLatencyDistribution(namespace?: string, minutes = 60) {
+    const params = new URLSearchParams();
+    if (namespace) params.set('namespace', namespace);
+    params.set('minutes', String(minutes));
+    return this.get<LatencyDistribution>(`/metrics/latency-distribution?${params.toString()}`);
+  }
+
+  getInfrastructure(namespace?: string) {
+    const params = new URLSearchParams();
+    if (namespace) params.set('namespace', namespace);
+    const qs = params.toString();
+    return this.get<InfrastructureMetrics>(`/metrics/infrastructure${qs ? `?${qs}` : ''}`);
+  }
+  getClusters() {
+    return this.get<{ clusters: Array<string | { name: string; displayName?: string; status?: string }> }>('/clusters');
+  }
   getAdminConfig() { return this.get<any>('/admin/config'); }
   updateAdminConfig(config: any) { return this.post<{ success: boolean }>('/admin/config', config); }
 

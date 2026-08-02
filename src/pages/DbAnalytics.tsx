@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { api } from '../api/client';
 import type { DatabaseQueryMetric } from '../entities';
 import { useTranslation } from '../utils/i18n';
@@ -7,6 +13,8 @@ import LanguageIcon from '../components/LanguageIcon';
 import { LoadingState } from '../components/DataState';
 import CustomSelect from '../components/CustomSelect';
 import IconPack from '../components/IconPack';
+import { StandardColumnHeader, StandardTableToolbar, type StandardSortDirection } from '../components/StandardTable';
+import { useColumnResize } from '../utils/useColumnResize';
 
 interface DbAnalyticsProps {
   namespace: string;
@@ -14,6 +22,34 @@ interface DbAnalyticsProps {
 
 type DbMetricTone = 'indigo' | 'emerald' | 'amber' | 'rose';
 type DbMetricIconName = 'database' | 'clock' | 'alert' | 'peak';
+type DbColumn = 'system' | 'query' | 'service' | 'calls' | 'avgLatency' | 'p95Latency' | 'slowdown' | 'totalTime' | 'errorRate';
+type DbSortField = DbColumn;
+
+const dbColumnWidths: Record<DbColumn, number> = {
+  system: 140,
+  query: 320,
+  service: 190,
+  calls: 100,
+  avgLatency: 130,
+  p95Latency: 115,
+  slowdown: 125,
+  totalTime: 130,
+  errorRate: 120,
+};
+
+const dbColumnMinimums: Record<DbColumn, number> = {
+  system: 112,
+  query: 220,
+  service: 140,
+  calls: 84,
+  avgLatency: 108,
+  p95Latency: 92,
+  slowdown: 100,
+  totalTime: 108,
+  errorRate: 100,
+};
+
+const dbColumnOrder: DbColumn[] = ['system', 'query', 'service', 'calls', 'avgLatency', 'p95Latency', 'slowdown', 'totalTime', 'errorRate'];
 
 const DB_METRIC_ICONS: Record<DbMetricIconName, string> = {
   database: '/observability-icons/database.svg',
@@ -23,7 +59,11 @@ const DB_METRIC_ICONS: Record<DbMetricIconName, string> = {
 };
 
 function DbMetricIcon({ name }: { name: DbMetricIconName }) {
-  return <IconPack src={DB_METRIC_ICONS[name]} className="db-metric-icon" />;
+  return (
+    <span className="db-metric-icon">
+      <IconPack src={DB_METRIC_ICONS[name]} />
+    </span>
+  );
 }
 
 function DbMetricCard({
@@ -62,6 +102,12 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
   const [systems, setSystems] = useState<string[]>([]);
   const [serviceLanguages, setServiceLanguages] = useState<Record<string, string>>({});
   const [expandedQuery, setExpandedQuery] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<DbSortField>('totalTime');
+  const [sortDir, setSortDir] = useState<StandardSortDirection>('desc');
+  const columns = useColumnResize(dbColumnWidths, {
+    minWidths: dbColumnMinimums,
+    storageKey: 'databaseQueryColumnsV1',
+  });
 
   const loadMetrics = useCallback(async () => {
     try {
@@ -104,12 +150,46 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
     return () => clearInterval(iv);
   }, [loadMetrics]);
 
-  const filteredMetrics = metrics.filter(m => {
-    const matchesSearch = m.query.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesSystem = selectedSystem ? m.system === selectedSystem : true;
-    const matchesService = selectedService ? m.service === selectedService : true;
-    return matchesSearch && matchesSystem && matchesService;
-  });
+  const filteredMetrics = useMemo(() => {
+    const filtered = metrics.filter(m => {
+      const matchesSearch = m.query.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSystem = selectedSystem ? m.system === selectedSystem : true;
+      const matchesService = selectedService ? m.service === selectedService : true;
+      return matchesSearch && matchesSystem && matchesService;
+    });
+
+    return [...filtered].sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case 'system':
+          comparison = a.system.localeCompare(b.system);
+          break;
+        case 'query':
+          comparison = (a.summary || a.query).localeCompare(b.summary || b.query);
+          break;
+        case 'service':
+          comparison = a.service.localeCompare(b.service);
+          break;
+        case 'calls':
+          comparison = a.callCount - b.callCount;
+          break;
+        case 'avgLatency':
+        case 'slowdown':
+          comparison = a.avgDurationMs - b.avgDurationMs;
+          break;
+        case 'p95Latency':
+          comparison = a.p95DurationMs - b.p95DurationMs;
+          break;
+        case 'totalTime':
+          comparison = a.totalDurationMs - b.totalDurationMs;
+          break;
+        case 'errorRate':
+          comparison = a.errorRate - b.errorRate;
+          break;
+      }
+      return sortDir === 'asc' ? comparison : -comparison;
+    });
+  }, [metrics, searchTerm, selectedService, selectedSystem, sortDir, sortField]);
 
   // Calculate aggregated stats
   const totalCalls = filteredMetrics.reduce((sum, m) => sum + m.callCount, 0);
@@ -130,16 +210,29 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
     ? Math.max(...filteredMetrics.map(m => m.avgDurationMs))
     : 1;
 
-  const colWidths = {
-    system: '11%',
-    query: '29%',
-    service: '17%',
-    calls: '7%',
-    avgLatency: '10%',
-    slowdown: '10%',
-    maxLatency: '8%',
-    errorRate: '8%',
-  } as const;
+  const setSort = (field: DbSortField) => {
+    if (field === sortField) {
+      setSortDir(current => current === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    setSortField(field);
+    setSortDir(['system', 'query', 'service'].includes(field) ? 'asc' : 'desc');
+  };
+
+  const resizeWithKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>, column: DbColumn) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    columns.resizeBy(column, event.key === 'ArrowRight' ? 16 : -16);
+  };
+
+  const headerProps = {
+    activeSort: sortField,
+    direction: sortDir,
+    onSort: setSort,
+    onResize: columns.startResize,
+    onResizeKey: resizeWithKeyboard,
+    onReset: columns.resetWidths,
+  };
 
   const getSystemBadgeClass = (system: string) => {
     const sys = system.toLowerCase();
@@ -282,43 +375,52 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
 
       {/* Query Performance Table */}
       <div className="card db-query-panel">
-        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="card-title">{t("Queries & Operations")}</div>
-          <span className="text-sm text-muted">{filteredMetrics.length} {t("query patterns active")}</span>
-        </div>
-        <div className="table-wrapper db-table-wrapper" style={{ overflowX: 'hidden' }}>
-          <table className="db-table" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+        <StandardTableToolbar
+          title={t('Queries & Operations')}
+          count={`${filteredMetrics.length} ${t('query patterns active')}`}
+          onReset={columns.resetWidths}
+          resetLabel={t('Reset columns')}
+          resizeHint={t('Drag column edges to resize')}
+        />
+        <div className="table-wrapper db-table-wrapper">
+          <table className="db-table standard-native-table">
+            <colgroup>
+              {dbColumnOrder.map(column => <col key={column} style={{ width: columns.widths[column] }} />)}
+            </colgroup>
             <thead>
               <tr>
-                <th style={{ width: colWidths.system }}>
-                  {t("System")}
+                <th>
+                  <StandardColumnHeader column="system" label={t('System')} sortField="system" {...headerProps} />
                 </th>
-                <th style={{ width: colWidths.query }}>
-                  {t("Normalized Query")}
+                <th>
+                  <StandardColumnHeader column="query" label={t('Normalized Query')} sortField="query" {...headerProps} />
                 </th>
-                <th style={{ width: colWidths.service }}>
-                  {t("Service")}
+                <th>
+                  <StandardColumnHeader column="service" label={t('Service')} sortField="service" {...headerProps} />
                 </th>
-                <th style={{ width: colWidths.calls, textAlign: 'right' }}>
-                  {t("Calls")}
+                <th>
+                  <StandardColumnHeader column="calls" label={t('Calls')} sortField="calls" align="right" {...headerProps} />
                 </th>
-                <th style={{ width: colWidths.avgLatency, textAlign: 'right' }}>
-                  {t("Avg Latency")}
+                <th>
+                  <StandardColumnHeader column="avgLatency" label={t('Avg Latency')} sortField="avgLatency" align="right" {...headerProps} />
                 </th>
-                <th style={{ width: colWidths.slowdown }}>
-                  {t("Slowdown")}
+                <th>
+                  <StandardColumnHeader column="p95Latency" label={t('P95')} sortField="p95Latency" align="right" {...headerProps} />
                 </th>
-                <th style={{ width: colWidths.maxLatency, textAlign: 'right' }}>
-                  {t("Max Latency")}
+                <th>
+                  <StandardColumnHeader column="slowdown" label={t('Slowdown')} sortField="slowdown" {...headerProps} />
                 </th>
-                <th style={{ width: colWidths.errorRate, textAlign: 'right' }}>
-                  {t("Error Rate")}
+                <th title={t('Calls x average latency — the queries actually costing the most time')}>
+                  <StandardColumnHeader column="totalTime" label={t('Total Time')} sortField="totalTime" align="right" {...headerProps} />
+                </th>
+                <th>
+                  <StandardColumnHeader column="errorRate" label={t('Error Rate')} sortField="errorRate" align="right" isLast {...headerProps} />
                 </th>
               </tr>
             </thead>
             <tbody>
-              {filteredMetrics.map((m, index) => {
-                const uniqueKey = `${m.query}-${m.service}-${index}`;
+              {filteredMetrics.map(m => {
+                const uniqueKey = `${m.fingerprint || m.query}-${m.service}`;
                 const isExpanded = expandedQuery === uniqueKey;
                 const pct = (m.avgDurationMs / maxAvgDuration) * 100;
                 
@@ -329,13 +431,20 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                       style={{ cursor: 'pointer', transition: 'background 0.2s' }}
                       className="hover-row"
                     >
-                      <td data-label="System" style={{ width: colWidths.system, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <td data-label="System" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <TechIcon name={m.system} showLabel size={18} />
                       </td>
-                      <td data-label="Query" style={{ width: colWidths.query, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        <code style={{ fontSize: '12px', color: 'var(--text-primary)' }}>{m.query}</code>
+                      <td data-label="Query" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {m.summary && (
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {m.summary}
+                          </div>
+                        )}
+                        <code style={{ fontSize: '11px', color: m.summary ? 'var(--text-secondary)' : 'var(--text-primary)' }} title={m.query}>
+                          {m.query}
+                        </code>
                       </td>
-                      <td data-label="Service" style={{ width: colWidths.service, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <td data-label="Service" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                           <LanguageIcon language={serviceLanguages[m.service]} size={16} />
                           <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.service}>
@@ -343,11 +452,14 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                           </span>
                         </div>
                       </td>
-                      <td data-label="Calls" style={{ width: colWidths.calls, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{m.callCount}</td>
-                      <td data-label="Avg Latency" style={{ width: colWidths.avgLatency, textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: '600', color: m.avgDurationMs > 200 ? 'var(--accent-amber)' : 'var(--text-primary)' }}>
+                      <td data-label="Calls" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{m.callCount}</td>
+                      <td data-label="Avg Latency" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: '600', color: m.avgDurationMs > 200 ? 'var(--accent-amber)' : 'var(--text-primary)' }}>
                         {formatDuration(m.avgDurationMs)}
                       </td>
-                      <td data-label="Slowdown" style={{ width: colWidths.slowdown, verticalAlign: 'middle' }}>
+                      <td data-label="P95" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }} title={`P99 ${formatDuration(m.p99DurationMs)} / max ${formatDuration(m.maxDurationMs)}`}>
+                        {formatDuration(m.p95DurationMs)}
+                      </td>
+                      <td data-label="Slowdown" style={{ verticalAlign: 'middle' }}>
                         <div style={{ width: '100%', background: 'var(--bg-tertiary)', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
                           <div 
                             style={{ 
@@ -360,10 +472,10 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                           />
                         </div>
                       </td>
-                      <td data-label="Max Latency" style={{ width: colWidths.maxLatency, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
-                        {formatDuration(m.maxDurationMs)}
+                      <td data-label="Total Time" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: '600', color: 'var(--text-primary)' }}>
+                        {formatDuration(m.totalDurationMs)}
                       </td>
-                      <td data-label="Error Rate" style={{ width: colWidths.errorRate, textAlign: 'right' }}>
+                      <td data-label="Error Rate" style={{ textAlign: 'right' }}>
                         {m.errorCount > 0 ? (
                           <span className="badge badge-error" style={{ fontSize: '11px' }}>{m.errorRate.toFixed(1)}%</span>
                         ) : (
@@ -373,7 +485,7 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td colSpan={8} style={{ background: 'var(--bg-tertiary)', padding: '16px', borderBottom: '1px solid var(--border-primary)' }}>
+                        <td colSpan={9} style={{ background: 'var(--bg-tertiary)', padding: '16px', borderBottom: '1px solid var(--border-primary)' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Full Query Statement</span>
@@ -548,35 +660,34 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           justify-content: space-between;
           gap: 12px;
         }
-        .db-metric-top span {
+        /* Label only. Unscoped, this also matched the icon chip and the glyph
+           inside it, and at specificity 0,1,1 it outranked .db-metric-icon
+           (0,1,0) — so the card's accent tone never reached the icon. */
+        .db-metric-top > span:not(.db-metric-icon) {
           color: var(--text-tertiary);
           font-size: 10px;
           font-weight: 850;
           letter-spacing: 0.08em;
           text-transform: uppercase;
         }
+        /* Chip container. The background belongs on this wrapper, never on the
+           icon itself: IconPack paints its glyph with background: currentColor
+           behind a mask, so a background here would repaint the glyph — at 8%
+           opacity, which is why these icons were invisible. Matches
+           .dependency-metric-icon and .trace-detail-metric-icon. */
         .db-metric-icon {
-          width: 24px;
-          height: 24px;
-          padding: 7px;
-          border-radius: 8px;
-          color: var(--accent-indigo);
-          background: rgba(99, 102, 241, 0.08);
-          box-sizing: content-box;
+          width: 34px;
+          height: 34px;
           flex: 0 0 auto;
+          display: grid;
+          place-items: center;
+          border-radius: var(--radius-sm);
+          color: var(--accent-indigo);
+          background: color-mix(in srgb, currentColor 10%, transparent);
         }
-        .db-metric-card.emerald .db-metric-icon {
-          color: var(--accent-emerald);
-          background: rgba(16, 185, 129, 0.09);
-        }
-        .db-metric-card.amber .db-metric-icon {
-          color: var(--accent-amber);
-          background: rgba(245, 158, 11, 0.10);
-        }
-        .db-metric-card.rose .db-metric-icon {
-          color: var(--accent-rose);
-          background: rgba(244, 63, 94, 0.10);
-        }
+        .db-metric-card.emerald .db-metric-icon { color: var(--accent-emerald); }
+        .db-metric-card.amber .db-metric-icon { color: var(--accent-amber); }
+        .db-metric-card.rose .db-metric-icon { color: var(--accent-rose); }
         .db-metric-card strong {
           display: block;
           margin-top: 12px;

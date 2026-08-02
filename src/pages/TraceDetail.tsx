@@ -10,6 +10,7 @@ import { explainSpanError } from '../utils/errorAnalysis';
 import { isHttpMethodAttribute, normalizeHttpMethod } from '../utils/httpTelemetry';
 import { LANG_ICONS } from '../components/LanguageIcon';
 import { TECH_LOGOS } from '../components/TechIcon';
+import { getSpanDependency, getQueryText, getQuerySummary } from '../utils/dependency';
 
 const SERVICE_COLORS: Record<string, string> = {};
 const PALETTE = [
@@ -149,8 +150,8 @@ function getSpanOperationLabel(span: Span) {
   if (method && path) return `${method} ${path}`;
   if (method) return method;
 
-  const dbOperation = attrs['db.operation'] || attrs['db.operation.name'];
-  if (dbOperation) return String(dbOperation).toUpperCase();
+  const dbSummary = getQuerySummary(attrs);
+  if (dbSummary) return dbSummary;
 
   const rpcMethod = attrs['rpc.method'];
   if (rpcMethod) return String(rpcMethod);
@@ -1679,8 +1680,9 @@ interface PayloadDetails {
 // body (the common case for auto-instrumentation), the UI says so honestly.
 function getSpanPayloadDetails(span: Span, _traceDuration: number): PayloadDetails {
   const attrs = span.attributes || {};
-  const dbSystem = attrs['db.system'] || attrs['db.type'];
-  const dbStatement = attrs['db.statement'] || attrs['db.query'] || '';
+  const dep = getSpanDependency(attrs);
+  const dbSystem = (dep.kind === 'database' || dep.kind === 'cache') ? dep.system : '';
+  const dbStatement = getQueryText(attrs) || attrs['db.query'] || '';
 
   const parseMaybeJson = (raw: string | undefined | null): any => {
     if (!raw) return null;
