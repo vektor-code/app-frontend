@@ -103,10 +103,12 @@ export function AuthVisual() {
   const stageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const visual = visualRef.current;
-    const stage = stageRef.current;
-    if (!visual || !stage) return undefined;
+    const visualEl = visualRef.current;
+    const stageEl = stageRef.current;
+    if (!visualEl || !stageEl) return undefined;
 
+    const visual: HTMLElement = visualEl;
+    const stage: HTMLDivElement = stageEl;
     let animationFrame = 0;
     let pointer: { x: number; y: number } | null = null;
 
