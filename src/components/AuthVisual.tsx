@@ -1,266 +1,333 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import {
-  Activity,
-  Cloud,
-  Database,
-  Gauge,
-  Network,
-  Server,
-} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Activity, Network, Percent } from 'lucide-react';
 
-const FLOATING = [
-  { Icon: Activity, label: 'Traces', className: 'apm-float-a', color: '#0891b2' },
-  { Icon: Server, label: 'Services', className: 'apm-float-b', color: '#0e7490' },
-  { Icon: Database, label: 'Datastores', className: 'apm-float-c', color: '#155e75' },
-  { Icon: Cloud, label: 'Cloud', className: 'apm-float-d', color: '#0284c7' },
-  { Icon: Gauge, label: 'Latency', className: 'apm-float-e', color: '#0d9488' },
-  { Icon: Network, label: 'Topology', className: 'apm-float-f', color: '#0369a1' },
+const SPANS = [
+  { name: 'POST /checkout', svc: 'gateway', left: '4%', width: '88%', ms: '42ms', tone: 'root' },
+  { name: 'auth.verify', svc: 'identity', left: '8%', width: '14%', ms: '4ms', tone: 'ok' },
+  { name: 'GET /cart', svc: 'cart-service', left: '16%', width: '46%', ms: '18ms', tone: 'ok' },
+  { name: 'SELECT orders', svc: 'postgres', left: '30%', width: '32%', ms: '13ms', tone: 'slow' },
+  { name: 'redis.mget', svc: 'cache', left: '18%', width: '11%', ms: '3ms', tone: 'ok' },
 ];
 
-const IDLE_TILT = {
-  rotateX: 18,
-  rotateY: -28,
-  translateX: 0,
-  translateY: 0,
-  scale: 1,
-  glareX: 34,
-  glareY: 28,
-  shadowX: -12,
-  shadowY: 28,
-};
+function useCountUp(target: number, duration = 900, delay = 0) {
+  const [value, setValue] = useState(0);
 
-function lerp(from: number, to: number, amount: number) {
-  return from + (to - from) * amount;
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setValue(target);
+      return undefined;
+    }
+
+    let frame = 0;
+    const start = performance.now() + delay;
+
+    function update(now: number) {
+      if (now < start) {
+        frame = requestAnimationFrame(update);
+        return;
+      }
+
+      const progress = Math.min(1, (now - start) / duration);
+      const eased = 1 - (1 - progress) ** 3;
+      setValue(Math.round(target * eased));
+      if (progress < 1) frame = requestAnimationFrame(update);
+    }
+
+    frame = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(frame);
+  }, [delay, duration, target]);
+
+  return value;
 }
 
-type Tilt = typeof IDLE_TILT;
+function AnimatedNumber({ delay = 0, duration = 900, value }: { delay?: number; duration?: number; value: number }) {
+  return useCountUp(value, duration, delay).toLocaleString();
+}
 
-function MonitoringModel({ transform, breathing }: { transform: Tilt; breathing: boolean }) {
+function LatencyGraph() {
   return (
-    <div
-      className={`apm-model-scene${breathing ? ' is-breathing' : ''}`}
-      style={
-        {
-          '--model-rotate-x': `${transform.rotateX}deg`,
-          '--model-rotate-y': `${transform.rotateY}deg`,
-          '--model-translate-x': `${transform.translateX}px`,
-          '--model-translate-y': `${transform.translateY}px`,
-          '--model-scale': transform.scale,
-          '--model-shadow-x': `${transform.shadowX}px`,
-          '--model-shadow-y': `${transform.shadowY}px`,
-        } as CSSProperties
-      }
-    >
-      <div className="apm-model-pivot">
-        <div className="apm-crystal">
-          <div className="apm-crystal-ring apm-crystal-ring--outer" />
-          <div className="apm-crystal-ring apm-crystal-ring--inner" />
+    <svg className="apm-auth-latency-graph" viewBox="0 0 280 96" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="apmAuthP95Fill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#0e7490" stopOpacity="0.28" />
+          <stop offset="100%" stopColor="#0e7490" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <g className="apm-auth-latency-grid">
+        <path d="M0 18 H280" />
+        <path d="M0 36 H280" />
+        <path d="M0 54 H280" />
+        <path d="M0 72 H280" />
+      </g>
+      <path
+        className="apm-auth-latency-fill"
+        d="M0 58 C24 54 42 46 64 48 C92 51 110 28 138 32 C164 36 182 52 210 40 C236 30 258 34 280 24 L280 80 L0 80 Z"
+        fill="url(#apmAuthP95Fill)"
+      />
+      <path
+        className="apm-auth-latency-p95"
+        d="M0 58 C24 54 42 46 64 48 C92 51 110 28 138 32 C164 36 182 52 210 40 C236 30 258 34 280 24"
+      />
+      <path
+        className="apm-auth-latency-p50"
+        d="M0 68 C28 66 46 62 70 63 C98 64 118 52 146 54 C172 56 196 61 224 56 C248 52 266 50 280 46"
+      />
+    </svg>
+  );
+}
 
-          <div className="apm-crystal-cube">
-            <div className="apm-crystal-face apm-crystal-face--front">
-              <span className="apm-face-bars">
-                <i style={{ height: '42%' }} />
-                <i style={{ height: '68%' }} />
-                <i style={{ height: '54%' }} />
-                <i style={{ height: '78%' }} />
-                <i style={{ height: '48%' }} />
-              </span>
-            </div>
-            <div className="apm-crystal-face apm-crystal-face--back" />
-            <div className="apm-crystal-face apm-crystal-face--right">
-              <span className="apm-face-wave" />
-            </div>
-            <div className="apm-crystal-face apm-crystal-face--left">
-              <span className="apm-face-bars apm-face-bars--dense">
-                <i style={{ height: '56%' }} />
-                <i style={{ height: '38%' }} />
-                <i style={{ height: '72%' }} />
-                <i style={{ height: '46%' }} />
-              </span>
-            </div>
-            <div className="apm-crystal-face apm-crystal-face--top">
-              <svg className="apm-face-trace" viewBox="0 0 100 100" aria-hidden="true">
-                <path
-                  d="M12 62 C28 48 38 70 50 52 C62 34 72 58 88 44"
-                  fill="none"
-                  stroke="rgba(255,255,255,0.92)"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                />
-                <path
-                  className="apm-trace-pulse"
-                  d="M12 62 C28 48 38 70 50 52 C62 34 72 58 88 44"
-                  fill="none"
-                  stroke="#fff"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-                <circle cx="12" cy="62" r="3.2" fill="#ecfeff" />
-                <circle cx="50" cy="52" r="4" fill="#fff" />
-                <circle cx="88" cy="44" r="3.2" fill="#a5f3fc" />
-              </svg>
-            </div>
-            <div className="apm-crystal-face apm-crystal-face--bottom" />
-          </div>
-
-          <div className="apm-crystal-core" />
-          <div className="apm-crystal-nodes" aria-hidden="true">
-            <span className="apm-node apm-node-a" />
-            <span className="apm-node apm-node-b" />
-            <span className="apm-node apm-node-c" />
-            <span className="apm-node apm-node-d" />
-          </div>
-        </div>
-        <div className="apm-model-floor" />
-      </div>
-    </div>
+function ThroughputSpark() {
+  return (
+    <svg className="apm-auth-spark" viewBox="0 0 120 36" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="apmAuthSparkFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#0e7490" stopOpacity="0.28" />
+          <stop offset="100%" stopColor="#0e7490" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path
+        className="apm-auth-spark-fill"
+        d="M0 24 C12 22 18 16 28 18 C40 21 48 8 62 12 C74 16 82 26 94 18 C104 12 112 10 120 8 L120 36 L0 36 Z"
+        fill="url(#apmAuthSparkFill)"
+      />
+      <path
+        className="apm-auth-spark-line"
+        d="M0 24 C12 22 18 16 28 18 C40 21 48 8 62 12 C74 16 82 26 94 18 C104 12 112 10 120 8"
+      />
+    </svg>
   );
 }
 
 export function AuthVisual() {
+  const visualRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const frameRef = useRef(0);
-  const targetRef = useRef(IDLE_TILT);
-  const currentRef = useRef(IDLE_TILT);
-  const trackingRef = useRef(false);
-  const startRef = useRef(performance.now());
-  const [tilt, setTilt] = useState(IDLE_TILT);
-  const [tracking, setTracking] = useState(false);
 
   useEffect(() => {
-    let active = true;
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const visual = visualRef.current;
+    const stage = stageRef.current;
+    if (!visual || !stage) return undefined;
 
-    function tick(now: number) {
-      if (!active) return;
+    let animationFrame = 0;
+    let pointer: { x: number; y: number } | null = null;
 
-      if (!trackingRef.current && !reduceMotion) {
-        const t = (now - startRef.current) / 1000;
-        // Idle breathing: gentle scale + yaw sway when the pointer is away.
-        const breath = Math.sin(t * 0.9);
-        const sway = Math.sin(t * 0.45);
-        targetRef.current = {
-          ...IDLE_TILT,
-          rotateX: IDLE_TILT.rotateX + breath * 2.2,
-          rotateY: IDLE_TILT.rotateY + sway * 10,
-          translateY: breath * 6,
-          scale: 1 + breath * 0.035,
-          glareX: 34 + sway * 8,
-          glareY: 28 + breath * 6,
-          shadowY: 28 + breath * 4,
-        };
-      }
-
-      const current = currentRef.current;
-      const target = targetRef.current;
-      const amount = trackingRef.current ? 0.14 : 0.06;
-      const next = {
-        rotateX: lerp(current.rotateX, target.rotateX, amount),
-        rotateY: lerp(current.rotateY, target.rotateY, amount),
-        translateX: lerp(current.translateX, target.translateX, amount),
-        translateY: lerp(current.translateY, target.translateY, amount),
-        scale: lerp(current.scale, target.scale, amount),
-        glareX: lerp(current.glareX, target.glareX, amount),
-        glareY: lerp(current.glareY, target.glareY, amount),
-        shadowX: lerp(current.shadowX, target.shadowX, amount),
-        shadowY: lerp(current.shadowY, target.shadowY, amount),
-      };
-      currentRef.current = next;
-      setTilt(next);
-      frameRef.current = requestAnimationFrame(tick);
+    function resetScene() {
+      stage.style.setProperty('--auth-tilt-x', '-1deg');
+      stage.style.setProperty('--auth-tilt-y', '2deg');
+      stage.style.setProperty('--auth-shift-x', '0px');
+      stage.style.setProperty('--auth-shift-y', '0px');
+      stage.style.setProperty('--auth-context-x', '0px');
+      stage.style.setProperty('--auth-context-y', '0px');
+      stage.style.setProperty('--auth-context-rotate-x', '-6deg');
+      stage.style.setProperty('--auth-context-rotate-y', '-14deg');
+      stage.style.setProperty('--auth-fix-x', '0px');
+      stage.style.setProperty('--auth-fix-y', '0px');
+      stage.style.setProperty('--auth-fix-rotate-x', '6deg');
+      stage.style.setProperty('--auth-fix-rotate-y', '11deg');
     }
 
-    frameRef.current = requestAnimationFrame(tick);
+    function renderPointer() {
+      animationFrame = 0;
+      if (!pointer) return;
+
+      const rect = visual.getBoundingClientRect();
+      const isInside = pointer.x >= rect.left
+        && pointer.x <= rect.right
+        && pointer.y >= rect.top
+        && pointer.y <= rect.bottom;
+
+      if (!isInside) {
+        resetScene();
+        return;
+      }
+
+      const x = Math.max(-1, Math.min(1, ((pointer.x - rect.left) / rect.width - 0.5) * 2));
+      const y = Math.max(-1, Math.min(1, ((pointer.y - rect.top) / rect.height - 0.5) * 2));
+      stage.style.setProperty('--auth-tilt-x', `${y * -3.5}deg`);
+      stage.style.setProperty('--auth-tilt-y', `${x * 4.5}deg`);
+      stage.style.setProperty('--auth-shift-x', `${x * 6}px`);
+      stage.style.setProperty('--auth-shift-y', `${y * 4}px`);
+      stage.style.setProperty('--auth-context-x', `${x * -14}px`);
+      stage.style.setProperty('--auth-context-y', `${y * -10}px`);
+      stage.style.setProperty('--auth-context-rotate-x', `${-6 + y * 20}deg`);
+      stage.style.setProperty('--auth-context-rotate-y', `${-14 - x * 28}deg`);
+      stage.style.setProperty('--auth-fix-x', `${x * 16}px`);
+      stage.style.setProperty('--auth-fix-y', `${y * 10}px`);
+      stage.style.setProperty('--auth-fix-rotate-x', `${6 - y * 18}deg`);
+      stage.style.setProperty('--auth-fix-rotate-y', `${11 + x * 24}deg`);
+    }
+
+    function handleMouseMove(event: MouseEvent) {
+      pointer = { x: event.clientX, y: event.clientY };
+      if (!animationFrame) animationFrame = requestAnimationFrame(renderPointer);
+    }
+
+    function handleWindowBlur() {
+      pointer = null;
+      resetScene();
+    }
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    window.addEventListener('blur', handleWindowBlur);
+
     return () => {
-      active = false;
-      cancelAnimationFrame(frameRef.current);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('blur', handleWindowBlur);
+      if (animationFrame) cancelAnimationFrame(animationFrame);
     };
   }, []);
 
-  function aimFromPointer(clientX: number, clientY: number) {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const stage = stageRef.current;
-    if (!stage) return;
-    const rect = stage.getBoundingClientRect();
-    const x = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    const y = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
-    const nx = x - 0.5;
-    const ny = y - 0.5;
-    targetRef.current = {
-      rotateX: 12 - ny * 18,
-      rotateY: -22 + nx * 28,
-      translateX: nx * 12,
-      translateY: ny * 8,
-      scale: 1.06,
-      glareX: 24 + x * 48,
-      glareY: 18 + y * 44,
-      shadowX: -nx * 18,
-      shadowY: 22 + ny * 10,
-    };
-  }
-
   return (
-    <aside className="apm-auth-visual" aria-hidden="true">
+    <aside className="apm-auth-visual" aria-hidden="true" ref={visualRef}>
       <div className="apm-auth-visual-brand">
         <img src="/branding/crnet-apm-mark.png" alt="" className="apm-auth-visual-brand__mark" />
         <strong>CRNET APM</strong>
       </div>
-
-      <div
-        className={`apm-auth-visual-stage${tracking ? ' is-tracking' : ''}`}
-        onPointerLeave={() => {
-          trackingRef.current = false;
-          setTracking(false);
-          startRef.current = performance.now();
-          targetRef.current = IDLE_TILT;
-        }}
-        onPointerMove={(event) => {
-          if (!trackingRef.current) {
-            trackingRef.current = true;
-            setTracking(true);
-          }
-          aimFromPointer(event.clientX, event.clientY);
-        }}
-        ref={stageRef}
-      >
-        <div className="apm-orb apm-orb-a" />
-        <div className="apm-orb apm-orb-b" />
-        <div className="apm-orb apm-orb-c" />
-
-        {FLOATING.map(({ Icon, label, className, color }) => (
-          <div key={label} className={`apm-icon-tile ${className}`} style={{ color }} title={label}>
-            <Icon size={26} strokeWidth={2.1} aria-hidden />
-          </div>
-        ))}
-
-        <div className="apm-hero-stack">
-          <MonitoringModel transform={tilt} breathing={!tracking} />
-          <div
-            className="apm-visual-card"
-            style={{
-              transform: `
-                translate3d(${tilt.translateX * 0.25}px, ${tilt.translateY * 0.2}px, 0)
-                rotateX(${tilt.rotateX * 0.12}deg)
-                rotateY(${tilt.rotateY * 0.1}deg)
-              `,
-            }}
-          >
-            <div className="apm-visual-live">
-              <b>LIVE</b>
-              <span>12.4k spans / min</span>
+      <div className="apm-auth-visual-grid" />
+      <div className="apm-auth-product-stage" ref={stageRef}>
+        <section className="apm-auth-product-window">
+          <header className="apm-auth-product-header">
+            <div className="apm-auth-product-heading">
+              <span className="apm-auth-product-heading-icon">
+                <Activity size={14} strokeWidth={1.7} />
+              </span>
+              <div>
+                <span>Trace explorer</span>
+                <small>Last 15 minutes</small>
+              </div>
             </div>
-            <div className="apm-visual-card-top">
-              <strong>42</strong>
-              <span className="apm-visual-delta">ms p95</span>
+            <div className="apm-auth-live-status">
+              <i />
+              Live
             </div>
-            <p>Latency across 128 services</p>
-            <div className="apm-visual-bar" role="presentation">
-              <i className="ok" />
-              <i className="warn" />
-              <i className="slow" />
+          </header>
+
+          <div className="apm-auth-exposure-panel">
+            <div className="apm-auth-exposure-score">
+              <span>P95 LATENCY</span>
+              <strong>
+                <AnimatedNumber delay={160} value={42} />
+                <em>ms</em>
+              </strong>
+              <small>11% faster this week</small>
+            </div>
+            <div className="apm-auth-latency-wrap">
+              <div className="apm-auth-latency-legend">
+                <span><i /> p95</span>
+                <span><i /> p50</span>
+              </div>
+              <LatencyGraph />
+              <div className="apm-auth-latency-axis">
+                <span>-15m</span>
+                <span>-10m</span>
+                <span>-5m</span>
+                <span>now</span>
+              </div>
             </div>
           </div>
-        </div>
+
+          <div className="apm-auth-kpi-grid">
+            <div>
+              <span className="apm-auth-kpi-icon is-accent">
+                <Activity size={14} strokeWidth={1.7} />
+              </span>
+              <strong>
+                12.4k
+              </strong>
+              <small>spans / min</small>
+            </div>
+            <div>
+              <span className="apm-auth-kpi-icon is-neutral">
+                <Network size={14} strokeWidth={1.7} />
+              </span>
+              <strong>
+                <AnimatedNumber delay={440} value={128} />
+              </strong>
+              <small>services</small>
+            </div>
+            <div>
+              <span className="apm-auth-kpi-icon is-critical">
+                <Percent size={14} strokeWidth={1.7} />
+              </span>
+              <strong>0.08%</strong>
+              <small>error rate</small>
+            </div>
+          </div>
+
+          <div className="apm-auth-risk-queue">
+            <div className="apm-auth-risk-queue-header">
+              <strong>Trace waterfall</strong>
+              <span>checkout-api · 42ms</span>
+            </div>
+            {SPANS.map((span, index) => (
+              <div
+                className="apm-auth-span-row"
+                key={span.name}
+                style={{ animationDelay: `${680 + index * 90}ms` }}
+              >
+                <div>
+                  <strong>{span.name}</strong>
+                  <small>{span.svc}</small>
+                </div>
+                <div className="apm-auth-span-track">
+                  <i
+                    className={span.tone}
+                    style={{ left: span.left, width: span.width, animationDelay: `${780 + index * 90}ms` }}
+                  />
+                </div>
+                <em>{span.ms}</em>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="apm-auth-context-card">
+          <header>
+            <span>
+              <Network size={11} strokeWidth={1.7} />
+              SERVICE MAP
+            </span>
+            <i />
+          </header>
+          <svg className="apm-auth-context-graph" viewBox="0 0 190 78">
+            <g className="apm-auth-context-links">
+              <path d="M28 20 78 39" />
+              <path d="M28 58 78 39" />
+              <path d="M78 39 132 18" />
+              <path d="M78 39 132 39" />
+              <path d="M78 39 132 60" />
+            </g>
+            <g className="apm-auth-context-nodes">
+              <circle cx="28" cy="20" r="6" />
+              <circle cx="28" cy="58" r="6" />
+              <circle className="is-active" cx="78" cy="39" r="8" />
+              <circle cx="132" cy="18" r="5" />
+              <circle cx="132" cy="39" r="5" />
+              <circle cx="132" cy="60" r="5" />
+            </g>
+            <g className="apm-auth-topo-labels">
+              <text x="28" y="11">web</text>
+              <text x="28" y="73">mobile</text>
+              <text x="78" y="28">api</text>
+              <text x="158" y="21">db</text>
+              <text x="158" y="42">cache</text>
+              <text x="158" y="63">queue</text>
+            </g>
+          </svg>
+          <div>
+            <strong>
+              <AnimatedNumber delay={420} duration={1200} value={128} />
+            </strong>
+            <small>services connected</small>
+          </div>
+        </section>
+
+        <section className="apm-auth-fix-card">
+          <div>
+            <small>Throughput</small>
+            <strong>12.4k spans / min</strong>
+          </div>
+          <ThroughputSpark />
+        </section>
       </div>
     </aside>
   );
