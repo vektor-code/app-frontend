@@ -22,12 +22,12 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import type { DiagnosticReport, Span, Trace, TraceInvestigation } from '../entities';
-import { isSpanError } from '../utils/spanStatus';
+import { isMissingHttpResponse, isSpanError } from '../utils/spanStatus';
 import { useTranslation } from '../utils/i18n';
 import { createPortal } from 'react-dom';
 import SpanTimeline, { getSpanDestination } from '../components/SpanTimeline';
 import { explainSpanError } from '../utils/errorAnalysis';
-import { isHttpMethodAttribute, normalizeHttpMethod } from '../utils/httpTelemetry';
+import { isHttpMethodAttribute, isHttpStatusAttribute, isValidHttpStatus, normalizeHttpMethod, preferHttpStatusTag, readHttpStatus } from '../utils/httpTelemetry';
 import { analyzeTraceFailure, classificationLabel } from '../utils/traceFailureAnalyzer';
 import { buildSpanForest } from '../utils/spanTree';
 import { LANG_ICONS } from '../components/LanguageIcon';
@@ -194,6 +194,8 @@ function getErrorCategoryLabel(category: string) {
       return 'Timeout';
     case 'connection':
       return 'Connection';
+    case 'rpc':
+      return 'RPC / gRPC';
     case 'exception':
       return 'Exception';
     default:
@@ -982,8 +984,8 @@ const getServiceLanguage = (serviceName: string, serviceSpans: Span[]): string =
     sName.includes('spring') || 
     sName.includes('boot')
   ) return 'java';
-  if (sName.includes('go') || sName.includes('golang') || sName.includes('gopkg')) return 'go';
-  if (sName.includes('node') || sName.includes('express') || sName.includes('nestjs') || sName.includes('javascript') || sName.includes('typescript') || sName.includes('external')) return 'node';
+  if (sName.includes('golang') || sName.includes('gopkg') || sName.startsWith('go-') || sName.endsWith('-go')) return 'go';
+  if (sName.includes('node') || sName.includes('express') || sName.includes('nestjs') || sName.includes('javascript') || sName.includes('typescript')) return 'node';
   if (sName.includes('python') || sName.includes('django') || sName.includes('flask') || sName.includes('fastapi') || sName.includes('adapter')) return 'python';
   if (sName.includes('dotnet') || sName.includes('csharp') || sName.includes('aspnet')) return 'dotnet';
   if (sName.includes('ruby') || sName.includes('rails')) return 'ruby';
@@ -996,7 +998,7 @@ const getServiceLanguage = (serviceName: string, serviceSpans: Span[]): string =
         const l = lang.toLowerCase();
         if (l.includes('php')) return 'php';
         if (l.includes('java') || l.includes('jvm') || l.includes('kotlin') || l.includes('scala')) return 'java';
-        if (l.includes('go')) return 'go';
+        if (l === 'go' || l === 'golang' || l.includes('golang')) return 'go';
         if (l.includes('node') || l.includes('javascript') || l.includes('typescript') || l.includes('js')) return 'node';
         if (l.includes('python')) return 'python';
         if (l.includes('dotnet') || l.includes('c#') || l.includes('csharp')) return 'dotnet';
@@ -1047,7 +1049,7 @@ const getTopoIconKey = (name: string, spans: Span[] = []): string => {
       const lang = span.attributes['telemetry.sdk.language'] || span.attributes['process.runtime.name'];
       if (lang) {
         const l = lang.toLowerCase();
-        if (l.includes('go') || l.includes('golang')) detectedLang = 'go';
+        if (l === 'go' || l === 'golang' || l.includes('golang')) detectedLang = 'go';
         else if (l.includes('php')) detectedLang = 'php';
         else if (l.includes('java') || l.includes('jvm')) detectedLang = 'java';
         else if (l.includes('node') || l.includes('javascript') || l.includes('typescript') || l.includes('js')) detectedLang = 'node';
@@ -1066,7 +1068,7 @@ const getTopoIconKey = (name: string, spans: Span[] = []): string => {
   // 4. Name-based heuristics fallback
   if (n.includes('php')) return 'php';
   if (n.includes('java') || n.includes('spring') || n.includes('boot')) return 'java';
-  if (n.includes('go') || n.includes('golang') || n.includes('gopkg')) return 'go';
+  if (n.includes('golang') || n.includes('gopkg') || n.startsWith('go-') || n.endsWith('-go')) return 'go';
   if (n.includes('node') || n.includes('express') || n.includes('nestjs') || n.includes('javascript') || n.includes('typescript') || n.includes('external')) return 'node';
   if (n.includes('python') || n.includes('django') || n.includes('flask') || n.includes('fastapi') || n.includes('adapter')) return 'python';
   if (n.includes('dotnet') || n.includes('csharp') || n.includes('aspnet')) return 'dotnet';
@@ -1786,7 +1788,10 @@ function getSpanPayloadDetails(span: Span, _traceDuration: number): PayloadDetai
     respBody = { error: span.error };
   }
 
-  const respStatus = attrs['http.response.status_code'] || attrs['http.status_code'] || (span.status === 'ERROR' ? 'ERROR' : 'OK');
+  const httpStatus = readHttpStatus(attrs);
+  const respStatus = httpStatus.present
+    ? (isValidHttpStatus(httpStatus.code) ? String(httpStatus.code) : (httpStatus.raw || '0'))
+    : (span.status === 'ERROR' ? 'ERROR' : 'OK');
   const respSize = attrs['http.response.body.size'] || attrs['http.response_content_length'] || '';
 
   return {
@@ -1974,6 +1979,7 @@ function TraceSpanChip({ span, onClick }: { span: Span; onClick: () => void }) {
 }
 
 function payloadStatusTone(status: number | string | undefined, isError: boolean): 'ok' | 'error' {
+  if (status === 0 || status === '0') return 'error';
   const n = Number(status);
   if (Number.isFinite(n) && n >= 400) return 'error';
   return isError ? 'error' : 'ok';
@@ -2527,12 +2533,16 @@ export default function TraceDetail() {
           if (
             k.startsWith('http.') || 
             k.startsWith('db.system') || 
-            k.startsWith('rpc.system') || 
-            k.startsWith('rpc.method') || 
+            k.startsWith('rpc.') || 
             k.startsWith('messaging.') || 
             k.startsWith('exception.type')
           ) {
-            map.set(k, isHttpMethodAttribute(k) ? normalizeHttpMethod(v) : String(v));
+            const next = isHttpMethodAttribute(k) ? normalizeHttpMethod(v) : String(v);
+            if (isHttpStatusAttribute(k)) {
+              map.set(k, preferHttpStatusTag(map.get(k), next));
+              return;
+            }
+            map.set(k, next);
           }
         });
       }
@@ -2564,7 +2574,12 @@ export default function TraceDetail() {
     if (!trace || !trace.spans) return [];
     return trace.spans
       .filter(s => isSpanError(s))
-      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+      .sort((a, b) => {
+        const rank = (s: Span) => (isMissingHttpResponse(s) ? 0 : 1);
+        const delta = rank(a) - rank(b);
+        if (delta !== 0) return delta;
+        return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+      })
       .map(span => ({ span, explanation: explainSpanError(span) }));
   }, [trace]);
 

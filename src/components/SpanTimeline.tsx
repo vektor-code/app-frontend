@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { Span } from '../entities';
 import { isSpanError } from '../utils/spanStatus';
-import { normalizeHttpMethod } from '../utils/httpTelemetry';
+import { isValidHttpStatus, normalizeHttpMethod, readHttpStatus } from '../utils/httpTelemetry';
 import { getSpanDependency, isDatabaseSpan, getQueryText, getQuerySummary } from '../utils/dependency';
 import { buildSpanForest } from '../utils/spanTree';
 
@@ -88,8 +88,11 @@ export function getSpanInlineSummary(span: Span): string | null {
   // 1. HTTP calls
   const httpMethod = normalizeHttpMethod(attrs['http.request.method'] || attrs['http.method']);
   if (httpMethod) {
-    const status = attrs['http.status_code'] || attrs['http.status'];
-    return status ? `${httpMethod} (${status})` : `${httpMethod}`;
+    const status = readHttpStatus(attrs);
+    if (status.present && isValidHttpStatus(status.code)) {
+      return `${httpMethod} (${status.code})`;
+    }
+    return `${httpMethod}`;
   }
   
   // 2. Database calls

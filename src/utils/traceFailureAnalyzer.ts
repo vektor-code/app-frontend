@@ -1,4 +1,6 @@
 import type { Span, Trace, TraceFailureDiagnosis, TraceFailureEvidence } from '../entities';
+import { isValidHttpStatus, readHttpStatus } from './httpTelemetry';
+import { grpcStatusName, isHTTPLibraryName, isRefusedSignal, isResetSignal, isTimeoutSignal } from './errorSignals';
 import { buildSpanForest, isRootParentId, normalizeSpanId } from './spanTree';
 
 type Classification = TraceFailureDiagnosis['classification'];
@@ -64,11 +66,8 @@ function isValidHTTPMethod(method: string): boolean {
 }
 
 function httpStatus(span: Span): { code: number; present: boolean } {
-  const raw = attr(span, 'http.response.status_code', 'http.status_code');
-  if (!raw) return { code: 0, present: false };
-  const n = Number.parseInt(raw, 10);
-  if (Number.isNaN(n)) return { code: 0, present: true };
-  return { code: n, present: true };
+  const status = readHttpStatus(span.attributes);
+  return { code: status.code, present: status.present };
 }
 
 function httpPath(span: Span): string {
@@ -95,16 +94,15 @@ function libraryName(span: Span): string {
 }
 
 function isHTTPLibrary(span: Span): boolean {
-  const lib = libraryName(span).toLowerCase();
-  return lib.includes('/http') || lib.includes('instrumentation-http') || lib.includes('net/http') || lib.endsWith('.http');
+  return isHTTPLibraryName(libraryName(span));
 }
 
 function isHTTPSpan(span: Span): boolean {
   if (attrPresent(span,
     'http.request.method', 'http.method',
-    'http.response.status_code', 'http.status_code',
+    'http.response.status_code', 'http.status_code', 'http.status',
     'url.path', 'http.target', 'http.route', 'http.url', 'url.full',
-    'http.host', 'http.scheme',
+    'http.host', 'http.scheme', 'url.scheme',
   )) return true;
   if (isHTTPLibrary(span)) return true;
   const name = (span.name || '').toUpperCase();
@@ -112,7 +110,7 @@ function isHTTPSpan(span: Span): boolean {
 }
 
 function validHTTPStatus(code: number): boolean {
-  return code >= 100 && code <= 599;
+  return isValidHttpStatus(code);
 }
 
 function formatDuration(ms: number): string {
@@ -122,10 +120,14 @@ function formatDuration(ms: number): string {
 }
 
 function errorText(span: Span): string {
-  const parts = [span.error || '', attr(span, 'exception.message', 'error.message', 'error.msg', 'status.message', 'message')];
+  const parts = [span.error || ''];
+  const a = span.attributes || {};
+  for (const k of ['exception.type', 'error.type', 'exception.message', 'error.message', 'error.msg', 'status.message', 'message']) {
+    if (a[k]) parts.push(String(a[k]));
+  }
   for (const ev of span.events || []) {
     if (ev.attributes) {
-      parts.push(ev.attributes['exception.message'] || '', ev.attributes['message'] || '');
+      parts.push(ev.attributes['exception.type'] || '', ev.attributes['exception.message'] || '', ev.attributes['message'] || '');
     }
   }
   return parts.join(' ').toLowerCase();
@@ -209,6 +211,9 @@ export function analyzeTraceFailure(trace: Trace, opts: Options = {}): TraceFail
     ...ruleInstrumentation(spans, children, opts),
     ...ruleTransport(spans, byId),
     ...ruleTimeout(spans),
+    ...ruleRPC(spans),
+    ...ruleDatabase(spans),
+    ...ruleMessaging(spans),
     ...ruleHTTPOutcome(spans, children),
     ...ruleDuplicates(spans),
     ...ruleTraceContext(spans, byId, forest.midTreeMissing),
@@ -377,8 +382,8 @@ function ruleInstrumentation(spans: Span[], children: Map<string, Span[]>, opts:
       summary,
       evidence,
       causes: [
-        'HTTP SERVER span lifecycle/return-probe instrumentation anomaly',
-        'corrupted/incomplete HTTP attribute extraction at span completion',
+        'The language agent HTTP SERVER span closed with incomplete or inconsistent attributes.',
+        'HTTP attribute extraction failed at span completion (empty method/path or a non-HTTP status).',
       ],
       spanIds: unique([server.spanId, fastOK?.spanId || '']),
       rules: unique(rules),
@@ -393,10 +398,10 @@ function ruleTransport(spans: Span[], byId: Map<string, Span>): Finding[] {
   for (const sp of spans) {
     const text = errorText(sp);
     const st = httpStatus(sp);
-    const reset = /connection reset|econnreset|broken pipe/.test(text);
-    const refused = /connection refused|econnrefused|no such host|dial tcp|host unreachable/.test(text);
-    const clientZero = sp.kind === 'CLIENT' && st.present && st.code === 0;
-    const timeout = /timeout|timed out|deadline exceeded|context deadline|i\/o timeout/.test(text);
+    const reset = isResetSignal(text);
+    const refused = isRefusedSignal(text);
+    const clientZero = sp.kind === 'CLIENT' && st.present && !validHTTPStatus(st.code);
+    const timeout = isTimeoutSignal(text);
     const missingResponse = sp.kind === 'CLIENT' && !st.present && (sp.status === 'ERROR' || !!text) && isHTTPSpan(sp) && !timeout;
     if (!reset && !refused && !clientZero && !missingResponse) continue;
     if (timeout && !reset && !refused && !clientZero) continue;
@@ -448,9 +453,9 @@ function ruleTimeout(spans: Span[]): Finding[] {
     const text = errorText(sp);
     const st = httpStatus(sp);
     const httpTimeout = st.present && (st.code === 408 || st.code === 504);
-    const timeout = /timeout|timed out|deadline exceeded|context deadline|i\/o timeout/.test(text);
+    const timeout = isTimeoutSignal(text);
     if (!timeout && !httpTimeout) continue;
-    if (/connection reset|econnreset|connection refused/.test(text)) continue;
+    if (isResetSignal(text) || isRefusedSignal(text)) continue;
     let title = 'Request timed out';
     if (st.code === 504) title = 'HTTP 504 Gateway Timeout';
     else if (st.code === 408) title = 'HTTP 408 Request Timeout';
@@ -482,7 +487,7 @@ function findDownstream5xx(span: Span, children: Map<string, Span[]>, origin: st
 function ruleHTTPOutcome(spans: Span[], children: Map<string, Span[]>): Finding[] {
   const out: Finding[] = [];
   for (const sp of spans) {
-    if (sp.kind !== 'SERVER' || !isHTTPSpan(sp) || !isValidHTTPMethod(httpMethodRaw(sp).value)) continue;
+    if ((sp.kind !== 'SERVER' && sp.kind !== 'CLIENT') || !isHTTPSpan(sp) || !isValidHTTPMethod(httpMethodRaw(sp).value)) continue;
     const path = httpPath(sp);
     if (!path && !attr(sp, 'url.full', 'http.url')) continue;
     const st = httpStatus(sp);
@@ -492,22 +497,25 @@ function ruleHTTPOutcome(spans: Span[], children: Map<string, Span[]>): Finding[
     const op = `${method.toUpperCase()} ${path}`.trim();
     const name = httpStatusName(st.code);
     const title = name ? `HTTP ${st.code} ${name}` : `HTTP ${st.code}`;
+    const role = sp.kind === 'CLIENT' ? 'CLIENT' : 'SERVER';
     const evidence: TraceFailureEvidence[] = [
-      { code: `http_${st.code}`, message: `SERVER ${op} returned HTTP ${st.code}.`, spanId: sp.spanId, score: 50 },
+      { code: `http_${st.code}`, message: `${role} ${op} returned HTTP ${st.code}.`, spanId: sp.spanId, score: 50 },
       { code: 'valid_http_method', message: `HTTP method ${method.trim()} is valid.`, spanId: sp.spanId, score: 10 },
       { code: 'valid_url_path', message: `URL path ${path} is present.`, spanId: sp.spanId, score: 10 },
       { code: 'reasonable_duration', message: `Duration ${formatDuration(sp.durationMs)} is internally consistent with an HTTP response.`, spanId: sp.spanId, score: 10 },
     ];
     let down: Span | undefined;
-    for (const child of children.get(sp.spanId) || []) {
-      if (child.kind === 'CLIENT') {
-        const cst = httpStatus(child);
-        down = findDownstream5xx(child, children, sp.serviceName);
-        if (!down && cst.present && cst.code >= 500) down = child;
-      } else {
-        down = findDownstream5xx(child, children, sp.serviceName);
+    if (sp.kind === 'SERVER') {
+      for (const child of children.get(sp.spanId) || []) {
+        if (child.kind === 'CLIENT') {
+          const cst = httpStatus(child);
+          down = findDownstream5xx(child, children, sp.serviceName);
+          if (!down && cst.present && cst.code >= 500) down = child;
+        } else {
+          down = findDownstream5xx(child, children, sp.serviceName);
+        }
+        if (down) break;
       }
-      if (down) break;
     }
     if (down) {
       const dst = httpStatus(down).code;
@@ -525,6 +533,20 @@ function ruleHTTPOutcome(spans: Span[], children: Map<string, Span[]>): Finding[
       });
       continue;
     }
+    if (sp.kind === 'CLIENT' && st.code >= 500) {
+      out.push({
+        classification: 'DOWNSTREAM_ERROR',
+        score: 82,
+        title,
+        summary: `${sp.serviceName} received HTTP ${st.code} from a remote dependency for ${op}.`,
+        evidence,
+        causes: [`A remote HTTP dependency returned ${st.code}; this is not a local application crash.`, "Inspect that dependency's traces and logs around this timestamp."],
+        spanIds: [sp.spanId],
+        rules: ['client_http_5xx'],
+        priority: 70,
+      });
+      continue;
+    }
     const clientErr = st.code >= 400 && st.code < 500;
     out.push({
       classification: clientErr ? 'CLIENT_ERROR' : 'APPLICATION_ERROR',
@@ -536,6 +558,181 @@ function ruleHTTPOutcome(spans: Span[], children: Map<string, Span[]>): Finding[
       spanIds: [sp.spanId],
       rules: [clientErr ? 'http_4xx' : 'http_5xx'],
       priority: 70,
+    });
+  }
+  return out;
+}
+
+function grpcStatus(span: Span): { code: number; present: boolean } {
+  const raw = attr(span, 'rpc.grpc.status_code', 'rpc.status_code', 'grpc.status_code');
+  if (!raw) return { code: 0, present: false };
+  const n = Number.parseInt(raw, 10);
+  if (Number.isNaN(n)) return { code: 0, present: false };
+  return { code: n, present: true };
+}
+
+function isRPCSpan(span: Span): boolean {
+  if (attrPresent(span, 'rpc.system', 'rpc.service', 'rpc.method', 'rpc.grpc.status_code', 'rpc.status_code')) return true;
+  const lib = libraryName(span).toLowerCase();
+  return lib.includes('grpc');
+}
+
+function isDBSpan(span: Span): boolean {
+  return attrPresent(span, 'db.system', 'db.system.name', 'db.statement', 'db.query.text', 'db.operation', 'db.operation.name', 'db.name', 'db.namespace');
+}
+
+function isMessagingSpan(span: Span): boolean {
+  return attrPresent(span, 'messaging.system', 'messaging.destination', 'messaging.operation', 'messaging.destination.name');
+}
+
+function failedSpan(span: Span): boolean {
+  return span.status === 'ERROR' || !!span.error || !!errorText(span).trim();
+}
+
+function ruleRPC(spans: Span[]): Finding[] {
+  const out: Finding[] = [];
+  for (const sp of spans) {
+    if (!isRPCSpan(sp)) continue;
+    const st = grpcStatus(sp);
+    if (st.present && st.code === 0) continue;
+    const text = errorText(sp);
+    if (!st.present && !failedSpan(sp)) continue;
+    if (isHTTPSpan(sp) && !st.present) continue;
+    const name = grpcStatusName(st.code);
+    let title = name ? `gRPC ${name}` : (st.present ? `gRPC status ${st.code}` : 'RPC failure');
+    let classification: Classification = 'APPLICATION_ERROR';
+    let score = 78;
+    let priority = 80;
+    let rules = ['rpc_failure'];
+    let causes = ['The remote RPC/gRPC handler returned a non-OK status.', "Inspect that service's traces for the application-level cause."];
+    if (st.code === 4 || st.code === 1 || isTimeoutSignal(text)) {
+      classification = 'TIMEOUT';
+      score = 86;
+      priority = 92;
+      rules = ['rpc_timeout'];
+      if (!name) title = 'RPC deadline exceeded';
+      causes = ['The RPC did not complete before the caller or server deadline.', 'The callee may be slow, overloaded, or blocked on its own downstreams.'];
+    } else if (st.code === 14 || isResetSignal(text) || isRefusedSignal(text)) {
+      classification = 'NETWORK_ERROR';
+      score = 84;
+      priority = 90;
+      rules = ['rpc_unavailable'];
+      if (!name) title = 'RPC unavailable';
+      causes = ['The RPC endpoint was unavailable (not listening, no healthy backends, or a transport failure).', 'Check the destination workload, Service, and NetworkPolicy.'];
+    } else if ([3, 5, 6, 7, 8, 9, 16].includes(st.code)) {
+      classification = 'CLIENT_ERROR';
+      score = 72;
+      priority = 70;
+      rules = ['rpc_client_error'];
+      causes = ['The RPC was rejected as an invalid, unauthorized, or not-found request.', 'Fix the caller arguments, metadata, or destination method.'];
+    }
+    const op = `${attr(sp, 'rpc.service')}/${attr(sp, 'rpc.method')}`.replace(/^\/|\/$/g, '') || sp.name;
+    out.push({
+      classification,
+      score,
+      title,
+      summary: name ? `${sp.serviceName} RPC ${op} failed with ${name}.` : `${sp.serviceName} RPC ${op} failed`,
+      evidence: [
+        { code: 'rpc_status', message: `RPC status ${st.code} (${name}) on ${op}.`, spanId: sp.spanId, score: 40 },
+        ...(attr(sp, 'rpc.system') ? [{ code: 'rpc_system', message: `RPC system is ${attr(sp, 'rpc.system')}.`, spanId: sp.spanId, score: 10 }] : []),
+      ],
+      causes,
+      spanIds: [sp.spanId],
+      rules,
+      priority,
+    });
+  }
+  return out;
+}
+
+function ruleDatabase(spans: Span[]): Finding[] {
+  const out: Finding[] = [];
+  for (const sp of spans) {
+    if (!isDBSpan(sp) || !failedSpan(sp)) continue;
+    const text = errorText(sp);
+    const sys = attr(sp, 'db.system', 'db.system.name') || 'database';
+    let title = 'Database error';
+    let classification: Classification = 'APPLICATION_ERROR';
+    let score = 76;
+    let priority = 75;
+    let rules = ['database_error'];
+    let causes = [
+      'The query failed (syntax, missing object, constraint, or permission) — see the reported error.',
+      'The database may be unreachable or its connection pool exhausted.',
+    ];
+    if (isTimeoutSignal(text)) {
+      classification = 'TIMEOUT';
+      score = 84;
+      priority = 92;
+      title = 'Database timeout';
+      rules = ['database_timeout'];
+      causes = ['The database did not answer within the client or statement timeout.', 'A lock, sequential scan, or saturated connection pool can produce this.'];
+    } else if (isResetSignal(text) || isRefusedSignal(text) || /too many connections|remaining connection slots|connection pool/.test(text)) {
+      classification = 'NETWORK_ERROR';
+      score = 83;
+      priority = 90;
+      title = 'Database connection failed';
+      rules = ['database_connection'];
+      causes = ['The process could not open or keep a connection to the database.', 'Check host/port, NetworkPolicy, and whether the database pods are Ready.'];
+    }
+    const stmt = attr(sp, 'db.statement', 'db.query.text');
+    out.push({
+      classification,
+      score,
+      title,
+      summary: `${sp.serviceName} failed a ${sys} operation.`,
+      evidence: [
+        { code: 'db_system', message: `Database system is ${sys}.`, spanId: sp.spanId, score: 20 },
+        ...(stmt ? [{ code: 'db_statement', message: `Query: ${stmt.length > 180 ? `${stmt.slice(0, 180)}…` : stmt}`, spanId: sp.spanId, score: 15 }] : []),
+      ],
+      causes,
+      spanIds: [sp.spanId],
+      rules,
+      priority,
+    });
+  }
+  return out;
+}
+
+function ruleMessaging(spans: Span[]): Finding[] {
+  const out: Finding[] = [];
+  for (const sp of spans) {
+    if (!isMessagingSpan(sp) || !failedSpan(sp)) continue;
+    const text = errorText(sp);
+    const sys = attr(sp, 'messaging.system') || 'message broker';
+    let title = 'Messaging error';
+    let classification: Classification = 'APPLICATION_ERROR';
+    let score = 74;
+    let priority = 75;
+    let rules = ['messaging_error'];
+    let causes = ['Publish or consume failed — the topic/queue may be missing or the payload rejected.', 'The broker may be unreachable.'];
+    if (isTimeoutSignal(text)) {
+      classification = 'TIMEOUT';
+      score = 82;
+      priority = 92;
+      title = 'Messaging timeout';
+      rules = ['messaging_timeout'];
+      causes = ['The broker did not acknowledge the operation in time.'];
+    } else if (isResetSignal(text) || isRefusedSignal(text)) {
+      classification = 'NETWORK_ERROR';
+      score = 82;
+      priority = 90;
+      title = 'Messaging connection failed';
+      rules = ['messaging_connection'];
+      causes = ['The process could not connect to the broker. Check bootstrap servers and NetworkPolicy.'];
+    }
+    const dest = attr(sp, 'messaging.destination.name', 'messaging.destination');
+    const op = sp.kind === 'CONSUMER' ? 'consume from' : 'publish to';
+    out.push({
+      classification,
+      score,
+      title,
+      summary: `${sp.serviceName} failed to ${op} ${sys}${dest ? ` destination ${dest}` : ''}.`,
+      evidence: [{ code: 'messaging_system', message: `Messaging system is ${sys}.`, spanId: sp.spanId, score: 20 }],
+      causes,
+      spanIds: [sp.spanId],
+      rules,
+      priority,
     });
   }
   return out;

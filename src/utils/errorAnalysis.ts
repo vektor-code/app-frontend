@@ -1,5 +1,6 @@
 import type { Span } from '../entities';
-import { normalizeHttpMethod } from './httpTelemetry';
+import { normalizeHttpMethod, readHttpStatus, isValidHttpStatus } from './httpTelemetry';
+import { grpcStatusName, isRefusedSignal, isResetSignal, isTimeoutSignal } from './errorSignals';
 
 // Human-readable analysis of a failed span: what happened, where the call
 // went, why it likely failed, and the concrete evidence backing it.
@@ -12,7 +13,7 @@ export interface ErrorExplanation {
   rawMessage: string;     // original error text from instrumentation
   exceptionType?: string;
   stackTrace?: string | null;
-  category: 'http' | 'db' | 'messaging' | 'exception' | 'timeout' | 'connection' | 'app';
+  category: 'http' | 'db' | 'messaging' | 'exception' | 'timeout' | 'connection' | 'app' | 'rpc';
 }
 
 const HTTP_STATUS_INFO: Record<number, { name: string; meaning: string; causes: string[] }> = {
@@ -144,8 +145,25 @@ export function explainSpanError(span: Span): ErrorExplanation {
   const urlPath = attr(span, 'url.path', 'http.target', 'http.route');
   const host = attr(span, 'server.address', 'net.peer.name', 'http.host', 'peer.service');
   const port = attr(span, 'server.port', 'net.peer.port');
-  const statusStr = attr(span, 'http.response.status_code', 'http.status_code');
-  const status = statusStr ? parseInt(statusStr, 10) : 0;
+  const httpStatus = readHttpStatus(span.attributes);
+  const status = httpStatus.code;
+  const inboundUrl = urlPath || urlFull || span.name;
+  const remoteTarget = urlFull || (host ? host + (port ? ':' + port : '') : '');
+  // SERVER spans receive a request; CLIENT spans go to a remote. Mixing those
+  // made a local 503 look like "we called the upstream host and got 503".
+  const targetDisplay = span.kind === 'SERVER' ? (urlFull || urlPath || '') : remoteTarget;
+  const evidence: [string, string][] = [];
+  if (method) evidence.push(['HTTP method', method]);
+  if (urlFull) evidence.push(['Full URL', urlFull]);
+  if (urlPath) evidence.push(['URL path', urlPath]);
+  if (httpStatus.present) evidence.push(['Status code', httpStatus.raw || String(status)]);
+  if (host) evidence.push([span.kind === 'SERVER' ? 'Peer / host' : 'Target host', host + (port ? ':' + port : '')]);
+  const rpcSystem = attr(span, 'rpc.system');
+  const rpcMethod = [attr(span, 'rpc.service'), attr(span, 'rpc.method')].filter(Boolean).join('/');
+  if (rpcSystem) evidence.push(['RPC system', rpcSystem]);
+  if (rpcMethod) evidence.push(['RPC method', rpcMethod]);
+  const grpcStatusRaw = attr(span, 'rpc.grpc.status_code', 'rpc.status_code', 'grpc.status_code');
+  if (grpcStatusRaw) evidence.push(['gRPC status', grpcStatusName(Number.parseInt(grpcStatusRaw, 10)) || grpcStatusRaw]);
   const dbSystem = a['db.system'] || '';
   const dbName = a['db.name'] || '';
   const dbStatement = a['db.statement'] || '';
@@ -153,13 +171,6 @@ export function explainSpanError(span: Span): ErrorExplanation {
   const exc = extractException(span);
   const rawMessage = span.error || exc.message || attr(span, 'status.message', 'message') || '';
 
-  const targetDisplay = urlFull || (host ? host + (port ? ':' + port : '') : '');
-  const evidence: [string, string][] = [];
-  if (method) evidence.push(['HTTP method', method]);
-  if (urlFull) evidence.push(['Full URL', urlFull]);
-  if (urlPath) evidence.push(['URL path', urlPath]);
-  if (status) evidence.push(['Status code', String(status)]);
-  if (host) evidence.push(['Target host', host + (port ? ':' + port : '')]);
   if (dbSystem) evidence.push(['Database', dbSystem + (dbName ? ` (${dbName})` : '')]);
   if (dbStatement) evidence.push(['Query', dbStatement.length > 300 ? dbStatement.slice(0, 300) + '…' : dbStatement]);
   if (msgSystem) evidence.push(['Message broker', msgSystem]);
@@ -168,15 +179,16 @@ export function explainSpanError(span: Span): ErrorExplanation {
   const respSize = attr(span, 'http.response.body.size');
   if (respSize) evidence.push(['Response size', respSize + ' bytes']);
 
-  const lowerRaw = rawMessage.toLowerCase();
+  const lowerRaw = `${exc.type} ${rawMessage}`.toLowerCase();
 
   // 1. Timeouts and connection failures dominate — call them out first.
-  if (/(timeout|timed out|deadline exceeded|context deadline)/.test(lowerRaw)) {
+  if (isTimeoutSignal(lowerRaw)) {
+    const timeoutTarget = span.kind === 'SERVER' ? (host || inboundUrl) : (remoteTarget || host);
     return {
       category: 'timeout',
-      title: 'Timeout' + (targetDisplay ? ` calling ${host || targetDisplay}` : ''),
-      what: `${span.serviceName} waited too long for a response${targetDisplay ? ` from ${targetDisplay}` : ''} and gave up after ${span.durationMs.toFixed(0)} ms.`,
-      target: targetDisplay || undefined,
+      title: 'Timeout' + (timeoutTarget ? ` calling ${timeoutTarget}` : ''),
+      what: `${span.serviceName} waited too long for a response${timeoutTarget ? ` from ${timeoutTarget}` : ''} and gave up after ${span.durationMs.toFixed(0)} ms.`,
+      target: timeoutTarget || undefined,
       causes: [
         'The target is overloaded or stuck (check its CPU, connection pools, and slow downstream calls).',
         'A network issue or DNS delay between the services.',
@@ -189,12 +201,12 @@ export function explainSpanError(span: Span): ErrorExplanation {
     };
   }
 
-  if (/(connection refused|connection reset|no such host|dial tcp|econnrefused|host unreachable|broken pipe)/.test(lowerRaw)) {
+  if (isResetSignal(lowerRaw) || isRefusedSignal(lowerRaw)) {
     return {
       category: 'connection',
       title: 'Connection failed' + (host ? ` to ${host}` : ''),
-      what: `${span.serviceName} could not establish or keep a connection${targetDisplay ? ` to ${targetDisplay}` : ''}.`,
-      target: targetDisplay || undefined,
+      what: `${span.serviceName} could not establish or keep a connection${remoteTarget ? ` to ${remoteTarget}` : ''}.`,
+      target: remoteTarget || undefined,
       causes: [
         'The target service/pod is down, restarting, or not listening on this port.',
         'The hostname or port in this caller\'s configuration is wrong.',
@@ -207,8 +219,48 @@ export function explainSpanError(span: Span): ErrorExplanation {
     };
   }
 
+  // CLIENT recorded HTTP 0 / no status: transport failed, not an application 5xx.
+  if (span.kind === 'CLIENT' && httpStatus.present && !isValidHttpStatus(status)) {
+    return {
+      category: 'connection',
+      title: 'Missing HTTP response',
+      what: `${span.serviceName} made a CLIENT ${method || 'HTTP'} call${remoteTarget ? ` to ${remoteTarget}` : ''} that ended without a valid HTTP status (recorded ${httpStatus.raw || '0'}).`,
+      target: remoteTarget || undefined,
+      causes: [
+        'The request never received an HTTP status line (connection failed, reset, or timed out at the transport layer).',
+        'The instrumentation records status 0 when no HTTP response was observed.',
+      ],
+      evidence,
+      rawMessage,
+      exceptionType: exc.type || undefined,
+      stackTrace: exc.stack,
+    };
+  }
+
+  const grpcRaw = attr(span, 'rpc.grpc.status_code', 'rpc.status_code', 'grpc.status_code');
+  const grpcCode = grpcRaw ? Number.parseInt(grpcRaw, 10) : NaN;
+  if (Number.isFinite(grpcCode) && grpcCode > 0) {
+    const rpcName = grpcStatusName(grpcCode) || `status ${grpcCode}`;
+    const rpcOp = [attr(span, 'rpc.service'), attr(span, 'rpc.method')].filter(Boolean).join('/');
+    return {
+      category: 'rpc',
+      title: `gRPC ${rpcName}`,
+      what: `${span.serviceName} RPC ${rpcOp || span.name} failed with ${rpcName}.`,
+      target: attr(span, 'server.address', 'net.peer.name', 'rpc.service') || undefined,
+      causes: grpcCode === 4 || grpcCode === 1
+        ? ['The RPC did not complete before the deadline.', 'The callee may be slow or blocked on its own downstreams.']
+        : grpcCode === 14
+          ? ['The RPC endpoint was unavailable.', 'Check destination pods, Service, and NetworkPolicy.']
+          : ['The remote RPC handler returned a non-OK status.', 'Inspect that service around this timestamp.'],
+      evidence,
+      rawMessage,
+      exceptionType: exc.type || undefined,
+      stackTrace: exc.stack,
+    };
+  }
+
   // 2. HTTP errors with a status code — the most common case.
-  if (status >= 400) {
+  if (isValidHttpStatus(status) && status >= 400) {
     const info = HTTP_STATUS_INFO[status] || {
       name: status >= 500 ? 'Server Error' : 'Client Error',
       meaning: status >= 500 ? 'the remote service failed to process the request' : 'the server rejected the request',
@@ -231,10 +283,14 @@ export function explainSpanError(span: Span): ErrorExplanation {
       ? ' The URL contains no path (only the host), so the target had nothing to serve.'
       : '';
 
+    const what = span.kind === 'SERVER'
+      ? `${span.serviceName} received ${method || 'an HTTP'} ${inboundUrl} and responded ${status} ${info.name}: ${info.meaning}.${pathNote}`
+      : `${span.serviceName} sent ${method || 'a'} request to ${remoteTarget || 'a remote service'} and received ${status} ${info.name}: ${info.meaning}.${pathNote}`;
+
     return {
       category: 'http',
       title: `HTTP ${status} — ${info.name}`,
-      what: `${span.serviceName} sent ${method || 'a'} request to ${targetDisplay || 'a remote service'} and received ${status} ${info.name}: ${info.meaning}.${pathNote}`,
+      what,
       target: targetDisplay || undefined,
       causes,
       evidence,
