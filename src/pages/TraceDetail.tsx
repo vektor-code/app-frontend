@@ -13,6 +13,7 @@ import { buildSpanForest } from '../utils/spanTree';
 import { LANG_ICONS } from '../components/LanguageIcon';
 import { TECH_LOGOS } from '../components/TechIcon';
 import { getSpanDependency, getQueryText, getQuerySummary } from '../utils/dependency';
+import { formatInvestigationState, formatObservationMessage, observationMark, observationTone } from '../utils/investigationDisplay';
 
 const SERVICE_COLORS: Record<string, string> = {};
 const PALETTE = [
@@ -3064,30 +3065,36 @@ export default function TraceDetail() {
                     )}
                     {investigation && investigation.status !== 'pending' && (
                       <>
-                        {k8sObserved.map(item => (
-                          <div key={`obs-${item.code}-${item.pod || ''}`} className={`diagnosis-k8s-check ${item.ok ? 'ok' : 'warn'}`}>
-                            <b aria-hidden="true">{item.ok ? '✓' : '·'}</b>
-                            <span>{item.message}</span>
-                          </div>
-                        ))}
-                        {!k8sObserved.length && investigation.checks?.map(check => (
-                          <div key={`${check.level}-${check.code}-${check.pod || ''}`} className={`diagnosis-k8s-check ${check.ok ? 'ok' : 'warn'}`}>
-                            <b aria-hidden="true">{check.ok ? '✓' : '·'}</b>
-                            <span>{check.detail}</span>
-                          </div>
-                        ))}
+                        {k8sObserved.map(item => {
+                          const tone = observationTone(item);
+                          return (
+                            <div key={`obs-${item.code}-${item.pod || ''}`} className={`diagnosis-k8s-check ${tone}`}>
+                              <b aria-hidden="true">{observationMark(tone)}</b>
+                              <span>{formatObservationMessage(item)}</span>
+                            </div>
+                          );
+                        })}
+                        {!k8sObserved.length && investigation.checks?.map(check => {
+                          const tone = observationTone({ code: check.code, ok: check.ok, message: check.detail });
+                          return (
+                            <div key={`${check.level}-${check.code}-${check.pod || ''}`} className={`diagnosis-k8s-check ${tone}`}>
+                              <b aria-hidden="true">{observationMark(tone)}</b>
+                              <span>{formatObservationMessage({ code: check.code, message: check.detail })}</span>
+                            </div>
+                          );
+                        })}
                         {(investigation.originalState || investigation.currentState || investigation.inference || investigation.conclusion) && (
                           <div className="diagnosis-k8s-states">
                             {investigation.originalState && (
                               <span>
                                 {t('Original failure')}
-                                <strong>{investigation.originalState}</strong>
+                                <strong>{formatInvestigationState(investigation.originalState)}</strong>
                               </span>
                             )}
                             {investigation.currentState && (
                               <span>
                                 {t('Current state')}
-                                <strong>{investigation.currentState}</strong>
+                                <strong>{formatInvestigationState(investigation.currentState)}</strong>
                               </span>
                             )}
                             {(investigation.inference || investigation.conclusion) && (
@@ -3888,6 +3895,10 @@ export default function TraceDetail() {
           color: var(--text-tertiary);
         }
         .diagnosis-k8s-check.warn b { color: var(--text-muted); }
+        .diagnosis-k8s-check.info {
+          color: var(--text-secondary);
+        }
+        .diagnosis-k8s-check.info b { color: var(--text-muted); font-weight: 700; }
         .diagnosis-k8s-states {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
