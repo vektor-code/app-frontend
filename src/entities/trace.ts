@@ -90,6 +90,8 @@ export interface TraceInvestigation {
   skipReason?: string;
   conclusion?: string;
   inference?: string;
+  originalState?: string;
+  currentState?: string;
   confidence?: string;
   observations?: TraceInvestigationObservation[];
   checks?: TraceInvestigationCheck[];

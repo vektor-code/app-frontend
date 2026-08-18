@@ -3048,6 +3048,18 @@ export default function TraceDetail() {
                                 <span>{check.detail}</span>
                               </div>
                             ))}
+                            {investigation.originalState && (
+                              <span className="diagnosis-k8s-conclusion">
+                                <em className="diagnosis-k8s-kind">{t('Original failure')}</em>{' '}
+                                {investigation.originalState}
+                              </span>
+                            )}
+                            {investigation.currentState && (
+                              <span className="diagnosis-k8s-conclusion">
+                                <em className="diagnosis-k8s-kind">{t('Current state')}</em>{' '}
+                                {investigation.currentState}
+                              </span>
+                            )}
                             {(investigation.inference || investigation.conclusion) && (
                               <span className="diagnosis-k8s-conclusion">
                                 <em className="diagnosis-k8s-kind">{t('Inference')}</em>{' '}
