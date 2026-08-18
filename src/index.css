@@ -987,87 +987,41 @@ thead th:last-child .resize-handle {
   font-size: 11px;
 }
 
-/* Span Timeline / Waterfall */
+/* Span Timeline / Waterfall
+   Layout and chrome live in SpanTimeline.tsx so the global sheet only
+   provides a light reset for any leftover class usage. */
 .waterfall {
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
 .waterfall-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 0;
   transition: background var(--transition-fast);
-  border-radius: var(--radius-sm);
 }
 
 .waterfall-row:hover {
   background: var(--bg-hover);
 }
 
-.waterfall-label {
-  width: 260px;
-  min-width: 260px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 0 12px;
-}
-
-.waterfall-svc {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
 .waterfall-name {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .waterfall-bar-container {
-  flex: 1;
-  height: 24px;
   position: relative;
-  background: rgba(30, 41, 59, 0.3);
-  border-radius: 4px;
 }
 
 .waterfall-bar {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
   border-radius: 3px;
-  min-width: 3px;
-  transition: all var(--transition-fast);
-}
-
-.waterfall-bar.ok {
-  background: linear-gradient(90deg, var(--accent-indigo), var(--accent-violet));
-  box-shadow: 0 0 8px rgba(99, 102, 241, 0.3);
-}
-
-.waterfall-bar.error {
-  background: linear-gradient(90deg, var(--accent-rose), #e11d48);
-  box-shadow: 0 0 8px rgba(244, 63, 94, 0.3);
-}
-
-.waterfall-bar.client {
-  background: linear-gradient(90deg, var(--accent-cyan), color-mix(in srgb, var(--accent-cyan) 72%, var(--accent-indigo)));
-  box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
+  min-width: 2px;
 }
 
 .waterfall-duration {
   font-size: 11px;
   font-family: var(--font-mono);
   color: var(--text-secondary);
-  width: 80px;
-  min-width: 80px;
   text-align: right;
 }
 
