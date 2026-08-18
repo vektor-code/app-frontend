@@ -215,6 +215,13 @@ export function analyzeTraceFailure(trace: Trace, opts: Options = {}): TraceFail
   }
   const best = findings.reduce((a, b) => (b.score > a.score || (b.score === a.score && b.priority > a.priority) ? b : a));
   const score = Math.max(0, Math.min(100, best.score));
+  const missingParents = spans.filter(s => s.parentSpanId && !/^0*$/.test(s.parentSpanId) && !byId.has(s.parentSpanId)).length;
+  const evidence = [...best.evidence];
+  if (missingParents === 0) {
+    evidence.push({ code: 'span_tree_complete', message: 'All captured spans have their parent in this trace.' });
+  } else if (!evidence.some(item => item.code === 'missing_parent')) {
+    evidence.push({ code: 'missing_parent', message: `${missingParents} span(s) reference a parent that was not captured.` });
+  }
   const diagnosis: TraceFailureDiagnosis = {
     traceId: trace.traceId,
     classification: best.classification,
@@ -223,10 +230,11 @@ export function analyzeTraceFailure(trace: Trace, opts: Options = {}): TraceFail
     confidenceScore: score,
     title: best.title,
     summary: best.summary,
-    evidence: best.evidence,
+    evidence,
     likelyCauses: best.causes,
     affectedSpanIds: unique(best.spanIds),
     rules: unique(best.rules),
+    spanTree: missingParents === 0 ? 'complete' : 'broken',
   };
   diagnosis.live = livePlanFor(diagnosis.classification);
   return diagnosis;
@@ -249,6 +257,15 @@ function severityFor(f: Finding): Confidence {
 }
 
 function unknownDiagnosis(trace: Trace): TraceFailureDiagnosis {
+  const spans = trace.spans || [];
+  const ids = new Set(spans.map(s => s.spanId));
+  const missingParents = spans.filter(s => s.parentSpanId && !/^0*$/.test(s.parentSpanId) && !ids.has(s.parentSpanId)).length;
+  const evidence: TraceFailureEvidence[] = [{ code: 'insufficient_evidence', message: 'The failing span has no reliable HTTP, transport, or exception metadata.', score: 15 }];
+  if (missingParents === 0) {
+    evidence.push({ code: 'span_tree_complete', message: 'All captured spans have their parent in this trace.' });
+  } else {
+    evidence.push({ code: 'missing_parent', message: `${missingParents} span(s) reference a parent that was not captured.` });
+  }
   return {
     traceId: trace.traceId,
     classification: 'UNKNOWN',
@@ -257,10 +274,11 @@ function unknownDiagnosis(trace: Trace): TraceFailureDiagnosis {
     confidenceScore: 15,
     title: 'Unexplained span failure',
     summary: 'A span is marked failed, but the trace does not contain enough consistent evidence to explain why.',
-    evidence: [{ code: 'insufficient_evidence', message: 'The failing span has no reliable HTTP, transport, or exception metadata.', score: 15 }],
+    evidence,
     likelyCauses: ['The instrumentation did not attach a usable error description.', 'The failure may be internal to the service without exported details.'],
-    affectedSpanIds: (trace.spans || []).filter(s => s.status === 'ERROR').map(s => s.spanId),
+    affectedSpanIds: spans.filter(s => s.status === 'ERROR').map(s => s.spanId),
     rules: ['unknown_insufficient_evidence'],
+    spanTree: missingParents === 0 ? 'complete' : 'broken',
     live: livePlanFor('UNKNOWN'),
   };
 }

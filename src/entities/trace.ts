@@ -62,6 +62,7 @@ export interface TraceFailureDiagnosis {
   likelyCauses: string[];
   affectedSpanIds: string[];
   rules?: string[];
+  spanTree?: 'complete' | 'broken';
   live?: TraceFailureLivePlan;
 }
 

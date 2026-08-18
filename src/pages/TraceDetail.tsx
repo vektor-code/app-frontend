@@ -2927,8 +2927,10 @@ export default function TraceDetail() {
               icon="waterfall"
               label={t('Spans')}
               value={formatTraceNumber(trace.spanCount)}
-              detail={`${formatTraceNumber(serviceSummary.length)} ${t('services')}`}
-              tone="neutral"
+              detail={brokenLinkSpans.length > 0
+                ? `${formatTraceNumber(brokenLinkSpans.length)} ${t('broken parent links')}`
+                : t('Complete span tree')}
+              tone={brokenLinkSpans.length > 0 ? 'warning' : 'healthy'}
             />
             <TraceMetricCard
               icon="latency"
@@ -2975,13 +2977,21 @@ export default function TraceDetail() {
             </div>
           </section>
 
-          {brokenLinkSpans.length > 0 && (
+          {brokenLinkSpans.length > 0 ? (
             <div className="trace-detail-alert warning">
               <TraceDetailIcon name="alert" />
               <span>
                 <strong>{t('Incomplete flow')}:</strong>{' '}
                 {brokenLinkSpans.length} span{brokenLinkSpans.length > 1 ? 's' : ''} reference{brokenLinkSpans.length > 1 ? '' : 's'} a parent span that was not captured
                 ({[...new Set(brokenLinkSpans.map(s => `${s.namespace || 'default'}/${s.serviceName}`))].slice(0, 3).join(', ')}).
+              </span>
+            </div>
+          ) : (
+            <div className="trace-detail-alert ok">
+              <TraceDetailIcon name="check" />
+              <span>
+                <strong>{t('Complete span tree')}:</strong>{' '}
+                {t('Every parent span referenced in this trace was captured. This is a full flow, not a broken link.')}
               </span>
             </div>
           )}
