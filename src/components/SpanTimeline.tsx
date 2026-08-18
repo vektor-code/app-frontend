@@ -3,6 +3,7 @@ import type { Span } from '../entities';
 import { isSpanError } from '../utils/spanStatus';
 import { normalizeHttpMethod } from '../utils/httpTelemetry';
 import { getSpanDependency, isDatabaseSpan, getQueryText, getQuerySummary } from '../utils/dependency';
+import { buildSpanForest } from '../utils/spanTree';
 
 export interface DestinationInfo {
   type: 'infra' | '3rdparty' | 'service' | null;
@@ -149,21 +150,15 @@ const KIND_LABELS: Record<string, { label: string; color: string }> = {
 function calculateCriticalPath(spans: Span[]): Set<string> {
   const critical = new Set<string>();
   if (spans.length === 0) return critical;
-
-  const spanMap = new Map(spans.map(s => [s.spanId, s]));
-  const roots = spans.filter(s => !s.parentSpanId || !spanMap.has(s.parentSpanId));
-  if (roots.length === 0) return critical;
-
-  // Take the root with longest execution duration
-  roots.sort((a, b) => b.durationMs - a.durationMs);
+  const forest = buildSpanForest(spans);
+  if (forest.roots.length === 0) return critical;
+  const roots = [...forest.roots].sort((a, b) => b.durationMs - a.durationMs);
   let current: Span | undefined = roots[0];
 
   while (current) {
     critical.add(current.spanId);
-    const children = spans.filter(s => s.parentSpanId === current!.spanId);
+    const children = forest.childrenOf(current.spanId);
     if (children.length === 0) break;
-
-    // Find child that consumes the most duration
     let heaviestChild: Span | undefined = undefined;
     let maxDur = 0;
     for (const child of children) {
@@ -186,11 +181,13 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
   const criticalPathSet = useMemo(() => calculateCriticalPath(spans), [spans]);
 
   // Pre-calculate recursive child counts for all spans
+  const forest = useMemo(() => buildSpanForest(spans), [spans]);
+
   const childCounts = useMemo(() => {
     const counts = new Map<string, number>();
     const countFn = (spanId: string): number => {
       if (counts.has(spanId)) return counts.get(spanId)!;
-      const direct = spans.filter(s => s.parentSpanId === spanId);
+      const direct = forest.childrenOf(spanId);
       let total = direct.length;
       direct.forEach(child => {
         total += countFn(child.spanId);
@@ -200,7 +197,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
     };
     spans.forEach(s => countFn(s.spanId));
     return counts;
-  }, [spans]);
+  }, [spans, forest]);
 
   // Compute breakdown stats
   const breakdown = useMemo(() => {
@@ -239,16 +236,8 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
     return <div className="empty-state"><div className="empty-state-title">No spans found for this trace</div></div>;
   }
 
-  const spanMap = new Map<string, Span>();
-  const rootSpans: Span[] = [];
-  spans.forEach(s => spanMap.set(s.spanId, s));
-  spans.forEach(s => {
-    if (!s.parentSpanId || !spanMap.has(s.parentSpanId)) {
-      rootSpans.push(s);
-    }
-  });
-
-  const getChildren = (parentId: string) => spans.filter(s => s.parentSpanId === parentId);
+  const rootSpans = forest.roots;
+  const getChildren = (parentId: string) => forest.childrenOf(parentId);
 
   const toggleCollapse = (spanId: string) => {
     setCollapsed(prev => {

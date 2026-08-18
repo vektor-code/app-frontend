@@ -1,4 +1,5 @@
 import type { Span, Trace, TraceFailureDiagnosis, TraceFailureEvidence } from '../entities';
+import { buildSpanForest, isRootParentId, normalizeSpanId } from './spanTree';
 
 type Classification = TraceFailureDiagnosis['classification'];
 type Confidence = TraceFailureDiagnosis['confidence'];
@@ -140,7 +141,7 @@ function httpStatusName(code: number): string {
 }
 
 function isRootParent(id?: string): boolean {
-  return !id || /^0+$/.test(id);
+  return isRootParentId(id);
 }
 
 function unique(ids: string[]): string[] {
@@ -181,13 +182,11 @@ function spanTimeoutMs(span: Span, opts: Options): number | null {
 }
 
 function childrenOf(spans: Span[]): Map<string, Span[]> {
-  const byId = new Set(spans.map(s => s.spanId));
+  const forest = buildSpanForest(spans);
   const children = new Map<string, Span[]>();
   for (const sp of spans) {
-    if (isRootParent(sp.parentSpanId) || !sp.parentSpanId || !byId.has(sp.parentSpanId)) continue;
-    const list = children.get(sp.parentSpanId) || [];
-    list.push(sp);
-    children.set(sp.parentSpanId, list);
+    const kids = forest.childrenOf(sp.spanId);
+    if (kids.length) children.set(sp.spanId, kids);
   }
   return children;
 }
@@ -199,15 +198,20 @@ function childrenOf(spans: Span[]): Map<string, Span[]> {
 export function analyzeTraceFailure(trace: Trace, opts: Options = {}): TraceFailureDiagnosis | null {
   const spans = trace.spans || [];
   if (!spans.length) return null;
+  const forest = buildSpanForest(spans);
   const children = childrenOf(spans);
-  const byId = new Map(spans.map(s => [s.spanId, s]));
+  const byId = new Map<string, Span>();
+  for (const s of spans) {
+    byId.set(s.spanId, s);
+    byId.set(normalizeSpanId(s.spanId), s);
+  }
   const findings: Finding[] = [
     ...ruleInstrumentation(spans, children, opts),
     ...ruleTransport(spans, byId),
     ...ruleTimeout(spans),
     ...ruleHTTPOutcome(spans, children),
     ...ruleDuplicates(spans),
-    ...ruleTraceContext(spans, byId),
+    ...ruleTraceContext(spans, byId, forest.midTreeMissing),
   ];
   if (!findings.length) {
     if (spans.some(s => s.status === 'ERROR')) return unknownDiagnosis(trace);
@@ -215,7 +219,7 @@ export function analyzeTraceFailure(trace: Trace, opts: Options = {}): TraceFail
   }
   const best = findings.reduce((a, b) => (b.score > a.score || (b.score === a.score && b.priority > a.priority) ? b : a));
   const score = Math.max(0, Math.min(100, best.score));
-  const missingParents = spans.filter(s => s.parentSpanId && !/^0*$/.test(s.parentSpanId) && !byId.has(s.parentSpanId)).length;
+  const missingParents = forest.midTreeMissing.length;
   const evidence = [...best.evidence];
   if (missingParents === 0) {
     evidence.push({ code: 'span_tree_complete', message: 'All captured spans have their parent in this trace.' });
@@ -258,8 +262,8 @@ function severityFor(f: Finding): Confidence {
 
 function unknownDiagnosis(trace: Trace): TraceFailureDiagnosis {
   const spans = trace.spans || [];
-  const ids = new Set(spans.map(s => s.spanId));
-  const missingParents = spans.filter(s => s.parentSpanId && !/^0*$/.test(s.parentSpanId) && !ids.has(s.parentSpanId)).length;
+  const forest = buildSpanForest(spans);
+  const missingParents = forest.midTreeMissing.length;
   const evidence: TraceFailureEvidence[] = [{ code: 'insufficient_evidence', message: 'The failing span has no reliable HTTP, transport, or exception metadata.', score: 15 }];
   if (missingParents === 0) {
     evidence.push({ code: 'span_tree_complete', message: 'All captured spans have their parent in this trace.' });
@@ -424,7 +428,7 @@ function ruleTransport(spans: Span[], byId: Map<string, Span>): Finding[] {
       evidence.push({ code: 'missing_http_response', message: 'CLIENT span has no HTTP response status.', spanId: sp.spanId, score: 20 });
     }
     const ids = [sp.spanId];
-    const parent = sp.parentSpanId ? byId.get(sp.parentSpanId) : undefined;
+    const parent = sp.parentSpanId ? (byId.get(sp.parentSpanId) || byId.get(normalizeSpanId(sp.parentSpanId))) : undefined;
     if (parent?.kind === 'SERVER') {
       const pst = httpStatus(parent);
       if (pst.present && pst.code >= 500) {
@@ -581,25 +585,28 @@ function ruleDuplicates(spans: Span[]): Finding[] {
   return out;
 }
 
-function ruleTraceContext(spans: Span[], byId: Map<string, Span>): Finding[] {
+function ruleTraceContext(spans: Span[], byId: Map<string, Span>, midTreeMissing: Span[]): Finding[] {
   const out: Finding[] = [];
+  const seen = new Set<string>();
+  for (const sp of midTreeMissing) {
+    if (!sp?.spanId || seen.has(sp.spanId)) continue;
+    seen.add(sp.spanId);
+    out.push({
+      classification: 'TRACE_CONTEXT_ANOMALY',
+      score: 50,
+      title: 'Missing parent span',
+      summary: `Span ${sp.name} references parent ${sp.parentSpanId}, which is not present in this trace.`,
+      evidence: [{ code: 'missing_parent', message: `Parent span ${sp.parentSpanId} was not captured.`, spanId: sp.spanId, score: 50 }],
+      causes: ['The parent span was sampled out, dropped, or never exported.', 'Trace context was propagated without the corresponding parent span.'],
+      spanIds: [sp.spanId],
+      rules: ['missing_parent'],
+      priority: 40,
+    });
+  }
   for (const sp of spans) {
     if (isRootParent(sp.parentSpanId) || !sp.parentSpanId) continue;
-    const parent = byId.get(sp.parentSpanId);
-    if (!parent) {
-      out.push({
-        classification: 'TRACE_CONTEXT_ANOMALY',
-        score: 50,
-        title: 'Missing parent span',
-        summary: `Span ${sp.name} references parent ${sp.parentSpanId}, which is not present in this trace.`,
-        evidence: [{ code: 'missing_parent', message: `Parent span ${sp.parentSpanId} was not captured.`, spanId: sp.spanId, score: 50 }],
-        causes: ['The parent span was sampled out, dropped, or never exported.', 'Trace context was propagated without the corresponding parent span.'],
-        spanIds: [sp.spanId],
-        rules: ['missing_parent'],
-        priority: 40,
-      });
-      continue;
-    }
+    const parent = byId.get(sp.parentSpanId) || byId.get(normalizeSpanId(sp.parentSpanId));
+    if (!parent) continue;
     const childStart = new Date(sp.startTime).getTime();
     const childEnd = new Date(sp.endTime).getTime();
     const parentEnd = new Date(parent.endTime).getTime();

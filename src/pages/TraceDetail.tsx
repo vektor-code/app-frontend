@@ -9,6 +9,7 @@ import SpanTimeline, { getSpanDestination } from '../components/SpanTimeline';
 import { explainSpanError } from '../utils/errorAnalysis';
 import { isHttpMethodAttribute, normalizeHttpMethod } from '../utils/httpTelemetry';
 import { analyzeTraceFailure, classificationLabel } from '../utils/traceFailureAnalyzer';
+import { buildSpanForest } from '../utils/spanTree';
 import { LANG_ICONS } from '../components/LanguageIcon';
 import { TECH_LOGOS } from '../components/TechIcon';
 import { getSpanDependency, getQueryText, getQuerySummary } from '../utils/dependency';
@@ -186,23 +187,24 @@ interface SpanNode {
 }
 
 function buildSpanTree(spans: Span[]): { rootNodes: SpanNode[]; maxDepth: number } {
+  const forest = buildSpanForest(spans);
   const spanMap = new Map<string, SpanNode>();
   spans.forEach(s => {
     spanMap.set(s.spanId, { span: s, depth: 0, children: [] });
   });
 
-  const rootNodes: SpanNode[] = [];
-  let maxDepth = 0;
-
   spans.forEach(s => {
     const node = spanMap.get(s.spanId)!;
-    if (s.parentSpanId && spanMap.has(s.parentSpanId)) {
-      const parent = spanMap.get(s.parentSpanId)!;
-      parent.children.push(node);
-    } else {
-      rootNodes.push(node);
+    for (const child of forest.childrenOf(s.spanId)) {
+      const childNode = spanMap.get(child.spanId);
+      if (childNode && child.spanId !== s.spanId) {
+        node.children.push(childNode);
+      }
     }
   });
+
+  const rootNodes: SpanNode[] = forest.roots.map(s => spanMap.get(s.spanId)!).filter(Boolean);
+  let maxDepth = 0;
 
   function traverse(node: SpanNode, currentDepth: number) {
     node.depth = currentDepth;
@@ -2774,13 +2776,8 @@ export default function TraceDetail() {
 
   // Spans whose parent was never captured (uninstrumented hop / sampling /
   // disabled namespace) — the flow renders but with a visible gap.
-  const brokenLinkSpans = useMemo(() => {
-    if (!trace || !trace.spans) return [];
-    const ids = new Set(trace.spans.map(s => s.spanId));
-    return trace.spans.filter(s =>
-      s.parentSpanId && !/^0*$/.test(s.parentSpanId) && !ids.has(s.parentSpanId)
-    );
-  }, [trace]);
+  const spanForest = useMemo(() => buildSpanForest(trace?.spans || []), [trace]);
+  const brokenLinkSpans = spanForest.midTreeMissing;
 
   // Error spans with human-readable explanations for the problems panel
   const errorSpans = useMemo(() => {
