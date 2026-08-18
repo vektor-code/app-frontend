@@ -3079,17 +3079,21 @@ export default function TraceDetail() {
           </section>
         </div>
 
-        {/* Dynamic Details Sidebar Pane */}
-        {selectedSpan && (
-          <>
-            <div className="trace-sidebar-backdrop" onClick={() => setSelectedSpan(null)} />
-            <div 
+        {selectedSpan && createPortal(
+          <div className="trace-drawer-root" role="presentation">
+            <button
+              type="button"
+              className="trace-sidebar-backdrop"
+              aria-label={t('Close details')}
+              onClick={() => setSelectedSpan(null)}
+            />
+            <div
               className={`trace-detail-sidebar ${isDragging ? 'resizing' : ''}`}
               style={{ width: `${sidebarWidth}px`, minWidth: `${sidebarWidth}px` }}
             >
-              <div 
-                className={`sidebar-drag-handle ${isDragging ? 'active' : ''}`} 
-                onMouseDown={startResize} 
+              <div
+                className={`sidebar-drag-handle ${isDragging ? 'active' : ''}`}
+                onMouseDown={startResize}
               >
                 <div className="drag-grabber-pill">
                   <svg width="10" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -3102,13 +3106,14 @@ export default function TraceDetail() {
                   </svg>
                 </div>
               </div>
-              <SpanDrawerContent 
-                span={selectedSpan} 
+              <SpanDrawerContent
+                span={selectedSpan}
                 traceDuration={trace.durationMs}
-                onClose={() => setSelectedSpan(null)} 
+                onClose={() => setSelectedSpan(null)}
               />
             </div>
-          </>
+          </div>,
+          document.body
         )}
       </div>
 
@@ -3165,19 +3170,24 @@ export default function TraceDetail() {
           transition: all 0.25s ease;
         }
 
+        .trace-drawer-root {
+          position: fixed;
+          inset: 0;
+          z-index: 1200;
+          display: flex;
+          justify-content: flex-end;
+        }
+
         .trace-detail-sidebar {
+          position: relative;
+          z-index: 1;
           background: var(--bg-primary);
           border-left: 1px solid var(--border-primary);
-          height: 100vh;
-          position: fixed;
-          top: 0;
-          right: 0;
-          bottom: 0;
+          height: 100%;
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          box-shadow: -18px 0 48px rgba(10, 16, 32, 0.16);
-          z-index: 1001;
+          box-shadow: -18px 0 48px rgba(10, 16, 32, 0.18);
           animation: slideInRight 0.25s cubic-bezier(0.4, 0, 0.2, 1);
           border-radius: 0;
         }
@@ -3213,14 +3223,14 @@ export default function TraceDetail() {
         }
 
         .trace-sidebar-backdrop {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(12, 18, 34, 0.38);
-          backdrop-filter: blur(3px);
-          z-index: 1000;
+          position: absolute;
+          inset: 0;
+          border: 0;
+          padding: 0;
+          background: rgba(12, 18, 34, 0.42);
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+          cursor: pointer;
           animation: fadeIn 0.25s ease-out;
         }
 
