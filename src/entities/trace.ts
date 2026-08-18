@@ -74,16 +74,30 @@ export interface TraceInvestigationCheck {
   cached?: boolean;
 }
 
+export interface TraceInvestigationObservation {
+  kind: 'observed' | 'inference';
+  code: string;
+  message: string;
+  level?: number;
+  ok?: boolean;
+  pod?: string;
+}
+
 export interface TraceInvestigation {
   traceId: string;
-  status: 'skipped' | 'complete' | 'partial' | 'unavailable' | 'rate_limited';
+  status: 'skipped' | 'pending' | 'complete' | 'partial' | 'unavailable' | 'rate_limited' | 'expired';
   levelReached: number;
   skipReason?: string;
   conclusion?: string;
+  inference?: string;
+  confidence?: string;
+  observations?: TraceInvestigationObservation[];
   checks?: TraceInvestigationCheck[];
   cached?: boolean;
   cacheKey?: string;
+  fingerprint?: string;
   durationMs?: number;
+  referencedBy?: number;
 }
 
 export interface Trace {

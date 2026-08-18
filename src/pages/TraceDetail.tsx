@@ -2811,25 +2811,36 @@ export default function TraceDetail() {
       return;
     }
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     setInvestigationLoading(true);
-    api.getTraceInvestigation(traceId)
-      .then((report) => {
-        if (!cancelled) setInvestigation(report);
-      })
-      .catch(() => {
-        if (!cancelled) {
+    const poll = () => {
+      api.getTraceInvestigation(traceId)
+        .then((report) => {
+          if (cancelled) return;
+          setInvestigation(report);
+          if (report.status === 'pending') {
+            setInvestigationLoading(true);
+            timer = setTimeout(poll, 2000);
+            return;
+          }
+          setInvestigationLoading(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
           setInvestigation({
             traceId,
             status: 'unavailable',
             levelReached: 0,
             skipReason: 'Live Kubernetes verification is not available for this cluster',
           });
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setInvestigationLoading(false);
-      });
-    return () => { cancelled = true; };
+          setInvestigationLoading(false);
+        });
+    };
+    poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [traceId, failureDiagnosis]);
 
   const uniqueDestinations = useMemo(() => {
@@ -3015,24 +3026,44 @@ export default function TraceDetail() {
                       )}
                       <div className="diagnosis-k8s">
                         <span className="diagnosis-why-label">{t('Kubernetes verification')}</span>
-                        {investigationLoading && !investigation && (
-                          <span className="diagnosis-k8s-pending">{t('Checking existing workload state…')}</span>
+                        {(!investigation || investigation.status === 'pending') && investigationLoading && (
+                          <span className="diagnosis-k8s-pending">
+                            {investigation?.status === 'pending'
+                              ? t('Investigating…')
+                              : t('Live verification available')}
+                          </span>
                         )}
                         {investigation?.status === 'skipped' && (
                           <span>{investigation.skipReason || investigation.conclusion}</span>
                         )}
-                        {investigation && investigation.status !== 'skipped' && (
+                        {investigation && investigation.status !== 'skipped' && investigation.status !== 'pending' && (
                           <>
-                            {investigation.checks?.map(check => (
+                            {(investigation.observations?.filter(item => item.kind === 'observed') || []).map(item => (
+                              <div key={`obs-${item.code}-${item.pod || ''}`} className={`diagnosis-k8s-check ${item.ok ? 'ok' : 'warn'}`}>
+                                <b>{item.ok ? '✓' : '·'}</b>
+                                <span><em className="diagnosis-k8s-kind">{t('Observed')}</em> {item.message}</span>
+                              </div>
+                            ))}
+                            {!investigation.observations?.length && investigation.checks?.map(check => (
                               <div key={`${check.level}-${check.code}-${check.pod || ''}`} className={`diagnosis-k8s-check ${check.ok ? 'ok' : 'warn'}`}>
                                 <b>{check.ok ? '✓' : '·'}</b>
                                 <span>{check.detail}</span>
                               </div>
                             ))}
-                            {investigation.conclusion && <span className="diagnosis-k8s-conclusion">{investigation.conclusion}</span>}
+                            {(investigation.inference || investigation.conclusion) && (
+                              <span className="diagnosis-k8s-conclusion">
+                                <em className="diagnosis-k8s-kind">{t('Inference')}</em>{' '}
+                                {investigation.inference || investigation.conclusion}
+                                {investigation.confidence ? ` · ${t('Confidence')}: ${investigation.confidence}` : ''}
+                              </span>
+                            )}
                             {investigation.status === 'unavailable' && <span>{investigation.skipReason}</span>}
                             {investigation.status === 'rate_limited' && <span>{investigation.skipReason}</span>}
+                            {investigation.status === 'expired' && <span>{investigation.skipReason}</span>}
                             {investigation.cached && <em className="diagnosis-k8s-cached">{t('Cached')}</em>}
+                            {investigation.referencedBy && investigation.referencedBy > 1 && (
+                              <em className="diagnosis-k8s-cached">{investigation.referencedBy} {t('traces share this result')}</em>
+                            )}
                           </>
                         )}
                       </div>
@@ -3781,6 +3812,12 @@ export default function TraceDetail() {
           margin-top: 4px;
           color: var(--text-primary) !important;
           font-weight: 650;
+        }
+        .diagnosis-k8s-kind {
+          font-style: normal;
+          font-weight: 650;
+          color: var(--text-muted);
+          margin-right: 4px;
         }
         .diagnosis-k8s-cached {
           font-size: 10px;
