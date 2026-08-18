@@ -2975,23 +2975,23 @@ export default function TraceDetail() {
           </section>
 
           {brokenLinkSpans.length > 0 ? (
-            <div className="trace-detail-alert warning">
+            <div className="trace-detail-alert warning compact">
               <TraceDetailIcon name="alert" />
               <span>
-                <strong>{t('Incomplete flow')}:</strong>{' '}
-                {brokenLinkSpans.length} span{brokenLinkSpans.length > 1 ? 's' : ''} reference{brokenLinkSpans.length > 1 ? '' : 's'} a parent span that was not captured
+                <strong>{t('Incomplete flow')}</strong>
+                {brokenLinkSpans.length} span{brokenLinkSpans.length > 1 ? 's' : ''} reference{brokenLinkSpans.length > 1 ? '' : 's'} a parent that was not captured
                 ({[...new Set(brokenLinkSpans.map(s => `${s.namespace || 'default'}/${s.serviceName}`))].slice(0, 3).join(', ')}).
               </span>
             </div>
-          ) : (
-            <div className="trace-detail-alert ok">
+          ) : !(failureDiagnosis || errorSpans.length > 0) ? (
+            <div className="trace-detail-alert ok compact">
               <TraceDetailIcon name="check" />
               <span>
-                <strong>{t('Complete span tree')}:</strong>{' '}
-                {t('Every parent span referenced in this trace was captured. This is a full flow, not a broken link.')}
+                <strong>{t('Complete span tree')}</strong>
+                {t('Every parent in this trace was captured.')}
               </span>
             </div>
-          )}
+          ) : null}
 
           {/* Detected Problems Panel — existing error summary, augmented with diagnosis */}
           {(failureDiagnosis || errorSpans.length > 0) && (() => {
@@ -3002,6 +3002,11 @@ export default function TraceDetail() {
               : failureDiagnosis?.classification === 'UNKNOWN'
                 ? 'unknown'
                 : 'critical';
+            const diagnosisEvidence = (failureDiagnosis?.evidence || []).filter(item => item.code !== 'span_tree_complete');
+            const k8sObserved = investigation?.observations?.filter(item => item.kind === 'observed') || [];
+            const showK8s = investigation
+              ? investigation.status !== 'skipped'
+              : investigationLoading;
             return (
               <div className={`trace-detail-problems-panel ${diagnosisTone}`}>
                 <div className="problems-panel-header">
@@ -3009,126 +3014,140 @@ export default function TraceDetail() {
                     <TraceDetailIcon name="alert" />
                     <span>{t('Trace Error Summary')}</span>
                   </div>
-                  <em>
-                    {failureDiagnosis
-                      ? `${classificationLabel(failureDiagnosis.classification)} · ${failureDiagnosis.confidence}`
-                      : `${formatTraceNumber(errorSpans.length)} ${t('failed spans')} / ${formatTraceNumber(affectedServices)} ${t('services')}`}
-                  </em>
+                  <div className="problems-panel-pills">
+                    {failureDiagnosis ? (
+                      <>
+                        <em>{classificationLabel(failureDiagnosis.classification)}</em>
+                        <em className={`conf ${failureDiagnosis.confidence.toLowerCase()}`}>{failureDiagnosis.confidence}</em>
+                      </>
+                    ) : (
+                      <em>{formatTraceNumber(errorSpans.length)} {t('failed spans')} / {formatTraceNumber(affectedServices)} {t('services')}</em>
+                    )}
+                  </div>
                 </div>
 
-                <div className="problems-panel-lead">
-                  {failureDiagnosis ? (
-                    <>
-                      <span className="diagnosis-class">{classificationLabel(failureDiagnosis.classification)}</span>
-                      <strong>{failureDiagnosis.title}</strong>
-                      <span className="diagnosis-why-label">DIAGNOSIS</span>
-                      <span>{failureDiagnosis.summary}</span>
-                      <span className="diagnosis-confidence">{t('Confidence')}: {failureDiagnosis.confidence}</span>
-                      {failureDiagnosis.evidence?.length > 0 && (
-                        <ul className="diagnosis-evidence">
-                          {failureDiagnosis.evidence.map(item => (
-                            <li key={`${item.code}-${item.spanId || ''}`}>{item.message}</li>
-                          ))}
-                        </ul>
+                {failureDiagnosis ? (
+                  <div className="problems-diagnosis">
+                    <h3>{failureDiagnosis.title}</h3>
+                    <p>{failureDiagnosis.summary}</p>
+                    {diagnosisEvidence.length > 0 && (
+                      <ul className="diagnosis-evidence">
+                        {diagnosisEvidence.map(item => (
+                          <li key={`${item.code}-${item.spanId || ''}`}>{item.message}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ) : (
+                  <div className="problems-diagnosis">
+                    <h3>{primaryError.explanation.title}</h3>
+                    <p>{primaryError.explanation.what}</p>
+                  </div>
+                )}
+
+                {showK8s && (
+                  <div className="diagnosis-k8s">
+                    <div className="diagnosis-k8s-head">
+                      <span>{t('Kubernetes verification')}</span>
+                      {investigation?.status === 'pending' && investigationLoading && <em>{t('Investigating…')}</em>}
+                      {investigation?.cached && <em>{t('Cached')}</em>}
+                      {investigation?.referencedBy && investigation.referencedBy > 1 && (
+                        <em>{investigation.referencedBy} {t('traces share this result')}</em>
                       )}
-                      {investigation && investigation.status === 'skipped' ? null : (
-                        <div className="diagnosis-k8s">
-                          <span className="diagnosis-why-label">{t('Kubernetes verification')}</span>
-                          {(!investigation || investigation.status === 'pending') && investigationLoading && (
-                            <span className="diagnosis-k8s-pending">
-                              {investigation?.status === 'pending'
-                                ? t('Investigating…')
-                                : t('Live verification available')}
-                            </span>
-                          )}
-                          {investigation && investigation.status !== 'pending' && (
-                            <>
-                            {(investigation.observations?.filter(item => item.kind === 'observed') || []).map(item => (
-                              <div key={`obs-${item.code}-${item.pod || ''}`} className={`diagnosis-k8s-check ${item.ok ? 'ok' : 'warn'}`}>
-                                <b>{item.ok ? '✓' : '·'}</b>
-                                <span><em className="diagnosis-k8s-kind">{t('Observed')}</em> {item.message}</span>
-                              </div>
-                            ))}
-                            {!investigation.observations?.length && investigation.checks?.map(check => (
-                              <div key={`${check.level}-${check.code}-${check.pod || ''}`} className={`diagnosis-k8s-check ${check.ok ? 'ok' : 'warn'}`}>
-                                <b>{check.ok ? '✓' : '·'}</b>
-                                <span>{check.detail}</span>
-                              </div>
-                            ))}
+                    </div>
+                    {(!investigation || investigation.status === 'pending') && investigationLoading && !k8sObserved.length && (
+                      <span className="diagnosis-k8s-pending">
+                        {investigation?.status === 'pending'
+                          ? t('Investigating…')
+                          : t('Live verification available')}
+                      </span>
+                    )}
+                    {investigation && investigation.status !== 'pending' && (
+                      <>
+                        {k8sObserved.map(item => (
+                          <div key={`obs-${item.code}-${item.pod || ''}`} className={`diagnosis-k8s-check ${item.ok ? 'ok' : 'warn'}`}>
+                            <b aria-hidden="true">{item.ok ? '✓' : '·'}</b>
+                            <span>{item.message}</span>
+                          </div>
+                        ))}
+                        {!k8sObserved.length && investigation.checks?.map(check => (
+                          <div key={`${check.level}-${check.code}-${check.pod || ''}`} className={`diagnosis-k8s-check ${check.ok ? 'ok' : 'warn'}`}>
+                            <b aria-hidden="true">{check.ok ? '✓' : '·'}</b>
+                            <span>{check.detail}</span>
+                          </div>
+                        ))}
+                        {(investigation.originalState || investigation.currentState || investigation.inference || investigation.conclusion) && (
+                          <div className="diagnosis-k8s-states">
                             {investigation.originalState && (
-                              <span className="diagnosis-k8s-conclusion">
-                                <em className="diagnosis-k8s-kind">{t('Original failure')}</em>{' '}
-                                {investigation.originalState}
+                              <span>
+                                {t('Original failure')}
+                                <strong>{investigation.originalState}</strong>
                               </span>
                             )}
                             {investigation.currentState && (
-                              <span className="diagnosis-k8s-conclusion">
-                                <em className="diagnosis-k8s-kind">{t('Current state')}</em>{' '}
-                                {investigation.currentState}
+                              <span>
+                                {t('Current state')}
+                                <strong>{investigation.currentState}</strong>
                               </span>
                             )}
                             {(investigation.inference || investigation.conclusion) && (
-                              <span className="diagnosis-k8s-conclusion">
-                                <em className="diagnosis-k8s-kind">{t('Inference')}</em>{' '}
-                                {investigation.inference || investigation.conclusion}
-                                {investigation.confidence ? ` · ${t('Confidence')}: ${investigation.confidence}` : ''}
+                              <span className="wide">
+                                {t('Inference')}
+                                <strong>
+                                  {investigation.inference || investigation.conclusion}
+                                  {investigation.confidence ? ` · ${investigation.confidence}` : ''}
+                                </strong>
                               </span>
                             )}
-                            {investigation.status === 'unavailable' && <span>{investigation.skipReason}</span>}
-                            {investigation.status === 'rate_limited' && <span>{investigation.skipReason}</span>}
-                            {investigation.status === 'expired' && <span>{investigation.skipReason}</span>}
-                            {investigation.cached && <em className="diagnosis-k8s-cached">{t('Cached')}</em>}
-                            {investigation.referencedBy && investigation.referencedBy > 1 && (
-                              <em className="diagnosis-k8s-cached">{investigation.referencedBy} {t('traces share this result')}</em>
-                            )}
+                          </div>
+                        )}
+                        {investigation.status === 'unavailable' && <span className="diagnosis-k8s-pending">{investigation.skipReason}</span>}
+                        {investigation.status === 'rate_limited' && <span className="diagnosis-k8s-pending">{investigation.skipReason}</span>}
+                        {investigation.status === 'expired' && <span className="diagnosis-k8s-pending">{investigation.skipReason}</span>}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {errorSpans.length > 0 && (
+                  <div className="problems-span-list">
+                    {errorSpans.length > 1 && (
+                      <span className="problems-span-label">{formatTraceNumber(errorSpans.length)} {t('failed spans')}</span>
+                    )}
+                    {errorSpans.map(({ span, explanation }, index) => (
+                      <button
+                        key={span.spanId}
+                        className={`problem-card ${selectedSpan?.spanId === span.spanId ? 'selected' : ''}`}
+                        onClick={() => setSelectedSpan(span)}
+                        title={t('Open full failure details')}
+                      >
+                        <div className="problem-card-top">
+                          <span className="problem-severity">#{index + 1}</span>
+                          <span className="problem-service" style={{ color: getSvcColor(span.serviceName) }}>
+                            <span className="problem-service-dot" style={{ background: getSvcColor(span.serviceName) }} />
+                            {span.serviceName}
+                          </span>
+                          {explanation.target && (
+                            <>
+                              <span className="problem-arrow">{'->'}</span>
+                              <span className="problem-target" title={explanation.target}>{explanation.target}</span>
                             </>
                           )}
+                          <span className="problem-title-badge">{t(getErrorCategoryLabel(explanation.category))}</span>
                         </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <strong>{primaryError.explanation.title}</strong>
-                      <span>{primaryError.explanation.what}</span>
-                    </>
-                  )}
-                </div>
-
-                {errorSpans.map(({ span, explanation }, index) => (
-                  <button
-                    key={span.spanId}
-                    className={`problem-card ${selectedSpan?.spanId === span.spanId ? 'selected' : ''}`}
-                    onClick={() => setSelectedSpan(span)}
-                    title={t('Open full failure details')}
-                  >
-                    <div className="problem-card-top">
-                      <span className="problem-severity">#{index + 1}</span>
-                      <span className="problem-service" style={{ color: getSvcColor(span.serviceName) }}>
-                        <span className="problem-service-dot" style={{ background: getSvcColor(span.serviceName) }} />
-                        {span.serviceName}
-                      </span>
-                      {explanation.target && (
-                        <>
-                          <span className="problem-arrow">{'->'}</span>
-                          <span className="problem-target" title={explanation.target}>{explanation.target}</span>
-                        </>
-                      )}
-                      <span className="problem-title-badge">{t(getErrorCategoryLabel(explanation.category))}</span>
-                    </div>
-
-                    <div className="problem-main">
-                      <strong>{explanation.title}</strong>
-                      <span>{explanation.what}</span>
-                    </div>
-
-                    <div className="problem-meta-grid">
-                      <span>{t('Operation')} <strong>{getSpanOperationLabel(span)}</strong></span>
-                      <span>{t('Duration')} <strong>{formatDuration(span.durationMs)}</strong></span>
-                      <span>{t('Kind')} <strong>{span.kind.toLowerCase()}</strong></span>
-                    </div>
-
-                  </button>
-                ))}
+                        <div className="problem-main">
+                          <strong>{explanation.title}</strong>
+                          <span>{explanation.what}</span>
+                        </div>
+                        <div className="problem-meta-grid">
+                          <span>{t('Operation')} <strong>{getSpanOperationLabel(span)}</strong></span>
+                          <span>{t('Duration')} <strong>{formatDuration(span.durationMs)}</strong></span>
+                          <span>{t('Kind')} <strong>{span.kind.toLowerCase()}</strong></span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -3710,155 +3729,222 @@ export default function TraceDetail() {
         }
 
         /* Detected Problems Panel */
-        .problems-panel {
-          margin-top: 12px;
-          background: var(--bg-secondary);
-          border: 1px solid rgba(244, 63, 94, 0.35);
-          border-left: 3px solid var(--accent-rose, #f43f5e);
-          border-radius: 10px;
-          padding: 12px 14px;
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
         .problems-panel-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 8px;
-          color: var(--accent-rose, #f43f5e);
+          gap: 10px;
+          color: var(--accent-rose, #e93d62);
           font-size: 12px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
+          font-weight: 750;
+          letter-spacing: 0.01em;
         }
         .problems-panel-header > div {
           display: inline-flex;
           align-items: center;
           gap: 8px;
         }
-        .problems-panel-header em {
-          color: var(--text-secondary);
+        .problems-panel-header svg {
+          width: 15px;
+          height: 15px;
+          flex-shrink: 0;
+        }
+        .problems-panel-pills {
+          display: inline-flex;
+          align-items: center;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          gap: 6px;
+        }
+        .problems-panel-pills em {
+          display: inline-flex;
+          align-items: center;
+          color: var(--accent-rose, #e93d62);
+          background: color-mix(in srgb, var(--accent-rose, #e93d62) 10%, transparent);
+          border: 1px solid color-mix(in srgb, var(--accent-rose, #e93d62) 22%, transparent);
+          border-radius: 999px;
+          padding: 2px 8px;
           font-size: 10.5px;
           font-style: normal;
-          font-weight: 800;
-          text-transform: none;
-          letter-spacing: 0;
+          font-weight: 750;
+          letter-spacing: 0.01em;
         }
-        .problems-panel-lead {
+        .problems-panel-pills em.conf {
+          color: var(--text-secondary);
+          background: var(--bg-tertiary);
+          border-color: var(--border-primary);
+        }
+        .problems-panel-pills em.conf.high {
+          color: var(--accent-rose, #e93d62);
+          background: color-mix(in srgb, var(--accent-rose, #e93d62) 10%, transparent);
+          border-color: color-mix(in srgb, var(--accent-rose, #e93d62) 22%, transparent);
+        }
+        .problems-panel-pills em.conf.medium {
+          color: var(--accent-amber, #e07a0a);
+          background: color-mix(in srgb, var(--accent-amber, #e07a0a) 12%, transparent);
+          border-color: color-mix(in srgb, var(--accent-amber, #e07a0a) 24%, transparent);
+        }
+        .problems-diagnosis {
           display: flex;
           flex-direction: column;
-          gap: 5px;
-          margin: 10px 0;
-          border: 1px solid rgba(244, 63, 94, 0.18);
-          border-radius: 8px;
-          background: rgba(244, 63, 94, 0.05);
-          padding: 11px 12px;
+          gap: 6px;
         }
-        .problems-panel-lead strong {
+        .problems-diagnosis h3 {
+          margin: 0;
           color: var(--text-primary);
-          font-size: 13px;
-          font-weight: 850;
+          font-size: 16px;
+          line-height: 1.3;
+          font-weight: 750;
         }
-        .problems-panel-lead span {
+        .problems-diagnosis p {
+          margin: 0;
           color: var(--text-secondary);
-          font-size: 12px;
+          font-size: 13px;
           line-height: 1.5;
         }
-        .diagnosis-class {
-          font-size: 11px;
-          font-weight: 800;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          color: var(--accent-rose, #f43f5e);
-        }
         .trace-detail-problems-panel.anomaly {
-          border-color: rgba(217, 119, 6, 0.35);
+          border-color: color-mix(in srgb, var(--accent-amber, #d97706) 35%, var(--border-primary));
           border-left-color: var(--accent-amber, #d97706);
         }
         .trace-detail-problems-panel.anomaly .problems-panel-header,
-        .trace-detail-problems-panel.anomaly .diagnosis-class {
+        .trace-detail-problems-panel.anomaly .problems-panel-pills em {
           color: var(--accent-amber, #d97706);
         }
+        .trace-detail-problems-panel.anomaly .problems-panel-pills em:not(.conf) {
+          background: color-mix(in srgb, var(--accent-amber, #d97706) 12%, transparent);
+          border-color: color-mix(in srgb, var(--accent-amber, #d97706) 24%, transparent);
+        }
         .trace-detail-problems-panel.unknown {
-          border-color: rgba(100, 116, 139, 0.35);
+          border-color: color-mix(in srgb, var(--text-muted) 35%, var(--border-primary));
           border-left-color: var(--text-muted);
         }
-        .diagnosis-why-label {
-          margin-top: 4px;
-          font-size: 10.5px !important;
-          font-weight: 800;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          color: var(--text-tertiary) !important;
-        }
-        .diagnosis-confidence {
-          font-size: 11.5px !important;
-          font-weight: 750;
-          color: var(--text-primary) !important;
+        .trace-detail-problems-panel.unknown .problems-panel-header,
+        .trace-detail-problems-panel.unknown .problems-panel-pills em {
+          color: var(--text-secondary);
         }
         .diagnosis-evidence {
-          margin: 6px 0 0;
+          margin: 2px 0 0;
           padding-left: 18px;
           color: var(--text-secondary);
-          font-size: 12px;
-          line-height: 1.45;
+          font-size: 12.5px;
+          line-height: 1.5;
         }
         .diagnosis-evidence li {
-          margin: 2px 0;
+          margin: 3px 0;
         }
         .diagnosis-k8s {
-          margin-top: 10px;
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 6px;
+          margin-top: 2px;
+          padding: 10px 12px;
+          border: 1px solid color-mix(in srgb, var(--accent-emerald, #0d9f6e) 22%, var(--border-primary));
+          border-radius: 8px;
+          background: color-mix(in srgb, var(--accent-emerald, #0d9f6e) 6%, var(--bg-tertiary));
+        }
+        .diagnosis-k8s-head {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 2px;
+        }
+        .diagnosis-k8s-head span {
+          color: var(--text-primary);
+          font-size: 12px;
+          font-weight: 750;
+        }
+        .diagnosis-k8s-head em {
+          color: var(--text-tertiary);
+          font-size: 10.5px;
+          font-style: normal;
+          font-weight: 650;
+        }
+        .diagnosis-k8s-head em + em::before {
+          content: '·';
+          margin-right: 8px;
+          color: var(--text-muted);
+        }
+        .problems-diagnosis p,
+        .diagnosis-evidence,
+        .diagnosis-k8s-check span {
+          overflow-wrap: anywhere;
         }
         .diagnosis-k8s-pending {
-          color: var(--text-tertiary) !important;
+          color: var(--text-tertiary);
+          font-size: 12px;
           font-style: italic;
         }
         .diagnosis-k8s-check {
           display: flex;
           gap: 8px;
           align-items: flex-start;
-          font-size: 12px;
+          font-size: 12.5px;
+          line-height: 1.45;
           color: var(--text-secondary);
         }
-        .diagnosis-k8s-check.ok b { color: var(--accent-green, #16a34a); }
+        .diagnosis-k8s-check.ok b { color: var(--accent-emerald, #0d9f6e); }
+        .diagnosis-k8s-check.warn {
+          color: var(--text-tertiary);
+        }
         .diagnosis-k8s-check.warn b { color: var(--text-muted); }
-        .diagnosis-k8s-conclusion {
-          margin-top: 4px;
-          color: var(--text-primary) !important;
-          font-weight: 650;
+        .diagnosis-k8s-states {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+          margin-top: 6px;
+          padding-top: 8px;
+          border-top: 1px solid color-mix(in srgb, var(--accent-emerald, #0d9f6e) 16%, var(--border-primary));
         }
-        .diagnosis-k8s-kind {
-          font-style: normal;
-          font-weight: 650;
-          color: var(--text-muted);
-          margin-right: 4px;
-        }
-        .diagnosis-k8s-cached {
+        .diagnosis-k8s-states span {
+          min-width: 0;
+          color: var(--text-tertiary);
           font-size: 10px;
-          color: var(--text-muted);
-          font-style: normal;
+          font-weight: 750;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+        .diagnosis-k8s-states span.wide {
+          grid-column: 1 / -1;
+        }
+        .diagnosis-k8s-states strong {
+          display: block;
+          margin-top: 3px;
+          color: var(--text-primary);
+          font-size: 12px;
+          font-weight: 650;
+          letter-spacing: 0;
+          text-transform: none;
+          line-height: 1.45;
+        }
+        .problems-span-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .problems-span-label {
+          color: var(--text-tertiary);
+          font-size: 11px;
+          font-weight: 750;
         }
         .problem-card {
-          background: rgba(244, 63, 94, 0.05);
-          border: 1px solid rgba(244, 63, 94, 0.15);
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-primary);
           border-radius: 8px;
           padding: 10px 12px;
           cursor: pointer;
-          transition: border-color 0.15s, background 0.15s;
+          transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
           display: flex;
           flex-direction: column;
           gap: 6px;
           width: 100%;
           color: inherit;
           text-align: left;
+          box-shadow: var(--shadow-sm);
         }
         .problem-card:hover, .problem-card.selected {
-          border-color: rgba(244, 63, 94, 0.5);
-          background: rgba(244, 63, 94, 0.09);
+          border-color: color-mix(in srgb, var(--accent-rose, #e93d62) 45%, var(--border-primary));
+          background: color-mix(in srgb, var(--accent-rose, #e93d62) 5%, var(--bg-secondary));
         }
         .problem-card-top {
           display: flex;
@@ -3872,9 +3958,9 @@ export default function TraceDetail() {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          border: 1px solid rgba(244, 63, 94, 0.25);
+          border: 1px solid color-mix(in srgb, var(--accent-rose, #e93d62) 25%, transparent);
           border-radius: 999px;
-          background: rgba(244, 63, 94, 0.10);
+          background: color-mix(in srgb, var(--accent-rose, #e93d62) 10%, transparent);
           color: var(--accent-rose);
           font-family: var(--font-mono);
           font-size: 10px;
@@ -3905,9 +3991,9 @@ export default function TraceDetail() {
         }
         .problem-title-badge {
           margin-left: auto;
-          background: rgba(244, 63, 94, 0.12);
-          color: var(--accent-rose, #f43f5e);
-          border: 1px solid rgba(244, 63, 94, 0.3);
+          background: color-mix(in srgb, var(--accent-rose, #e93d62) 10%, transparent);
+          color: var(--accent-rose, #e93d62);
+          border: 1px solid color-mix(in srgb, var(--accent-rose, #e93d62) 28%, transparent);
           font-size: 10.5px;
           font-weight: 700;
           padding: 2px 8px;

@@ -16717,6 +16717,15 @@ body.dark-theme .row-status.is-error:hover {
   line-height: 1.5;
 }
 
+.trace-detail-alert.compact {
+  align-items: center;
+  padding: 8px 12px;
+}
+
+.trace-detail-alert.compact strong {
+  margin-right: 6px;
+}
+
 .trace-detail-alert svg,
 .trace-detail-alert strong {
   color: var(--accent-amber);
@@ -16733,9 +16742,12 @@ body.dark-theme .row-status.is-error:hover {
 }
 
 .trace-detail-problems-panel {
-  border: 1px solid rgba(225, 29, 72, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent-rose) 28%, var(--border-primary));
   border-left: 3px solid var(--accent-rose);
-  padding: var(--space-md);
+  padding: 14px 16px;
 }
 
 .trace-service-card-list,
