@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import type { DiagnosticReport, Span, Trace } from '../entities';
+import type { DiagnosticReport, Span, Trace, TraceInvestigation } from '../entities';
 import { isSpanError } from '../utils/spanStatus';
 import { useTranslation } from '../utils/i18n';
 import { createPortal } from 'react-dom';
 import SpanTimeline, { getSpanDestination } from '../components/SpanTimeline';
 import { explainSpanError } from '../utils/errorAnalysis';
 import { isHttpMethodAttribute, normalizeHttpMethod } from '../utils/httpTelemetry';
+import { analyzeTraceFailure, classificationLabel } from '../utils/traceFailureAnalyzer';
 import { LANG_ICONS } from '../components/LanguageIcon';
 import { TECH_LOGOS } from '../components/TechIcon';
 import { getSpanDependency, getQueryText, getQuerySummary } from '../utils/dependency';
@@ -2663,6 +2664,8 @@ export default function TraceDetail() {
   const { traceId } = useParams<{ traceId: string }>();
   const [trace, setTrace] = useState<Trace | null>(null);
   const [loading, setLoading] = useState(true);
+  const [investigation, setInvestigation] = useState<TraceInvestigation | null>(null);
+  const [investigationLoading, setInvestigationLoading] = useState(false);
   const [viewMode, setViewMode] = useState<TraceViewMode>('waterfall');
   const [selectedSpan, setSelectedSpan] = useState<Span | null>(null);
   const navigate = useNavigate();
@@ -2719,6 +2722,8 @@ export default function TraceDetail() {
   useEffect(() => {
     if (!traceId) return;
     setLoading(true);
+    setInvestigation(null);
+    setInvestigationLoading(false);
     
     api.getTrace(traceId)
       .then((traceData) => {
@@ -2785,6 +2790,47 @@ export default function TraceDetail() {
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
       .map(span => ({ span, explanation: explainSpanError(span) }));
   }, [trace]);
+
+  const failureDiagnosis = useMemo(() => {
+    if (!trace) return null;
+    return trace.failureDiagnosis ?? analyzeTraceFailure(trace);
+  }, [trace]);
+
+  useEffect(() => {
+    if (!traceId || !failureDiagnosis) return;
+    const plan = failureDiagnosis.live;
+    if (plan && !plan.recommended) {
+      setInvestigation({
+        traceId,
+        status: 'skipped',
+        levelReached: 0,
+        skipReason: plan.reason,
+        conclusion: 'Kubernetes verification not required',
+      });
+      setInvestigationLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setInvestigationLoading(true);
+    api.getTraceInvestigation(traceId)
+      .then((report) => {
+        if (!cancelled) setInvestigation(report);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setInvestigation({
+            traceId,
+            status: 'unavailable',
+            levelReached: 0,
+            skipReason: 'Live Kubernetes verification is not available for this cluster',
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setInvestigationLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [traceId, failureDiagnosis]);
 
   const uniqueDestinations = useMemo(() => {
     if (!trace || !trace.spans) return [];
@@ -2929,23 +2975,74 @@ export default function TraceDetail() {
             </div>
           )}
 
-          {/* Detected Problems Panel — the error, explained, front and center */}
-          {errorSpans.length > 0 && (() => {
+          {/* Detected Problems Panel — existing error summary, augmented with diagnosis */}
+          {(failureDiagnosis || errorSpans.length > 0) && (() => {
             const affectedServices = new Set(errorSpans.map(item => item.span.serviceName)).size;
             const primaryError = errorSpans[0];
+            const diagnosisTone = failureDiagnosis?.classification === 'INSTRUMENTATION_ANOMALY'
+              ? 'anomaly'
+              : failureDiagnosis?.classification === 'UNKNOWN'
+                ? 'unknown'
+                : 'critical';
             return (
-              <div className="trace-detail-problems-panel">
+              <div className={`trace-detail-problems-panel ${diagnosisTone}`}>
                 <div className="problems-panel-header">
                   <div>
                     <TraceDetailIcon name="alert" />
                     <span>{t('Trace Error Summary')}</span>
                   </div>
-                  <em>{formatTraceNumber(errorSpans.length)} {t('failed spans')} / {formatTraceNumber(affectedServices)} {t('services')}</em>
+                  <em>
+                    {failureDiagnosis
+                      ? `${classificationLabel(failureDiagnosis.classification)} · ${failureDiagnosis.confidence}`
+                      : `${formatTraceNumber(errorSpans.length)} ${t('failed spans')} / ${formatTraceNumber(affectedServices)} ${t('services')}`}
+                  </em>
                 </div>
 
                 <div className="problems-panel-lead">
-                  <strong>{primaryError.explanation.title}</strong>
-                  <span>{primaryError.explanation.what}</span>
+                  {failureDiagnosis ? (
+                    <>
+                      <span className="diagnosis-class">{classificationLabel(failureDiagnosis.classification)}</span>
+                      <strong>{failureDiagnosis.title}</strong>
+                      <span className="diagnosis-why-label">{t('Why?')}</span>
+                      <span>{failureDiagnosis.summary}</span>
+                      <span className="diagnosis-confidence">{t('Confidence')}: {failureDiagnosis.confidence}</span>
+                      {failureDiagnosis.evidence?.length > 0 && (
+                        <ul className="diagnosis-evidence">
+                          {failureDiagnosis.evidence.map(item => (
+                            <li key={`${item.code}-${item.spanId || ''}`}>{item.message}</li>
+                          ))}
+                        </ul>
+                      )}
+                      <div className="diagnosis-k8s">
+                        <span className="diagnosis-why-label">{t('Kubernetes verification')}</span>
+                        {investigationLoading && !investigation && (
+                          <span className="diagnosis-k8s-pending">{t('Checking existing workload state…')}</span>
+                        )}
+                        {investigation?.status === 'skipped' && (
+                          <span>{investigation.skipReason || investigation.conclusion}</span>
+                        )}
+                        {investigation && investigation.status !== 'skipped' && (
+                          <>
+                            {investigation.checks?.map(check => (
+                              <div key={`${check.level}-${check.code}-${check.pod || ''}`} className={`diagnosis-k8s-check ${check.ok ? 'ok' : 'warn'}`}>
+                                <b>{check.ok ? '✓' : '·'}</b>
+                                <span>{check.detail}</span>
+                              </div>
+                            ))}
+                            {investigation.conclusion && <span className="diagnosis-k8s-conclusion">{investigation.conclusion}</span>}
+                            {investigation.status === 'unavailable' && <span>{investigation.skipReason}</span>}
+                            {investigation.status === 'rate_limited' && <span>{investigation.skipReason}</span>}
+                            {investigation.cached && <em className="diagnosis-k8s-cached">{t('Cached')}</em>}
+                          </>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <strong>{primaryError.explanation.title}</strong>
+                      <span>{primaryError.explanation.what}</span>
+                    </>
+                  )}
                 </div>
 
                 {errorSpans.map(({ span, explanation }, index) => (
@@ -3618,6 +3715,77 @@ export default function TraceDetail() {
           color: var(--text-secondary);
           font-size: 12px;
           line-height: 1.5;
+        }
+        .diagnosis-class {
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: var(--accent-rose, #f43f5e);
+        }
+        .trace-detail-problems-panel.anomaly {
+          border-color: rgba(217, 119, 6, 0.35);
+          border-left-color: var(--accent-amber, #d97706);
+        }
+        .trace-detail-problems-panel.anomaly .problems-panel-header,
+        .trace-detail-problems-panel.anomaly .diagnosis-class {
+          color: var(--accent-amber, #d97706);
+        }
+        .trace-detail-problems-panel.unknown {
+          border-color: rgba(100, 116, 139, 0.35);
+          border-left-color: var(--text-muted);
+        }
+        .diagnosis-why-label {
+          margin-top: 4px;
+          font-size: 10.5px !important;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: var(--text-tertiary) !important;
+        }
+        .diagnosis-confidence {
+          font-size: 11.5px !important;
+          font-weight: 750;
+          color: var(--text-primary) !important;
+        }
+        .diagnosis-evidence {
+          margin: 6px 0 0;
+          padding-left: 18px;
+          color: var(--text-secondary);
+          font-size: 12px;
+          line-height: 1.45;
+        }
+        .diagnosis-evidence li {
+          margin: 2px 0;
+        }
+        .diagnosis-k8s {
+          margin-top: 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .diagnosis-k8s-pending {
+          color: var(--text-tertiary) !important;
+          font-style: italic;
+        }
+        .diagnosis-k8s-check {
+          display: flex;
+          gap: 8px;
+          align-items: flex-start;
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+        .diagnosis-k8s-check.ok b { color: var(--accent-green, #16a34a); }
+        .diagnosis-k8s-check.warn b { color: var(--text-muted); }
+        .diagnosis-k8s-conclusion {
+          margin-top: 4px;
+          color: var(--text-primary) !important;
+          font-weight: 650;
+        }
+        .diagnosis-k8s-cached {
+          font-size: 10px;
+          color: var(--text-muted);
+          font-style: normal;
         }
         .problem-card {
           background: rgba(244, 63, 94, 0.05);

@@ -24,6 +24,68 @@ export interface Span {
   error?: string;
 }
 
+export type TraceFailureClassification =
+  | 'APPLICATION_ERROR'
+  | 'CLIENT_ERROR'
+  | 'DOWNSTREAM_ERROR'
+  | 'NETWORK_ERROR'
+  | 'TIMEOUT'
+  | 'INSTRUMENTATION_ANOMALY'
+  | 'TRACE_CONTEXT_ANOMALY'
+  | 'DUPLICATE_INSTRUMENTATION'
+  | 'UNKNOWN';
+
+export type TraceFailureConfidence = 'LOW' | 'MEDIUM' | 'HIGH';
+
+export interface TraceFailureEvidence {
+  code: string;
+  message: string;
+  spanId?: string;
+  score?: number;
+}
+
+export interface TraceFailureLivePlan {
+  recommended: boolean;
+  maxLevel: number;
+  reason: string;
+}
+
+export interface TraceFailureDiagnosis {
+  traceId: string;
+  classification: TraceFailureClassification;
+  severity: TraceFailureConfidence;
+  confidence: TraceFailureConfidence;
+  confidenceScore: number;
+  title: string;
+  summary: string;
+  evidence: TraceFailureEvidence[];
+  likelyCauses: string[];
+  affectedSpanIds: string[];
+  rules?: string[];
+  live?: TraceFailureLivePlan;
+}
+
+export interface TraceInvestigationCheck {
+  level: number;
+  code: string;
+  ok: boolean;
+  detail: string;
+  pod?: string;
+  cached?: boolean;
+}
+
+export interface TraceInvestigation {
+  traceId: string;
+  status: 'skipped' | 'complete' | 'partial' | 'unavailable' | 'rate_limited';
+  levelReached: number;
+  skipReason?: string;
+  conclusion?: string;
+  checks?: TraceInvestigationCheck[];
+  cached?: boolean;
+  cacheKey?: string;
+  durationMs?: number;
+}
+
 export interface Trace {
   traceId: string;
   rootSpan?: Span;
@@ -35,6 +97,8 @@ export interface Trace {
   durationMs: number;
   spanCount: number;
   hasError: boolean;
+  /** Derived by the Trace Failure Analyzer. Never written back onto spans. */
+  failureDiagnosis?: TraceFailureDiagnosis;
 }
 
 export interface TraceListItem {

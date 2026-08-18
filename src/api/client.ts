@@ -14,6 +14,8 @@ import type {
   LatencyDistribution,
   InfrastructureMetrics,
   Trace,
+  TraceFailureDiagnosis,
+  TraceInvestigation,
   TraceListItem,
   UserPermission,
 } from '../entities';
@@ -296,6 +298,8 @@ class ApiClient {
 
   getTrace(id: string) { return this.get<Trace>(`/traces/${id}`); }
   getTraceDiagnostics(id: string) { return this.get<DiagnosticReport>(`/traces/${id}/diagnostics`); }
+  getTraceFailureDiagnosis(id: string) { return this.get<TraceFailureDiagnosis | { traceId: string; diagnosis: null }>(`/traces/${id}/failure-diagnosis`); }
+  getTraceInvestigation(id: string) { return this.get<TraceInvestigation>(`/traces/${id}/investigation`); }
   getDatabaseMetrics(namespace?: string) {
     const qs = namespace ? `?namespace=${namespace}` : '';
     return this.get<{ metrics: DatabaseQueryMetric[] }>(`/metrics/database${qs}`);
