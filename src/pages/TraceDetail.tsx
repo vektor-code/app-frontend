@@ -3014,7 +3014,7 @@ export default function TraceDetail() {
                     <>
                       <span className="diagnosis-class">{classificationLabel(failureDiagnosis.classification)}</span>
                       <strong>{failureDiagnosis.title}</strong>
-                      <span className="diagnosis-why-label">{t('Why?')}</span>
+                      <span className="diagnosis-why-label">DIAGNOSIS</span>
                       <span>{failureDiagnosis.summary}</span>
                       <span className="diagnosis-confidence">{t('Confidence')}: {failureDiagnosis.confidence}</span>
                       {failureDiagnosis.evidence?.length > 0 && (
@@ -3024,20 +3024,18 @@ export default function TraceDetail() {
                           ))}
                         </ul>
                       )}
-                      <div className="diagnosis-k8s">
-                        <span className="diagnosis-why-label">{t('Kubernetes verification')}</span>
-                        {(!investigation || investigation.status === 'pending') && investigationLoading && (
-                          <span className="diagnosis-k8s-pending">
-                            {investigation?.status === 'pending'
-                              ? t('Investigating…')
-                              : t('Live verification available')}
-                          </span>
-                        )}
-                        {investigation?.status === 'skipped' && (
-                          <span>{investigation.skipReason || investigation.conclusion}</span>
-                        )}
-                        {investigation && investigation.status !== 'skipped' && investigation.status !== 'pending' && (
-                          <>
+                      {investigation && investigation.status === 'skipped' ? null : (
+                        <div className="diagnosis-k8s">
+                          <span className="diagnosis-why-label">{t('Kubernetes verification')}</span>
+                          {(!investigation || investigation.status === 'pending') && investigationLoading && (
+                            <span className="diagnosis-k8s-pending">
+                              {investigation?.status === 'pending'
+                                ? t('Investigating…')
+                                : t('Live verification available')}
+                            </span>
+                          )}
+                          {investigation && investigation.status !== 'pending' && (
+                            <>
                             {(investigation.observations?.filter(item => item.kind === 'observed') || []).map(item => (
                               <div key={`obs-${item.code}-${item.pod || ''}`} className={`diagnosis-k8s-check ${item.ok ? 'ok' : 'warn'}`}>
                                 <b>{item.ok ? '✓' : '·'}</b>
@@ -3064,9 +3062,10 @@ export default function TraceDetail() {
                             {investigation.referencedBy && investigation.referencedBy > 1 && (
                               <em className="diagnosis-k8s-cached">{investigation.referencedBy} {t('traces share this result')}</em>
                             )}
-                          </>
-                        )}
-                      </div>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </>
                   ) : (
                     <>
