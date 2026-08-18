@@ -1,5 +1,25 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import {
+  AlertCircle,
+  ArrowLeftRight,
+  ArrowUpRight,
+  Box,
+  Braces,
+  Check,
+  Clock3,
+  Copy,
+  EyeOff,
+  Folder,
+  Inbox,
+  LayoutDashboard,
+  Radio,
+  Search,
+  Server,
+  Tags,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { api } from '../api/client';
 import type { DiagnosticReport, Span, Trace, TraceInvestigation } from '../entities';
 import { isSpanError } from '../utils/spanStatus';
@@ -1607,50 +1627,64 @@ function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (
   );
 }
 
+const SPAN_KIND_ICON: Record<string, LucideIcon> = {
+  SERVER: Server,
+  CLIENT: ArrowUpRight,
+  INTERNAL: Box,
+  PRODUCER: Radio,
+  CONSUMER: Inbox,
+};
+
+function spanKindIcon(kind: string): LucideIcon {
+  return SPAN_KIND_ICON[kind] || Clock3;
+}
+
 interface SpanDrawerContentProps {
   span: Span;
   traceDuration: number;
   onClose: () => void;
 }
 
-function getKindIcon(kind: string) {
-  switch (kind) {
-    case 'CLIENT':
-      return (
-        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '4px', display: 'inline-block', verticalAlign: 'middle' }}>
-          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-          <polyline points="15 3 21 3 21 9" />
-          <line x1="10" y1="14" x2="21" y2="3" />
-        </svg>
-      );
-    case 'SERVER':
-      return (
-        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '4px', display: 'inline-block', verticalAlign: 'middle' }}>
-          <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-          <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-          <line x1="6" y1="6" x2="6.01" y2="6" />
-          <line x1="6" y1="18" x2="6.01" y2="18" />
-        </svg>
-      );
-    case 'INTERNAL':
-      return (
-        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '4px', display: 'inline-block', verticalAlign: 'middle' }}>
-          <rect x="4" y="4" width="16" height="16" rx="2" />
-          <rect x="9" y="9" width="6" height="6" />
-          <line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" />
-          <line x1="9" y1="20" x2="9" y2="23" /><line x1="15" y1="20" x2="15" y2="23" />
-          <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="15" x2="23" y2="15" />
-          <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="15" x2="4" y2="15" />
-        </svg>
-      );
-    default:
-      return (
-        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '4px', display: 'inline-block', verticalAlign: 'middle' }}>
-          <circle cx="12" cy="12" r="10" />
-          <polyline points="12 6 12 12 16 14" />
-        </svg>
-      );
-  }
+function DrawerCopyButton({ copied, onCopy, label }: { copied: boolean; onCopy: () => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      className="span-drawer-copy"
+      title={copied ? 'Copied' : (label || 'Copy')}
+      onClick={(e) => {
+        e.stopPropagation();
+        onCopy();
+      }}
+    >
+      {copied ? <Check size={12} strokeWidth={2.4} /> : <Copy size={12} strokeWidth={2.2} />}
+    </button>
+  );
+}
+
+function DrawerKvRow({
+  label,
+  value,
+  mono = true,
+  copied,
+  onCopy,
+  children,
+}: {
+  label: string;
+  value?: ReactNode;
+  mono?: boolean;
+  copied?: boolean;
+  onCopy?: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="span-drawer-kv">
+      <span className="span-drawer-kv-label">{label}</span>
+      <div className="span-drawer-kv-value">
+        {children || <span className={mono ? 'is-mono' : undefined}>{value ?? '—'}</span>}
+        {onCopy && <DrawerCopyButton copied={!!copied} onCopy={onCopy} />}
+      </div>
+    </div>
+  );
 }
 
 interface PayloadDetails {
@@ -1781,16 +1815,8 @@ function getSpanPayloadDetails(span: Span, _traceDuration: number): PayloadDetai
 // Honest placeholder for payloads the instrumentation did not record.
 function NotCaptured({ label }: { label: string }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px 14px', borderRadius: '8px',
-      border: '1px dashed var(--border-primary)', background: 'var(--bg-tertiary)',
-      fontSize: '11.5px', color: 'var(--text-muted)', lineHeight: 1.55,
-    }}>
-      <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: '1px', opacity: 0.7 }}>
-        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-        <line x1="1" y1="1" x2="23" y2="23" />
-      </svg>
+    <div className="span-drawer-empty">
+      <EyeOff size={14} strokeWidth={2.2} />
       <span>{label}</span>
     </div>
   );
@@ -1947,10 +1973,10 @@ function TraceSpanChip({ span, onClick }: { span: Span; onClick: () => void }) {
   );
 }
 
-interface SpanDrawerContentProps {
-  span: Span;
-  traceDuration: number;
-  onClose: () => void;
+function payloadStatusTone(status: number | string | undefined, isError: boolean): 'ok' | 'error' {
+  const n = Number(status);
+  if (Number.isFinite(n) && n >= 400) return 'error';
+  return isError ? 'error' : 'ok';
 }
 
 function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentProps) {
@@ -1960,14 +1986,24 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
   );
   const [filterQuery, setFilterQuery] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const KindIcon = spanKindIcon(span.kind);
+  const attrCount = span.attributes ? Object.keys(span.attributes).length : 0;
+  const hasError = isSpanError(span);
+  const hasEvents = Boolean(span.events && span.events.length > 0);
+  const dest = getSpanDestination(span);
+  const serviceColor = getSvcColor(span.serviceName);
+  const shareOfTrace = traceDuration > 0 ? (span.durationMs / traceDuration) * 100 : 0;
+
+  useEffect(() => {
+    setActiveTab(prev => (prev === 'error' && !isSpanError(span) ? 'overview' : prev));
+    setFilterQuery('');
+  }, [span.spanId]);
 
   const handleCopy = (key: string, val: string) => {
     navigator.clipboard.writeText(val);
     setCopiedKey(key);
     setTimeout(() => setCopiedKey(null), 1500);
   };
-
-  const dest = getSpanDestination(span);
 
   const formattedStartTime = useMemo(() => {
     try {
@@ -1977,10 +2013,6 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
     }
   }, [span.startTime]);
 
-  const hasError = isSpanError(span);
-  const hasEvents = span.events && span.events.length > 0;
-
-  // JSON syntax highlighting helper
   const renderJson = useMemo(() => {
     const jsonStr = JSON.stringify(span, null, 2);
     const lines = jsonStr.split('\n');
@@ -1990,7 +2022,6 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
         const indent = keyMatch[1];
         const key = keyMatch[2];
         const rest = line.substring(keyMatch[0].length);
-        
         let restNode: React.ReactNode = rest;
         const trimmed = rest.trim();
         if (trimmed.startsWith('"')) {
@@ -2002,7 +2033,6 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
         } else if (!isNaN(Number(trimmed.replace(/,$/, '')))) {
           restNode = <span style={{ color: '#fbbf24' }}> {trimmed}</span>;
         }
-
         return (
           <div key={idx} style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', lineHeight: '1.4' }}>
             {indent}
@@ -2019,8 +2049,6 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
     const attrs = span.attributes || {};
     const directStack = attrs['exception.stacktrace'] || attrs['error.stack'] || attrs['stacktrace'] || attrs['stack'] || attrs['error.stacktrace'];
     if (directStack) return String(directStack);
-
-    // Check events for exceptions
     if (span.events) {
       const excEvent = span.events.find(e => e.name === 'exception' || e.name === 'error');
       if (excEvent && excEvent.attributes) {
@@ -2028,11 +2056,9 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
         if (evStack) return String(evStack);
       }
     }
-
     return null;
   }, [span]);
 
-  // Filtered attributes
   const filteredAttributes = useMemo(() => {
     if (!span.attributes) return [];
     return Object.entries(span.attributes).filter(([k, v]) => {
@@ -2041,15 +2067,12 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
     });
   }, [span.attributes, filterQuery]);
 
-  // Grouped attributes
   const groupedAttributes = useMemo(() => {
     const groups: Record<string, [string, string][]> = {};
     filteredAttributes.forEach(([k, v]) => {
       const parts = k.split('.');
       const groupName = parts.length > 1 ? parts[0].toUpperCase() : 'GENERAL';
-      if (!groups[groupName]) {
-        groups[groupName] = [];
-      }
+      if (!groups[groupName]) groups[groupName] = [];
       groups[groupName].push([k, v]);
     });
     return Object.entries(groups).sort((a, b) => {
@@ -2059,569 +2082,336 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
     });
   }, [filteredAttributes]);
 
+  const tabs: { id: typeof activeTab; label: string; Icon: LucideIcon; badge?: number; tone?: 'error' }[] = [
+    { id: 'overview', label: t('Overview'), Icon: LayoutDashboard },
+    { id: 'attributes', label: t('Attributes'), Icon: Tags, badge: attrCount },
+    { id: 'payload', label: t('Request'), Icon: ArrowLeftRight },
+    ...(hasError ? [{ id: 'error' as const, label: t('Failure'), Icon: AlertCircle, tone: 'error' as const }] : []),
+    { id: 'json', label: t('JSON'), Icon: Braces },
+  ];
+
   return (
     <>
-      {/* Header */}
-      <div className="drawer-header">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxWidth: '85%' }}>
-          {/* Breadcrumbs Row */}
-          <div className="drawer-breadcrumbs">
-            <span className="breadcrumb-item service" style={{ color: getSvcColor(span.serviceName) }}>
-              <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '4px' }}>
-                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-                <line x1="6" y1="6" x2="6.01" y2="6" />
-                <line x1="6" y1="18" x2="6.01" y2="18" />
-              </svg>
-              {span.serviceName}
-            </span>
-            <span className="breadcrumb-separator">/</span>
-            <span className="breadcrumb-item namespace">
-              <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '4px' }}>
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-              </svg>
-              {span.namespace || 'default'}
-            </span>
-            <span className="breadcrumb-separator">/</span>
-            <span className="breadcrumb-item kind">
-              {getKindIcon(span.kind)}
-              {span.kind.toLowerCase()}
-            </span>
-          </div>
-          <h2 style={{ fontSize: '15px', fontWeight: 700, margin: '2px 0 0 0', wordBreak: 'break-all', color: 'var(--text-primary)', fontFamily: 'var(--font-sans)' }}>
-            {span.name}
-          </h2>
-        </div>
-        <button 
-          onClick={onClose}
-          className="drawer-close-btn"
-          title="Close details"
-        >
-          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.5" fill="none">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Segmented Pill Tabs */}
-      <div className="drawer-tabs">
-        <button 
-          className={`drawer-tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
-          onClick={() => setActiveTab('overview')}
-        >
-          {t('Overview')}
-        </button>
-        <button 
-          className={`drawer-tab-btn ${activeTab === 'attributes' ? 'active' : ''}`}
-          onClick={() => setActiveTab('attributes')}
-        >
-          {t('Attributes')} ({span.attributes ? Object.keys(span.attributes).length : 0})
-        </button>
-        <button 
-          className={`drawer-tab-btn ${activeTab === 'payload' ? 'active' : ''}`}
-          onClick={() => setActiveTab('payload')}
-        >
-          {t('Request & Response')}
-        </button>
-        {hasError && (
-          <button 
-            className={`drawer-tab-btn ${activeTab === 'error' ? 'active' : ''}`}
-            onClick={() => setActiveTab('error')}
-            style={{ color: 'var(--accent-rose, #f43f5e)' }}
+      <div className="span-drawer-header">
+        <div className="span-drawer-title-row">
+          <span
+            className={`span-drawer-kind-tile ${hasError ? 'is-error' : ''}`}
+            style={hasError ? undefined : { color: serviceColor, background: `color-mix(in srgb, ${serviceColor} 14%, var(--bg-secondary))`, borderColor: `color-mix(in srgb, ${serviceColor} 28%, var(--border-primary))` }}
           >
-            {t('Failure Details')}
+            <KindIcon size={18} strokeWidth={2.1} />
+          </span>
+          <div className="span-drawer-heading">
+            <span className="span-drawer-kicker">{t('Span')} · {span.kind.toLowerCase()}</span>
+            <h2 title={span.name}>{span.name}</h2>
+            <p className="span-drawer-subtitle">
+              <span style={{ color: serviceColor }}>{span.serviceName}</span>
+              <span className="span-drawer-dot">·</span>
+              <Folder size={11} strokeWidth={2.2} />
+              {span.namespace || 'default'}
+            </p>
+          </div>
+          <button type="button" className="span-drawer-close" onClick={onClose} title={t('Close details')}>
+            <X size={15} strokeWidth={2.3} />
           </button>
-        )}
-        <button 
-          className={`drawer-tab-btn ${activeTab === 'json' ? 'active' : ''}`}
-          onClick={() => setActiveTab('json')}
-        >
-          {t('JSON Payload')}
-        </button>
+        </div>
+        <div className="span-drawer-chips">
+          <span className={`span-drawer-chip ${hasError ? 'is-error' : 'is-ok'}`}>
+            {hasError ? t('Error') : t('OK')}
+          </span>
+          <span className="span-drawer-chip">
+            <Clock3 size={11} strokeWidth={2.2} />
+            {formatDuration(span.durationMs)}
+          </span>
+          <span className="span-drawer-chip">{shareOfTrace.toFixed(1)}% {t('of trace')}</span>
+        </div>
       </div>
 
-      {/* Content Area */}
-      <div className="drawer-content-scroll" style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
-        
-        {/* Tab: Overview */}
+      <nav className="span-drawer-tabs" aria-label={t('Span sections')}>
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            type="button"
+            className={`${activeTab === tab.id ? 'active' : ''} ${tab.tone === 'error' ? 'is-error' : ''}`}
+            aria-pressed={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            <tab.Icon size={14} strokeWidth={activeTab === tab.id ? 2.4 : 2} />
+            <span>{tab.label}</span>
+            {tab.badge != null ? <em>{tab.badge}</em> : null}
+          </button>
+        ))}
+      </nav>
+
+      <div className="span-drawer-body">
         {activeTab === 'overview' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            
-            {/* Grid metrics */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div className="overview-metric-card duration">
-                <span className="metric-card-label">{t('Duration')}</span>
-                <span className="metric-card-val">{formatDuration(span.durationMs)}</span>
-                <span className="metric-card-sub">{(span.durationMs / traceDuration * 100).toFixed(1)}% {t('of trace')}</span>
-              </div>
-              <div className="overview-metric-card status">
-                <span className="metric-card-label">{t('Status')}</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                  <span className={`badge ${isSpanError(span) ? 'badge-error' : 'badge-ok'}`} style={{ fontSize: '11px', padding: '3px 8px' }}>
-                    {isSpanError(span) ? 'ERROR' : 'OK'}
-                  </span>
-                </div>
-              </div>
+          <div className="span-drawer-stack">
+            <div className="span-drawer-metrics">
+              <article>
+                <small>{t('Duration')}</small>
+                <strong>{formatDuration(span.durationMs)}</strong>
+                <em>{shareOfTrace.toFixed(1)}% {t('of trace')}</em>
+              </article>
+              <article className={hasError ? 'is-error' : 'is-ok'}>
+                <small>{t('Status')}</small>
+                <strong>{hasError ? t('Error') : t('OK')}</strong>
+                <em>{span.kind.toLowerCase()}</em>
+              </article>
+              <article>
+                <small>{t('Kind')}</small>
+                <strong className="is-row">
+                  <KindIcon size={16} strokeWidth={2.2} />
+                  {span.kind.toLowerCase()}
+                </strong>
+                <em>{span.serviceName}</em>
+              </article>
             </div>
 
-            {/* Infrastructure Details Card */}
-            <div className="attr-group-card">
-              <h4 className="attr-group-title">{t('Infrastructure Info')}</h4>
-              <div className="attr-group-list">
+            <section className="span-drawer-card">
+              <h3>{t('Identity')}</h3>
+              <div className="span-drawer-kv-list">
                 {dest.type && (
-                  <div className="attr-row">
-                    <span className="attr-row-label">{t('Destination')}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', marginTop: '2px' }}>
-                      <span className="destination-badge" style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        background: dest.type === '3rdparty' ? 'rgba(245, 158, 11, 0.1)' : dest.type === 'infra' ? 'rgba(14, 165, 233, 0.1)' : 'rgba(99, 102, 241, 0.08)',
-                        color: dest.type === '3rdparty' ? 'var(--accent-amber)' : dest.type === 'infra' ? 'var(--accent-cyan)' : 'var(--accent-indigo-light)',
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        fontWeight: 600,
-                        fontSize: '9.5px',
-                        border: dest.type === '3rdparty' ? '1px dashed rgba(245, 158, 11, 0.3)' : '1px solid rgba(14, 165, 233, 0.15)',
-                        textTransform: dest.type === 'infra' ? 'lowercase' : 'none'
-                      }}>
-                        {dest.name} ({dest.type === '3rdparty' ? t('3rd party') : dest.type})
-                      </span>
-                    </div>
-                  </div>
+                  <DrawerKvRow label={t('Destination')} mono={false}>
+                    <span className={`span-drawer-dest is-${dest.type}`}>
+                      {dest.name}
+                      <em>{dest.type === '3rdparty' ? t('3rd party') : dest.type}</em>
+                    </span>
+                  </DrawerKvRow>
                 )}
-                
-                <div className="attr-row">
-                  <span className="attr-row-label">{t('Namespace')}</span>
-                  <div style={{ marginTop: '2px' }}>
-                    <span className="badge badge-ns" style={{ padding: '2px 8px' }}>{span.namespace || t('unknown')}</span>
-                  </div>
-                </div>
-
+                <DrawerKvRow label={t('Namespace')} value={span.namespace || t('unknown')} />
                 {span.podName && (
-                  <div className="attr-row">
-                    <div className="attr-row-header">
-                      <span className="attr-row-label">{t('Pod Name')}</span>
-                      <button className="attr-copy-btn" onClick={() => handleCopy('pod', span.podName!)}>
-                        {copiedKey === 'pod' ? (
-                          <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
-                        ) : (
-                          <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                    <div className="attr-row-value-mini">{span.podName}</div>
-                  </div>
+                  <DrawerKvRow label={t('Pod')} value={span.podName} copied={copiedKey === 'pod'} onCopy={() => handleCopy('pod', span.podName!)} />
                 )}
-
-                {span.nodeName && (
-                  <div className="attr-row">
-                    <span className="attr-row-label">{t('Node Name')}</span>
-                    <div className="attr-row-value-mini">{span.nodeName}</div>
-                  </div>
-                )}
-
-                <div className="attr-row">
-                  <div className="attr-row-header">
-                    <span className="attr-row-label">{t('Span ID')}</span>
-                    <button className="attr-copy-btn" onClick={() => handleCopy('spanId', span.spanId)}>
-                      {copiedKey === 'spanId' ? (
-                        <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
-                      ) : (
-                        <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                  <div className="attr-row-value-mini">{span.spanId}</div>
-                </div>
-
+                {span.nodeName && <DrawerKvRow label={t('Node')} value={span.nodeName} />}
+                <DrawerKvRow label={t('Span ID')} value={span.spanId} copied={copiedKey === 'spanId'} onCopy={() => handleCopy('spanId', span.spanId)} />
                 {span.parentSpanId && (
-                  <div className="attr-row">
-                    <div className="attr-row-header">
-                      <span className="attr-row-label">{t('Parent ID')}</span>
-                      <button className="attr-copy-btn" onClick={() => handleCopy('parentSpanId', span.parentSpanId!)}>
-                        {copiedKey === 'parentSpanId' ? (
-                          <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
-                        ) : (
-                          <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                    <div className="attr-row-value-mini">{span.parentSpanId}</div>
-                  </div>
+                  <DrawerKvRow label={t('Parent ID')} value={span.parentSpanId} copied={copiedKey === 'parentSpanId'} onCopy={() => handleCopy('parentSpanId', span.parentSpanId!)} />
                 )}
-
-                <div className="attr-row">
-                  <span className="attr-row-label">{t('Start Time')}</span>
-                  <div className="attr-row-value-mini">{formattedStartTime}</div>
-                </div>
+                <DrawerKvRow label={t('Start')} value={formattedStartTime} mono={false} />
               </div>
-            </div>
+            </section>
 
-            {/* Span Events/Logs if any */}
             {hasEvents && (
-              <div>
-                <h3 style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '8px', letterSpacing: '0.5px' }}>
-                  {t('Logs / Events')} ({span.events!.length})
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <section className="span-drawer-card">
+                <h3>{t('Logs / Events')} <em>{span.events!.length}</em></h3>
+                <div className="span-drawer-events">
                   {span.events!.map((ev, i) => (
-                    <div key={i} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', padding: '10px 12px', borderRadius: '8px', borderLeft: '3px solid var(--accent-indigo)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <span style={{ fontWeight: 700, fontSize: '11.5px', color: 'var(--text-primary)' }}>{ev.name}</span>
-                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                          {new Date(ev.timestamp).toLocaleTimeString()}
-                        </span>
-                      </div>
+                    <article key={`${ev.name}-${i}`}>
+                      <header>
+                        <strong>{ev.name}</strong>
+                        <time>{new Date(ev.timestamp).toLocaleTimeString()}</time>
+                      </header>
                       {ev.attributes && Object.keys(ev.attributes).length > 0 && (
-                        <div style={{ fontSize: '10px', display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '8px', borderLeft: '2px solid var(--border-primary)', marginTop: '6px' }}>
+                        <div className="span-drawer-kv-list nested">
                           {Object.entries(ev.attributes).map(([ek, evVal]) => (
-                            <div key={ek}>
-                              <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{ek}: </span>
-                              <span className="mono" style={{ color: 'var(--text-primary)', wordBreak: 'break-all' }}>{String(evVal)}</span>
-                            </div>
+                            <DrawerKvRow key={ek} label={ek} value={String(evVal)} />
                           ))}
                         </div>
                       )}
-                    </div>
+                    </article>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
           </div>
         )}
 
-        {/* Tab: Attributes */}
         {activeTab === 'attributes' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }}>
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
+          <div className="span-drawer-stack">
+            <div className="span-drawer-search">
+              <Search size={13} strokeWidth={2.3} />
               <input
                 type="text"
                 placeholder={t('Filter attributes...')}
                 value={filterQuery}
                 onChange={(e) => setFilterQuery(e.target.value)}
-                className="filter-select"
-                style={{ width: '100%', fontSize: '11px', padding: '5px 8px 5px 28px', height: '28px' }}
               />
             </div>
-            
             {groupedAttributes.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)', fontSize: '12px' }}>
-                {t('No matching attributes.')}
-              </div>
+              <div className="span-drawer-empty">{t('No matching attributes.')}</div>
             ) : (
               groupedAttributes.map(([groupName, attrsList]) => (
-                <div key={groupName} className="attr-group-card">
-                  <h4 className="attr-group-title">{groupName}</h4>
-                  <div className="attr-group-list">
+                <section key={groupName} className="span-drawer-card">
+                  <h3>{groupName} <em>{attrsList.length}</em></h3>
+                  <div className="span-drawer-kv-list">
                     {attrsList.map(([k, v]) => (
-                      <div key={k} className="attr-row">
-                        <div className="attr-row-header">
-                          <span className="attr-row-key" title={k}>{k}</span>
-                          <button 
-                            className="attr-copy-btn"
-                            onClick={() => handleCopy(k, String(v))}
-                            title={copiedKey === k ? "Copied!" : "Copy value"}
-                          >
-                            {copiedKey === k ? (
-                              <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
-                            ) : (
-                              <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                              </svg>
-                            )}
-                          </button>
-                        </div>
-                        <div className="attr-row-value">
-                          {String(v) || <span className="attr-empty-val">—</span>}
-                        </div>
-                      </div>
+                      <DrawerKvRow
+                        key={k}
+                        label={k}
+                        value={String(v) || '—'}
+                        copied={copiedKey === k}
+                        onCopy={() => handleCopy(k, String(v))}
+                      />
                     ))}
                   </div>
-                </div>
+                </section>
               ))
             )}
           </div>
         )}
 
-        {/* Tab: Failure details */}
         {activeTab === 'error' && (() => {
           const explanation = explainSpanError(span);
           return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div className="failure-banner">
-              <div className="failure-icon-wrapper">
-                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: '3px' }}>
-                <div className="failure-title-row">
-                  <span className="failure-title">{explanation.title}</span>
-                  <span className="failure-category">{t(getErrorCategoryLabel(explanation.category))}</span>
+            <div className="span-drawer-stack">
+              <div className="span-drawer-failure">
+                <span className="span-drawer-failure-icon"><AlertCircle size={16} strokeWidth={2.2} /></span>
+                <div>
+                  <div className="span-drawer-failure-title">
+                    <strong>{explanation.title}</strong>
+                    <em>{t(getErrorCategoryLabel(explanation.category))}</em>
+                  </div>
+                  <p>{explanation.what}</p>
                 </div>
-                <span className="failure-msg" style={{ whiteSpace: 'normal', lineHeight: 1.5 }}>{explanation.what}</span>
               </div>
+              <div className="span-drawer-metrics">
+                <article>
+                  <small>{t('Operation')}</small>
+                  <strong title={getSpanOperationLabel(span)}>{getSpanOperationLabel(span)}</strong>
+                </article>
+                <article>
+                  <small>{t('Service')}</small>
+                  <strong>{span.serviceName}</strong>
+                </article>
+                <article>
+                  <small>{t('Duration')}</small>
+                  <strong>{formatDuration(span.durationMs)}</strong>
+                  <em>{explanation.target || dest.name || t('not captured')}</em>
+                </article>
+              </div>
+              {explanation.evidence.length > 0 && (
+                <section className="span-drawer-card">
+                  <h3>{t('Evidence from span')}</h3>
+                  <div className="span-drawer-kv-list">
+                    {explanation.evidence.map(([k, v]) => (
+                      <DrawerKvRow key={k} label={k} value={copiedKey === 'ev-' + k ? t('copied') : v} copied={copiedKey === 'ev-' + k} onCopy={() => handleCopy('ev-' + k, v)} />
+                    ))}
+                  </div>
+                </section>
+              )}
+              {explanation.rawMessage && explanation.rawMessage !== explanation.title && (
+                <section className="span-drawer-card">
+                  <h3>{t('Raw error message')}</h3>
+                  <pre className="span-drawer-pre">{explanation.rawMessage}</pre>
+                </section>
+              )}
+              {stackTrace && (
+                <section className="span-drawer-card">
+                  <h3>
+                    {t('Stack Trace')}
+                    <DrawerCopyButton copied={copiedKey === 'stacktrace'} onCopy={() => handleCopy('stacktrace', stackTrace)} label={t('Copy Stack Trace')} />
+                  </h3>
+                  <pre className="span-drawer-pre is-code"><code>{stackTrace}</code></pre>
+                </section>
+              )}
             </div>
-
-            <div className="failure-summary-grid">
-              <div>
-                <span>{t('Operation')}</span>
-                <strong title={getSpanOperationLabel(span)}>{getSpanOperationLabel(span)}</strong>
-              </div>
-              <div>
-                <span>{t('Service')}</span>
-                <strong>{span.serviceName}</strong>
-              </div>
-              <div>
-                <span>{t('Duration')}</span>
-                <strong>{formatDuration(span.durationMs)}</strong>
-              </div>
-              <div>
-                <span>{t('Target')}</span>
-                <strong title={explanation.target || dest.name || span.name}>{explanation.target || dest.name || t('not captured')}</strong>
-              </div>
-            </div>
-
-            {/* {t('Evidence')} — the concrete facts from the span */}
-            {explanation.evidence.length > 0 && (
-              <div className="attr-group-card">
-                <h4 className="attr-group-title">{t('Evidence from span')}</h4>
-                <div className="failure-evidence-list">
-                  {explanation.evidence.map(([k, v]) => (
-                    <button
-                      key={k}
-                      className="failure-evidence-row"
-                      title={t('Click to copy')}
-                      onClick={() => handleCopy('ev-' + k, v)}
-                    >
-                      <span>{k}</span>
-                      <strong>
-                        {copiedKey === 'ev-' + k ? t('copied') : v}
-                      </strong>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {explanation.rawMessage && explanation.rawMessage !== explanation.title && (
-              <div className="attr-group-card">
-                <h4 className="attr-group-title">{t('Raw error message')}</h4>
-                <pre className="failure-raw-message">
-                  {explanation.rawMessage}
-                </pre>
-              </div>
-            )}
-
-            {stackTrace && (
-              <div className="stacktrace-container">
-                <div className="stacktrace-header">
-                  <span>{t('Stack Trace')}</span>
-                  <button 
-                    className="btn btn-ghost btn-sm"
-                    style={{ fontSize: '9px', padding: '2px 8px', height: '20px', border: '1px solid rgba(255,255,255,0.15)', color: '#94a3b8' }}
-                    onClick={() => handleCopy('stacktrace', stackTrace)}
-                  >
-                    {copiedKey === 'stacktrace' ? t('Copied') : t('Copy Stack Trace')}
-                  </button>
-                </div>
-                <pre className="stacktrace-pre">
-                  <code>{stackTrace}</code>
-                </pre>
-              </div>
-            )}
-          </div>
           );
         })()}
 
-        {/* Tab: Request & Response Payloads */}
         {activeTab === 'payload' && (() => {
           const details = getSpanPayloadDetails(span, traceDuration);
+          const responseTone = payloadStatusTone(details.response.status, hasError);
           return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-              
-              {/* Context propagation diagram */}
-              <div className="payload-context-card">
-                <div className="payload-context-title">
-                  <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" style={{ marginRight: '6px' }}>
-                    <path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3zM6 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3z" />
-                  </svg>
-                  {t('Trace Context Propagation (W3C)')}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px' }}>
-                  <div className="context-flow-row">
-                    <div className="context-node parent">
-                      <span className="node-label">{t('Parent Span ID')}</span>
-                      <span className="node-val">{span.parentSpanId ? span.parentSpanId : t('None (Root Span)')}</span>
-                    </div>
-                    <div className="context-arrow">
-                      <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.5" fill="none">
-                        <line x1="5" y1="12" x2="19" y2="12" />
-                        <polyline points="12 5 19 12 12 19" />
-                      </svg>
-                    </div>
-                    <div className="context-node current">
-                      <span className="node-label">{t('Current Span ID')}</span>
-                      <span className="node-val">{span.spanId}</span>
-                    </div>
-                  </div>
-                  
+            <div className="span-drawer-stack">
+              <section className="span-drawer-card">
+                <h3>{t('Trace context')}</h3>
+                <div className="span-drawer-kv-list">
+                  <DrawerKvRow
+                    label={t('Parent span')}
+                    value={span.parentSpanId || t('None (Root Span)')}
+                    copied={copiedKey === 'parentSpanId'}
+                    onCopy={span.parentSpanId ? () => handleCopy('parentSpanId', span.parentSpanId!) : undefined}
+                  />
+                  <DrawerKvRow
+                    label={t('This span')}
+                    value={span.spanId}
+                    copied={copiedKey === 'spanId'}
+                    onCopy={() => handleCopy('spanId', span.spanId)}
+                  />
                   {details.contextPropagation?.traceparent && (
-                    <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: '10px', marginTop: '4px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-tertiary)' }}>{t('PROPAGATED traceparent HEADER')}</span>
-                        <button className="attr-copy-btn" onClick={() => handleCopy('traceparent', details.contextPropagation!.traceparent!)}>
-                          {copiedKey === 'traceparent' ? (
-                            <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
-                          ) : (
-                            <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
-                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                      <div className="traceparent-value">{details.contextPropagation.traceparent}</div>
-                    </div>
+                    <DrawerKvRow
+                      label="traceparent"
+                      value={details.contextPropagation.traceparent}
+                      copied={copiedKey === 'traceparent'}
+                      onCopy={() => handleCopy('traceparent', details.contextPropagation!.traceparent!)}
+                    />
                   )}
                 </div>
-              </div>
+              </section>
 
-              {/* Request Message Details */}
-              <div className="payload-section-card request">
-                <div className="payload-section-header">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-                    <span className={`method-badge ${details.request.method?.toLowerCase()}`}>
-                      {details.request.method}
-                    </span>
-                    <span className="payload-section-title">{t('Request Payload')}</span>
+              <section className="span-drawer-card">
+                <h3>
+                  {details.request.method ? (
+                    <span className={`method-badge ${details.request.method.toLowerCase()}`}>{details.request.method}</span>
+                  ) : null}
+                  {t('Request')}
+                </h3>
+                {details.request.url && (
+                  <div className="span-drawer-url">
+                    <span title={details.request.url}>{details.request.url}</span>
+                    <DrawerCopyButton copied={copiedKey === 'reqUrl'} onCopy={() => handleCopy('reqUrl', details.request.url!)} />
                   </div>
-                  <span className="payload-target-url" title={details.request.url}>{details.request.url}</span>
-                </div>
-                
-                <div style={{ padding: '14px' }}>
-                  {/* Headers if http */}
-                  {details.request.headers && (
-                    <div style={{ marginBottom: '12px' }}>
-                      <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        {t('Transport Headers')}
-                      </div>
-                      <div className="headers-grid">
-                        {Object.entries(details.request.headers).map(([k, v]) => (
-                          <div key={k} className="header-row">
-                            <span className="header-key" title={k}>{k}</span>
-                            <span className="header-val" title={v}>{v}</span>
-                          </div>
+                )}
+                {details.request.headers && Object.keys(details.request.headers).length > 0 && (
+                  <div className="span-drawer-kv-list nested">
+                    {Object.entries(details.request.headers).map(([k, v]) => (
+                      <DrawerKvRow key={k} label={k} value={v} />
+                    ))}
+                  </div>
+                )}
+                {details.type === 'db' ? (
+                  <div className="span-drawer-body-block">
+                    <div className="span-drawer-block-label">
+                      {t('Database Statement')}
+                      {details.request.statement && (
+                        <DrawerCopyButton copied={copiedKey === 'sql'} onCopy={() => handleCopy('sql', details.request.statement!)} />
+                      )}
+                    </div>
+                    {details.request.statement ? (
+                      <pre className="query-code-block"><code>{details.request.statement}</code></pre>
+                    ) : (
+                      <NotCaptured label={t("Query text not captured — enable db.statement capture in the client's tracing settings.")} />
+                    )}
+                    {Array.isArray(details.request.parameters) && details.request.parameters.length > 0 && (
+                      <div className="parameters-list">
+                        {details.request.parameters.map((p: unknown, idx: number) => (
+                          <span key={idx} className="param-badge">${idx + 1}: "{String(p)}"</span>
                         ))}
                       </div>
-                    </div>
-                  )}
-
-                  {/* Request Body / Statement */}
-                  {details.type === 'db' ? (
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('Database Statement')}</span>
-                        {details.request.statement && (
-                          <button className="attr-copy-btn" onClick={() => handleCopy('sql', details.request.statement!)}>
-                            {copiedKey === 'sql' ? (
-                              <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
-                            ) : (
-                              <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                              </svg>
-                            )}
-                          </button>
-                        )}
-                      </div>
-                      {details.request.statement ? (
-                        <pre className="query-code-block">
-                          <code>{details.request.statement}</code>
-                        </pre>
-                      ) : (
-                        <NotCaptured label={t("Query text not captured — enable db.statement capture in the client's tracing settings.")} />
-                      )}
-                      {Array.isArray(details.request.parameters) && details.request.parameters.length > 0 && (
-                        <div style={{ marginTop: '8px' }}>
-                          <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>{t('Query Parameters')}</div>
-                          <div className="parameters-list">
-                            {details.request.parameters.map((p: any, idx: number) => (
-                              <span key={idx} className="param-badge">${idx + 1}: "{String(p)}"</span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('Body Content')}</span>
-                        {details.request.body != null && (
-                          <button className="attr-copy-btn" onClick={() => handleCopy('reqBody', JSON.stringify(details.request.body, null, 2))}>
-                            {copiedKey === 'reqBody' ? (
-                              <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
-                            ) : (
-                              <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                              </svg>
-                            )}
-                          </button>
-                        )}
-                      </div>
-                      {details.request.body != null ? (
-                        <pre className="payload-code-block">
-                          <code>{typeof details.request.body === 'string' ? details.request.body : JSON.stringify(details.request.body, null, 2)}</code>
-                        </pre>
-                      ) : (
-                        <NotCaptured label={t("Body not captured — instrumentation records metadata only (URL, headers, size, timing).")} />
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Response Message Details */}
-              <div className="payload-section-card response">
-                <div className="payload-section-header">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span className={`status-badge ${span.status === 'ERROR' ? 'error' : 'ok'}`}>
-                      {details.response.status}
-                    </span>
-                    <span className="payload-section-title">{t('Response Payload')}</span>
+                    )}
                   </div>
-                  <span className="payload-duration-tag">{t('in')} {formatDuration(span.durationMs)}</span>
-                </div>
-                
-                <div style={{ padding: '14px' }}>
-                  {details.response.result && (
-                    <div style={{ marginBottom: '10px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      {t('Recorded response size:')} <strong className="mono" style={{ color: 'var(--text-primary)' }}>{details.response.result}</strong>
+                ) : (
+                  <div className="span-drawer-body-block">
+                    <div className="span-drawer-block-label">
+                      {t('Body')}
+                      {details.request.body != null && (
+                        <DrawerCopyButton copied={copiedKey === 'reqBody'} onCopy={() => handleCopy('reqBody', JSON.stringify(details.request.body, null, 2))} />
+                      )}
                     </div>
-                  )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Body Content</span>
+                    {details.request.body != null ? (
+                      <pre className="payload-code-block">
+                        <code>{typeof details.request.body === 'string' ? details.request.body : JSON.stringify(details.request.body, null, 2)}</code>
+                      </pre>
+                    ) : (
+                      <NotCaptured label={t('Body not captured — instrumentation records metadata only (URL, headers, size, timing).')} />
+                    )}
+                  </div>
+                )}
+              </section>
+
+              <section className="span-drawer-card">
+                <h3>
+                  <span className={`status-badge ${responseTone}`}>{details.response.status}</span>
+                  {t('Response')}
+                  <em className="span-drawer-h3-meta">{t('in')} {formatDuration(span.durationMs)}</em>
+                </h3>
+                {details.response.result && (
+                  <p className="span-drawer-note">{t('Recorded response size:')} <strong>{details.response.result}</strong></p>
+                )}
+                <div className="span-drawer-body-block">
+                  <div className="span-drawer-block-label">
+                    {t('Body')}
                     {details.response.body != null && (
-                      <button className="attr-copy-btn" onClick={() => handleCopy('respBody', JSON.stringify(details.response.body, null, 2))}>
-                        {copiedKey === 'respBody' ? (
-                          <span style={{ fontSize: '9px', color: 'var(--accent-emerald)', fontWeight: 700 }}>✓</span>
-                        ) : (
-                          <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                          </svg>
-                        )}
-                      </button>
+                      <DrawerCopyButton copied={copiedKey === 'respBody'} onCopy={() => handleCopy('respBody', JSON.stringify(details.response.body, null, 2))} />
                     )}
                   </div>
                   {details.response.body != null ? (
@@ -2629,34 +2419,23 @@ function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerContentPr
                       <code>{typeof details.response.body === 'string' ? details.response.body : JSON.stringify(details.response.body, null, 2)}</code>
                     </pre>
                   ) : (
-                    <NotCaptured label={t("Body not captured — the status, size and timing above are real.")} />
+                    <NotCaptured label={t('Body not captured — the status, size and timing above are real.')} />
                   )}
                 </div>
-              </div>
-
+              </section>
             </div>
           );
         })()}
 
-        {/* Tab: Raw JSON */}
         {activeTab === 'json' && (
-          <div className="stacktrace-container">
-            <div className="stacktrace-header">
-              <span>Full Payload</span>
-              <button 
-                className="btn btn-ghost btn-sm" 
-                style={{ fontSize: '9px', padding: '2px 8px', height: '20px', border: '1px solid rgba(255,255,255,0.15)', color: '#94a3b8' }}
-                onClick={() => handleCopy('json', JSON.stringify(span, null, 2))}
-              >
-                {copiedKey === 'json' ? 'Copied ✓' : 'Copy JSON'}
-              </button>
-            </div>
-            <pre className="stacktrace-pre">
-              {renderJson}
-            </pre>
-          </div>
+          <section className="span-drawer-card">
+            <h3>
+              {t('Full payload')}
+              <DrawerCopyButton copied={copiedKey === 'json'} onCopy={() => handleCopy('json', JSON.stringify(span, null, 2))} label={t('Copy JSON')} />
+            </h3>
+            <pre className="span-drawer-pre is-code">{renderJson}</pre>
+          </section>
         )}
-
       </div>
     </>
   );
@@ -2674,7 +2453,7 @@ export default function TraceDetail() {
   const navigate = useNavigate();
 
   // Sidebar drag-resize states
-  const [sidebarWidth, setSidebarWidth] = useState(480);
+  const [sidebarWidth, setSidebarWidth] = useState(540);
   const [isDragging, setIsDragging] = useState(false);
 
   // Trace ID copy animation
@@ -3387,7 +3166,7 @@ export default function TraceDetail() {
         }
 
         .trace-detail-sidebar {
-          background: var(--bg-secondary);
+          background: var(--bg-primary);
           border-left: 1px solid var(--border-primary);
           height: 100vh;
           position: fixed;
@@ -3397,7 +3176,7 @@ export default function TraceDetail() {
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          box-shadow: -10px 0 30px rgba(0, 0, 0, 0.15);
+          box-shadow: -18px 0 48px rgba(10, 16, 32, 0.16);
           z-index: 1001;
           animation: slideInRight 0.25s cubic-bezier(0.4, 0, 0.2, 1);
           border-radius: 0;
@@ -3439,8 +3218,8 @@ export default function TraceDetail() {
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(15, 23, 42, 0.3);
-          backdrop-filter: blur(4px);
+          background: rgba(12, 18, 34, 0.38);
+          backdrop-filter: blur(3px);
           z-index: 1000;
           animation: fadeIn 0.25s ease-out;
         }
@@ -3510,232 +3289,601 @@ export default function TraceDetail() {
           box-shadow: 0 0 10px rgba(99, 102, 241, 0.25);
         }
 
-        .drawer-breadcrumbs {
+        .span-drawer-header {
+          padding: 16px 20px 12px;
+          border-bottom: 1px solid var(--border-primary);
+          background: var(--bg-secondary);
+        }
+
+        .span-drawer-title-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+        }
+
+        .span-drawer-kind-tile {
+          width: 36px;
+          height: 36px;
+          flex: 0 0 auto;
+          display: grid;
+          place-items: center;
+          border-radius: 10px;
+          border: 1px solid var(--border-primary);
+          background: var(--bg-tertiary);
+          color: var(--accent-indigo);
+        }
+
+        .span-drawer-kind-tile.is-error {
+          color: var(--accent-rose);
+          background: color-mix(in srgb, var(--accent-rose) 12%, var(--bg-secondary));
+          border-color: color-mix(in srgb, var(--accent-rose) 28%, var(--border-primary));
+        }
+
+        .span-drawer-heading {
+          min-width: 0;
+          flex: 1;
+        }
+
+        .span-drawer-kicker {
+          display: block;
+          margin-bottom: 3px;
+          color: var(--text-tertiary);
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.07em;
+          text-transform: uppercase;
+        }
+
+        .span-drawer-heading h2 {
+          margin: 0;
+          color: var(--text-primary);
+          font-size: 16px;
+          font-weight: 750;
+          line-height: 1.3;
+          letter-spacing: -0.02em;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .span-drawer-subtitle {
           display: flex;
           align-items: center;
           gap: 6px;
-          font-size: 11px;
-          color: var(--text-muted);
-          margin-bottom: 4px;
-          flex-wrap: wrap;
+          margin: 4px 0 0;
+          color: var(--text-secondary);
+          font-size: 12px;
+          font-weight: 600;
         }
 
-        .breadcrumb-item {
-          display: inline-flex;
-          align-items: center;
+        .span-drawer-dot {
+          color: var(--text-muted);
           font-weight: 500;
         }
 
-        .breadcrumb-item.service {
-          font-weight: 700;
-        }
-
-        .breadcrumb-separator {
-          color: var(--text-tertiary);
-          font-weight: 400;
-        }
-
-        .drawer-close-btn {
-          background: var(--bg-secondary);
-          border: 1px solid var(--border-primary);
-          color: var(--text-secondary);
-          width: 28px;
-          height: 28px;
-          border-radius: 6px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          box-shadow: var(--shadow-sm);
+        .span-drawer-close {
+          width: 30px;
+          height: 30px;
           flex-shrink: 0;
+          display: grid;
+          place-items: center;
+          border: 1px solid var(--border-primary);
+          border-radius: 8px;
+          background: var(--bg-primary);
+          color: var(--text-secondary);
+          cursor: pointer;
         }
 
-        .drawer-close-btn:hover {
+        .span-drawer-close:hover {
           color: var(--text-primary);
+          border-color: var(--border-secondary);
           background: var(--bg-hover);
-          border-color: var(--accent-indigo);
-          transform: scale(1.05);
         }
 
-        .drawer-close-btn:active {
-          transform: scale(0.95);
-        }
-
-        /* Header elements inside the drawer */
-        .drawer-header {
-          padding: 16px 20px;
-          border-bottom: 1px solid var(--border-primary);
-          background: var(--bg-tertiary);
+        .span-drawer-chips {
           display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-top: 12px;
         }
 
-        .drawer-tabs {
-          display: flex;
+        .span-drawer-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          min-height: 22px;
+          padding: 0 8px;
+          border-radius: 999px;
+          border: 1px solid var(--border-primary);
           background: var(--bg-tertiary);
-          padding: 6px;
-          gap: 4px;
-          border-bottom: 1px solid var(--border-primary);
-        }
-
-        .drawer-tab-btn {
-          flex: 1;
-          padding: 8px 12px;
-          background: transparent;
-          border: none;
           color: var(--text-secondary);
           font-size: 11px;
-          font-weight: 600;
-          cursor: pointer;
-          border-radius: 6px;
-          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-          text-align: center;
-        }
-        .drawer-tab-btn:hover {
-          color: var(--text-primary);
-          background: rgba(0, 0, 0, 0.03);
-        }
-        body.dark-theme .drawer-tab-btn:hover {
-          background: rgba(255, 255, 255, 0.03);
-        }
-        .drawer-tab-btn.active {
-          color: var(--accent-indigo) !important;
-          background: var(--bg-secondary);
-          box-shadow: var(--shadow-sm);
+          font-weight: 700;
         }
 
-        /* Overview Metric Card Styles */
-        .overview-metric-card {
+        .span-drawer-chip.is-ok {
+          color: var(--accent-emerald);
+          background: color-mix(in srgb, var(--accent-emerald) 10%, transparent);
+          border-color: color-mix(in srgb, var(--accent-emerald) 22%, transparent);
+        }
+
+        .span-drawer-chip.is-error {
+          color: var(--accent-rose);
+          background: color-mix(in srgb, var(--accent-rose) 10%, transparent);
+          border-color: color-mix(in srgb, var(--accent-rose) 22%, transparent);
+        }
+
+        .span-drawer-tabs {
+          display: flex;
+          gap: 2px;
+          overflow-x: auto;
+          padding: 0 12px;
+          border-bottom: 1px solid var(--border-primary);
           background: var(--bg-secondary);
-          border: 1px solid var(--border-primary);
-          padding: 14px 16px;
-          border-radius: 8px;
-          box-shadow: var(--shadow-sm);
+        }
+
+        .span-drawer-tabs button {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          flex: 0 0 auto;
+          border: 0;
+          border-bottom: 2px solid transparent;
+          background: transparent;
+          color: var(--text-tertiary);
+          cursor: pointer;
+          padding: 11px 10px;
+          font-size: 12px;
+          font-weight: 650;
+          white-space: nowrap;
+        }
+
+        .span-drawer-tabs button em {
+          display: inline-flex;
+          align-items: center;
+          min-height: 18px;
+          padding: 0 6px;
+          border-radius: 999px;
+          background: color-mix(in srgb, var(--accent-indigo) 12%, var(--bg-secondary));
+          color: var(--accent-indigo);
+          font-size: 10px;
+          font-style: normal;
+          font-weight: 700;
+        }
+
+        .span-drawer-tabs button:hover,
+        .span-drawer-tabs button.active {
+          color: var(--text-primary);
+        }
+
+        .span-drawer-tabs button.active {
+          border-bottom-color: var(--accent-indigo);
+          color: var(--accent-indigo);
+        }
+
+        .span-drawer-tabs button.is-error {
+          color: var(--accent-rose);
+        }
+
+        .span-drawer-tabs button.is-error.active {
+          border-bottom-color: var(--accent-rose);
+        }
+
+        .span-drawer-tabs button.is-error em {
+          background: color-mix(in srgb, var(--accent-rose) 12%, var(--bg-secondary));
+          color: var(--accent-rose);
+        }
+
+        .span-drawer-body {
+          flex: 1;
+          overflow: auto;
+          padding: 16px 18px 28px;
+        }
+
+        .span-drawer-stack {
           display: flex;
           flex-direction: column;
-          justify-content: center;
-        }
-        .overview-metric-card.duration {
-          border-left: 3px solid var(--accent-cyan);
-        }
-        .overview-metric-card.status {
-          border-left: 3px solid var(--accent-indigo);
-        }
-        .metric-card-label {
-          font-size: 9.5px;
-          color: var(--text-tertiary);
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-        .metric-card-val {
-          font-size: 18px;
-          font-weight: 800;
-          color: var(--text-primary);
-          font-family: var(--font-mono);
-          margin-top: 4px;
-        }
-        .metric-card-sub {
-          font-size: 10px;
-          color: var(--text-secondary);
-          margin-top: 2px;
+          gap: 14px;
         }
 
-        /* Grouped Attribute Card Styles */
-        .attr-group-card {
+        .span-drawer-metrics {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+          gap: 10px;
+        }
+
+        .span-drawer-metrics article {
+          min-width: 0;
+          padding: 12px;
+          border: 1px solid var(--border-primary);
+          border-radius: 12px;
+          background: linear-gradient(180deg, color-mix(in srgb, var(--bg-tertiary) 70%, transparent), var(--bg-secondary));
+        }
+
+        .span-drawer-metrics small {
+          display: block;
+          margin-bottom: 6px;
+          color: var(--text-tertiary);
+          font-size: 9px;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+
+        .span-drawer-metrics strong {
+          display: block;
+          overflow: hidden;
+          color: var(--text-primary);
+          font-size: 15px;
+          font-weight: 750;
+          letter-spacing: -0.02em;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .span-drawer-metrics strong.is-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .span-drawer-metrics em {
+          display: block;
+          margin-top: 4px;
+          color: var(--text-secondary);
+          font-size: 11px;
+          font-style: normal;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .span-drawer-metrics article.is-ok strong { color: var(--accent-emerald); }
+        .span-drawer-metrics article.is-error strong { color: var(--accent-rose); }
+
+        .span-drawer-card {
+          border: 1px solid var(--border-primary);
+          border-radius: 12px;
           background: var(--bg-secondary);
+          overflow: hidden;
+        }
+
+        .span-drawer-card > h3 {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin: 0;
+          padding: 10px 12px;
+          border-bottom: 1px solid var(--border-primary);
+          background: color-mix(in srgb, var(--bg-tertiary) 80%, var(--bg-secondary));
+          color: var(--text-primary);
+          font-size: 11px;
+          font-weight: 750;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+
+        .span-drawer-card > h3 em {
+          margin-left: auto;
+          color: var(--text-muted);
+          font-size: 10px;
+          font-style: normal;
+          font-weight: 700;
+          letter-spacing: 0;
+          text-transform: none;
+        }
+
+        .span-drawer-h3-meta {
+          margin-left: auto;
+          color: var(--text-muted);
+          font-size: 11px;
+          font-style: normal;
+          font-weight: 650;
+          letter-spacing: 0;
+          text-transform: none;
+        }
+
+        .span-drawer-kv-list {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .span-drawer-kv-list.nested {
+          margin: 0 12px 12px;
           border: 1px solid var(--border-primary);
           border-radius: 8px;
           overflow: hidden;
-          margin-bottom: 12px;
-          box-shadow: var(--shadow-sm);
         }
-        .attr-group-title {
-          font-size: 10px;
-          font-weight: 700;
-          color: var(--text-tertiary);
-          text-transform: uppercase;
-          letter-spacing: 0.8px;
-          background: var(--bg-tertiary);
+
+        .span-drawer-kv {
+          display: grid;
+          grid-template-columns: minmax(92px, 34%) 1fr;
+          gap: 10px;
+          align-items: start;
           padding: 8px 12px;
-          border-bottom: 1px solid var(--border-primary);
+          border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 75%, transparent);
         }
-        .attr-group-list {
+
+        .span-drawer-kv:last-child { border-bottom: 0; }
+        .span-drawer-kv:hover { background: var(--bg-hover); }
+
+        .span-drawer-kv-label {
+          color: var(--text-tertiary);
+          font-size: 11px;
+          font-weight: 650;
+          word-break: break-word;
+        }
+
+        .span-drawer-kv-value {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          min-width: 0;
+          color: var(--text-primary);
+          font-size: 12px;
+          line-height: 1.45;
+          word-break: break-word;
+        }
+
+        .span-drawer-kv-value .is-mono,
+        .span-drawer-kv-value > span {
+          min-width: 0;
+          flex: 1;
+        }
+
+        .span-drawer-kv-value .is-mono {
+          font-family: var(--font-mono);
+          font-size: 11.5px;
+        }
+
+        .span-drawer-copy {
+          flex-shrink: 0;
+          width: 22px;
+          height: 22px;
+          display: grid;
+          place-items: center;
+          border: 0;
+          border-radius: 6px;
+          background: transparent;
+          color: var(--text-muted);
+          cursor: pointer;
+        }
+
+        .span-drawer-copy:hover {
+          color: var(--accent-indigo);
+          background: var(--bg-active);
+        }
+
+        .span-drawer-dest {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          max-width: 100%;
+          padding: 2px 8px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 700;
+        }
+
+        .span-drawer-dest em {
+          font-style: normal;
+          font-weight: 650;
+          opacity: 0.75;
+        }
+
+        .span-drawer-dest.is-3rdparty {
+          color: var(--accent-amber);
+          background: color-mix(in srgb, var(--accent-amber) 12%, transparent);
+        }
+
+        .span-drawer-dest.is-infra {
+          color: var(--accent-cyan);
+          background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+        }
+
+        .span-drawer-dest.is-service {
+          color: var(--accent-indigo);
+          background: color-mix(in srgb, var(--accent-indigo) 10%, transparent);
+        }
+
+        .span-drawer-search {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .span-drawer-search svg {
+          position: absolute;
+          left: 10px;
+          color: var(--text-muted);
+          pointer-events: none;
+        }
+
+        .span-drawer-search input {
+          width: 100%;
+          height: 34px;
+          padding: 0 12px 0 30px;
+          border: 1px solid var(--border-primary);
+          border-radius: 8px;
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+          font-size: 12px;
+          outline: none;
+        }
+
+        .span-drawer-search input:focus {
+          border-color: color-mix(in srgb, var(--accent-indigo) 50%, var(--border-primary));
+          box-shadow: var(--shadow-glow);
+        }
+
+        .span-drawer-empty {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          padding: 8px 10px;
+          border-radius: 8px;
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+          font-size: 12px;
+          line-height: 1.45;
+        }
+
+        .span-drawer-empty svg {
+          flex-shrink: 0;
+          margin-top: 1px;
+          opacity: 0.7;
+        }
+
+        .span-drawer-url {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          margin: 0 12px 10px;
+          padding: 8px 10px;
+          border: 1px solid var(--border-primary);
+          border-radius: 8px;
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
+          font-family: var(--font-mono);
+          font-size: 11.5px;
+          line-height: 1.45;
+          word-break: break-all;
+        }
+
+        .span-drawer-url span { flex: 1; min-width: 0; }
+
+        .span-drawer-body-block {
+          padding: 10px 12px 12px;
+        }
+
+        .span-drawer-block-label {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 6px;
+          color: var(--text-tertiary);
+          font-size: 10px;
+          font-weight: 750;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+
+        .span-drawer-note {
+          margin: 0 12px 8px;
+          color: var(--text-secondary);
+          font-size: 12px;
+        }
+
+        .span-drawer-note strong {
+          font-family: var(--font-mono);
+          color: var(--text-primary);
+        }
+
+        .span-drawer-events {
           display: flex;
           flex-direction: column;
+          gap: 8px;
+          padding: 10px 12px 12px;
         }
-        .attr-row {
-          padding: 10px 12px;
-          border-bottom: 1px solid var(--border-primary);
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          transition: background 0.15s ease;
+
+        .span-drawer-events article {
+          border: 1px solid var(--border-primary);
+          border-left: 3px solid var(--accent-indigo);
+          border-radius: 8px;
+          background: var(--bg-primary);
         }
-        .attr-row:last-child {
-          border-bottom: none;
-        }
-        .attr-row:hover {
-          background: var(--bg-hover);
-        }
-        .attr-row-header {
+
+        .span-drawer-events header {
           display: flex;
           justify-content: space-between;
+          gap: 8px;
+          padding: 8px 10px;
+        }
+
+        .span-drawer-events strong {
+          color: var(--text-primary);
+          font-size: 12px;
+        }
+
+        .span-drawer-events time {
+          color: var(--text-muted);
+          font-size: 11px;
+        }
+
+        .span-drawer-failure {
+          display: flex;
+          gap: 10px;
+          padding: 12px;
+          border: 1px solid color-mix(in srgb, var(--accent-rose) 28%, var(--border-primary));
+          border-radius: 12px;
+          background: color-mix(in srgb, var(--accent-rose) 7%, var(--bg-secondary));
+        }
+
+        .span-drawer-failure-icon {
+          width: 28px;
+          height: 28px;
+          flex-shrink: 0;
+          display: grid;
+          place-items: center;
+          border-radius: 8px;
+          background: color-mix(in srgb, var(--accent-rose) 14%, transparent);
+          color: var(--accent-rose);
+        }
+
+        .span-drawer-failure-title {
+          display: flex;
+          flex-wrap: wrap;
           align-items: center;
           gap: 8px;
         }
-        .attr-row-label {
-          font-size: 11px;
-          font-weight: 600;
-          color: var(--text-tertiary);
+
+        .span-drawer-failure-title strong {
+          color: var(--text-primary);
+          font-size: 14px;
         }
-        .attr-row-key {
-          font-size: 11.5px;
-          font-weight: 600;
+
+        .span-drawer-failure-title em {
+          padding: 1px 7px;
+          border-radius: 999px;
+          background: color-mix(in srgb, var(--accent-rose) 12%, transparent);
+          color: var(--accent-rose);
+          font-size: 10px;
+          font-style: normal;
+          font-weight: 750;
+        }
+
+        .span-drawer-failure p {
+          margin: 6px 0 0;
           color: var(--text-secondary);
-          font-family: var(--font-mono);
-          word-break: break-all;
+          font-size: 13px;
+          line-height: 1.5;
         }
-        .attr-row-value {
+
+        .span-drawer-pre {
+          margin: 0;
+          padding: 10px 12px;
+          overflow: auto;
+          max-height: 320px;
+          color: var(--text-primary);
           font-size: 12px;
-          color: var(--text-primary);
-          font-family: var(--font-mono);
-          word-break: break-all;
-          background: var(--bg-tertiary);
-          padding: 6px 10px;
-          border-radius: 4px;
-          border: 1px solid var(--border-primary);
-          margin-top: 2px;
+          line-height: 1.5;
           white-space: pre-wrap;
+          word-break: break-word;
         }
-        .attr-row-value-mini {
-          font-size: 11.5px;
+
+        .span-drawer-pre.is-code {
+          background: #090d16;
+          color: #cbd5e1;
           font-family: var(--font-mono);
-          color: var(--text-primary);
-          word-break: break-all;
-          margin-top: 1px;
+          font-size: 11px;
         }
-        .attr-copy-btn {
-          background: transparent;
-          border: none;
-          color: var(--text-muted);
-          cursor: pointer;
-          padding: 4px;
-          border-radius: 4px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.15s ease;
-        }
-        .attr-copy-btn:hover {
-          color: var(--accent-indigo);
-          background: var(--bg-active);
-          transform: scale(1.1);
+
+        body.dark-theme .span-drawer-pre.is-code {
+          background: #070a10;
         }
 
         /* Detected Problems Panel */
+
         .problems-panel-header {
           display: flex;
           align-items: center;
@@ -4353,131 +4501,6 @@ export default function TraceDetail() {
           }
         }
 
-        /* New Payload View Tab styles */
-        .payload-context-card {
-          background: var(--bg-tertiary);
-          border: 1px solid var(--border-primary);
-          border-radius: 8px;
-          overflow: hidden;
-          box-shadow: var(--shadow-sm);
-        }
-
-        .payload-context-title {
-          font-size: 10px;
-          font-weight: 700;
-          color: var(--text-tertiary);
-          text-transform: uppercase;
-          letter-spacing: 0.8px;
-          background: var(--bg-secondary);
-          padding: 8px 12px;
-          border-bottom: 1px solid var(--border-primary);
-          display: flex;
-          align-items: center;
-        }
-
-        .context-flow-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          margin-bottom: 4px;
-        }
-
-        .context-node {
-          flex: 1;
-          background: var(--bg-secondary);
-          border: 1px solid var(--border-primary);
-          padding: 8px 12px;
-          border-radius: 6px;
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          min-width: 0;
-        }
-
-        .context-node .node-label {
-          font-size: 9px;
-          font-weight: 600;
-          color: var(--text-muted);
-          text-transform: uppercase;
-        }
-
-        .context-node .node-val {
-          font-size: 11px;
-          font-family: var(--font-mono);
-          color: var(--text-primary);
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-          font-weight: 600;
-        }
-
-        .context-node.current {
-          border-color: var(--accent-indigo);
-          box-shadow: 0 0 8px rgba(99, 102, 241, 0.1);
-        }
-
-        .context-arrow {
-          color: var(--text-muted);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
-
-        .traceparent-value {
-          font-family: var(--font-mono);
-          font-size: 10px;
-          color: var(--text-secondary);
-          background: var(--bg-secondary);
-          padding: 6px 10px;
-          border-radius: 4px;
-          border: 1px solid var(--border-primary);
-          margin-top: 4px;
-          word-break: break-all;
-        }
-
-        .payload-section-card {
-          background: var(--bg-secondary);
-          border: 1px solid var(--border-primary);
-          border-radius: 8px;
-          overflow: hidden;
-          box-shadow: var(--shadow-sm);
-        }
-
-        .payload-section-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          background: var(--bg-tertiary);
-          padding: 8px 14px;
-          border-bottom: 1px solid var(--border-primary);
-          gap: 12px;
-        }
-
-        .payload-section-title {
-          font-size: 11px;
-          font-weight: 700;
-          color: var(--text-primary);
-        }
-
-        .payload-target-url {
-          font-family: var(--font-mono);
-          font-size: 10.5px;
-          color: var(--text-muted);
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-          text-align: right;
-          max-width: 60%;
-        }
-
-        .payload-duration-tag {
-          font-size: 10.5px;
-          color: var(--text-muted);
-          font-weight: 500;
-        }
-
         .method-badge {
           min-width: 38px;
           min-height: 22px;
@@ -4492,6 +4515,12 @@ export default function TraceDetail() {
           border: 1px solid transparent;
           letter-spacing: 0.04em;
           white-space: nowrap;
+        }
+
+        .span-drawer-card > h3 .method-badge,
+        .span-drawer-card > h3 .status-badge {
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
         }
 
         .method-badge.get {
