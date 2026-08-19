@@ -178,6 +178,16 @@ class ApiClient {
     return this.get<any>('/auth/me');
   }
 
+  getLicense() {
+    return this.get<{
+      valid: boolean;
+      status?: string;
+      code?: string;
+      message?: string;
+      expires_at?: string | null;
+    }>('/license');
+  }
+
   // Core APIs
   getHealth() { return this.get<{ status: string }>('/health'); }
   getNamespaces(cluster?: string) {

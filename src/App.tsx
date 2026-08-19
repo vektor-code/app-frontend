@@ -13,6 +13,7 @@ const ServiceMap = React.lazy(() => import('./pages/ServiceMap'));
 const DbAnalytics = React.lazy(() => import('./pages/DbAnalytics'));
 const LiveStream = React.lazy(() => import('./pages/LiveStream'));
 const Login = React.lazy(() => import('./pages/Login'));
+const LicenseExpired = React.lazy(() => import('./pages/LicenseExpired'));
 const Dependencies = React.lazy(() => import('./pages/Dependencies'));
 const Admin = React.lazy(() => import('./pages/Admin'));
 const Alerts = React.lazy(() => import('./pages/Alerts'));
@@ -168,6 +169,7 @@ export default function App() {
   const { t } = useTranslation();
   const [authChecking, setAuthChecking] = useState(true);
   const [user, setUser] = useState<any | null>(null);
+  const [license, setLicense] = useState<{ valid?: boolean; message?: string; expires_at?: string | null } | null>(null);
   const [namespaces, setNamespaces] = useState<NamespaceStats[]>([]);
   const [selectedNamespace, setSelectedNamespace] = useState(() => {
     return localStorage.getItem('selectedNamespace') || '';
@@ -213,6 +215,8 @@ export default function App() {
         try {
           const currentUser = await api.getCurrentUser();
           setUser(currentUser);
+          const licenseStatus = await api.getLicense().catch(() => ({ valid: true }));
+          setLicense(licenseStatus);
         } catch {
           localStorage.removeItem('token');
           setUser(null);
@@ -227,6 +231,7 @@ export default function App() {
     localStorage.setItem('token', token);
     setIsDark(localStorage.getItem('theme') === 'dark');
     setUser(loggedInUser);
+    api.getLicense().then(setLicense).catch(() => setLicense({ valid: true }));
   }, []);
 
   const handleLogout = useCallback(() => {
@@ -281,6 +286,19 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
+    const refreshLicense = async () => {
+      try {
+        setLicense(await api.getLicense());
+      } catch {
+        // Keep the last known license snapshot.
+      }
+    };
+    const interval = setInterval(refreshLicense, 30_000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || license?.valid === false) return;
     loadStats();
     const interval = setInterval(loadStats, 5000);
     return () => clearInterval(interval);
@@ -346,6 +364,18 @@ export default function App() {
     return (
       <Suspense fallback={<PageFallback />}>
         <Login onLogin={handleLogin} />
+      </Suspense>
+    );
+  }
+
+  if (license && license.valid === false) {
+    return (
+      <Suspense fallback={<PageFallback />}>
+        <LicenseExpired
+          expiresAt={license.expires_at}
+          message={license.message}
+          onLogout={handleLogout}
+        />
       </Suspense>
     );
   }
