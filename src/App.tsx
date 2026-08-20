@@ -169,7 +169,7 @@ export default function App() {
   const { t } = useTranslation();
   const [authChecking, setAuthChecking] = useState(true);
   const [user, setUser] = useState<any | null>(null);
-  const [license, setLicense] = useState<{ valid?: boolean; message?: string; expires_at?: string | null } | null>(null);
+  const [license, setLicense] = useState<{ valid?: boolean; code?: string; message?: string; expires_at?: string | null } | null>(null);
   const [namespaces, setNamespaces] = useState<NamespaceStats[]>([]);
   const [selectedNamespace, setSelectedNamespace] = useState(() => {
     return localStorage.getItem('selectedNamespace') || '';
@@ -372,6 +372,7 @@ export default function App() {
     return (
       <Suspense fallback={<PageFallback />}>
         <LicenseExpired
+          code={license.code}
           expiresAt={license.expires_at}
           message={license.message}
           onLogout={handleLogout}

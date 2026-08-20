@@ -1182,3 +1182,153 @@ body.dark-theme .apm-auth-form input[type='password'] {
     transition-duration: 0ms;
   }
 }
+
+/* —— License gate (expired / disabled / pending) —— */
+.apm-license-gate {
+  max-width: 420px;
+}
+
+.apm-license-gate-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 18px;
+  border-radius: 16px;
+}
+
+.apm-license-gate-icon--danger {
+  color: #e11d48;
+  background: rgba(244, 63, 94, 0.08);
+  border: 1px solid rgba(244, 63, 94, 0.22);
+}
+
+.apm-license-gate-icon--warning {
+  color: #d97706;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(217, 119, 6, 0.22);
+}
+
+.apm-license-gate-eyebrow {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary, #64748b);
+}
+
+.apm-license-gate h1 {
+  margin-bottom: 10px;
+}
+
+.apm-license-gate-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.apm-license-gate-badge--danger {
+  color: #991b1b;
+  background: rgba(244, 63, 94, 0.1);
+}
+
+.apm-license-gate-badge--warning {
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.apm-license-gate-lead {
+  margin: 0 0 18px;
+  color: var(--text-secondary, #64748b);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.apm-license-gate-facts {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 1px solid var(--border-primary, #e2e8f0);
+  border-radius: 12px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg-tertiary, #f8fafc) 80%, #fff);
+}
+
+.apm-license-gate-facts li {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-primary, #e2e8f0);
+}
+
+.apm-license-gate-facts li:first-child {
+  border-top: 0;
+}
+
+.apm-license-gate-facts span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-tertiary, #64748b);
+}
+
+.apm-license-gate-facts strong {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-primary, #0f172a);
+  line-height: 1.4;
+}
+
+.apm-license-gate-help {
+  margin: 0 0 20px;
+  color: var(--text-tertiary, #64748b);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.apm-license-gate-actions {
+  display: grid;
+  gap: 10px;
+}
+
+a.apm-license-gate-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.apm-license-gate-secondary {
+  min-height: 48px;
+  border: 1px solid var(--border-primary, #e2e8f0);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary, #64748b);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.apm-license-gate-secondary:hover {
+  background: color-mix(in srgb, var(--bg-tertiary, #f8fafc) 80%, #fff);
+  color: var(--text-primary, #0f172a);
+}
+
+body.dark-theme .apm-license-gate-badge--danger {
+  color: #fecaca;
+}
+
+body.dark-theme .apm-license-gate-badge--warning {
+  color: #fde68a;
+}
+
+body.dark-theme .apm-license-gate-facts {
+  background: color-mix(in srgb, var(--bg-secondary, #111827) 90%, #000);
+}
