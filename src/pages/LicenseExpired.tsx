@@ -109,7 +109,7 @@ export default function LicenseExpired({
               {t('Contact Cloudraft')}
             </a>
             <button className="apm-license-gate-secondary" onClick={onLogout} type="button">
-              {t('Sign out')}
+              {t('Back to sign in')}
             </button>
           </div>
         </div>

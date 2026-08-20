@@ -170,6 +170,7 @@ export default function App() {
   const [authChecking, setAuthChecking] = useState(true);
   const [user, setUser] = useState<any | null>(null);
   const [license, setLicense] = useState<{ valid?: boolean; code?: string; message?: string; expires_at?: string | null } | null>(null);
+  const [licenseBlock, setLicenseBlock] = useState<{ code?: string; message?: string; expires_at?: string | null } | null>(null);
   const [namespaces, setNamespaces] = useState<NamespaceStats[]>([]);
   const [selectedNamespace, setSelectedNamespace] = useState(() => {
     return localStorage.getItem('selectedNamespace') || '';
@@ -215,8 +216,19 @@ export default function App() {
         try {
           const currentUser = await api.getCurrentUser();
           setUser(currentUser);
-          const licenseStatus = await api.getLicense().catch(() => ({ valid: true }));
-          setLicense(licenseStatus);
+          const licenseStatus = await api.getLicense().catch(() => ({ valid: true as const }));
+          if (licenseStatus && licenseStatus.valid === false) {
+            localStorage.removeItem('token');
+            setUser(null);
+            setLicenseBlock({
+              code: licenseStatus.code,
+              message: licenseStatus.message,
+              expires_at: licenseStatus.expires_at,
+            });
+            setLicense(licenseStatus);
+          } else {
+            setLicense(licenseStatus);
+          }
         } catch {
           localStorage.removeItem('token');
           setUser(null);
@@ -231,12 +243,32 @@ export default function App() {
     localStorage.setItem('token', token);
     setIsDark(localStorage.getItem('theme') === 'dark');
     setUser(loggedInUser);
-    api.getLicense().then(setLicense).catch(() => setLicense({ valid: true }));
+    setLicenseBlock(null);
+    api.getLicense()
+      .then((licenseStatus) => {
+        setLicense(licenseStatus);
+        if (licenseStatus && licenseStatus.valid === false) {
+          localStorage.removeItem('token');
+          setUser(null);
+          setLicenseBlock({
+            code: licenseStatus.code,
+            message: licenseStatus.message,
+            expires_at: licenseStatus.expires_at,
+          });
+        }
+      })
+      .catch(() => setLicense({ valid: true }));
   }, []);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem('token');
     setUser(null);
+    setLicense(null);
+  }, []);
+
+  const dismissLicenseBlock = useCallback(() => {
+    setLicenseBlock(null);
+    setLicense(null);
   }, []);
 
   const [statsLoaded, setStatsLoaded] = useState(false);
@@ -288,7 +320,17 @@ export default function App() {
     if (!user) return;
     const refreshLicense = async () => {
       try {
-        setLicense(await api.getLicense());
+        const next = await api.getLicense();
+        setLicense(next);
+        if (next && next.valid === false) {
+          localStorage.removeItem('token');
+          setUser(null);
+          setLicenseBlock({
+            code: next.code,
+            message: next.message,
+            expires_at: next.expires_at,
+          });
+        }
       } catch {
         // Keep the last known license snapshot.
       }
@@ -298,11 +340,11 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (!user || license?.valid === false) return;
+    if (!user || license?.valid === false || licenseBlock) return;
     loadStats();
     const interval = setInterval(loadStats, 5000);
     return () => clearInterval(interval);
-  }, [loadStats, user]);
+  }, [loadStats, user, license?.valid, licenseBlock]);
 
   useEffect(() => {
     document.body.classList.toggle('dark-theme', isDark);
@@ -361,6 +403,18 @@ export default function App() {
 
   // Show login page when not authenticated
   if (!user) {
+    if (licenseBlock) {
+      return (
+        <Suspense fallback={<PageFallback />}>
+          <LicenseExpired
+            code={licenseBlock.code}
+            expiresAt={licenseBlock.expires_at}
+            message={licenseBlock.message}
+            onLogout={dismissLicenseBlock}
+          />
+        </Suspense>
+      );
+    }
     return (
       <Suspense fallback={<PageFallback />}>
         <Login onLogin={handleLogin} />
@@ -375,7 +429,14 @@ export default function App() {
           code={license.code}
           expiresAt={license.expires_at}
           message={license.message}
-          onLogout={handleLogout}
+          onLogout={() => {
+            handleLogout();
+            setLicenseBlock({
+              code: license.code,
+              message: license.message,
+              expires_at: license.expires_at,
+            });
+          }}
         />
       </Suspense>
     );
