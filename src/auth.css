@@ -1183,152 +1183,119 @@ body.dark-theme .apm-auth-form input[type='password'] {
   }
 }
 
-/* —— License gate (expired / disabled / pending) —— */
-.apm-license-gate {
-  max-width: 420px;
+/* —— License modal (expired / disabled / pending) —— */
+.apm-license-modal-backdrop {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(37, 99, 235, 0.08), transparent 32%),
+    radial-gradient(circle at 82% 78%, rgba(245, 158, 11, 0.06), transparent 28%),
+    var(--bg-primary, #f8fafc);
 }
 
-.apm-license-gate-icon {
+.apm-license-modal {
+  width: min(100%, 420px);
+  padding: 36px 32px 28px;
+  border: 1px solid var(--border-primary, #e2e8f0);
+  border-radius: 18px;
+  background: var(--bg-secondary, #fff);
+  box-shadow:
+    0 24px 48px rgba(15, 23, 42, 0.08),
+    0 8px 16px rgba(15, 23, 42, 0.04);
+  text-align: center;
+}
+
+.apm-license-modal-icon {
   display: grid;
   place-items: center;
   width: 56px;
   height: 56px;
-  margin-bottom: 18px;
+  margin: 0 auto 22px;
   border-radius: 16px;
-}
-
-.apm-license-gate-icon--danger {
-  color: #e11d48;
-  background: rgba(244, 63, 94, 0.08);
-  border: 1px solid rgba(244, 63, 94, 0.22);
-}
-
-.apm-license-gate-icon--warning {
   color: #d97706;
   background: rgba(245, 158, 11, 0.12);
-  border: 1px solid rgba(217, 119, 6, 0.22);
+  border: 1px solid rgba(217, 119, 6, 0.18);
 }
 
-.apm-license-gate-eyebrow {
-  margin: 0 0 6px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-tertiary, #64748b);
-}
-
-.apm-license-gate h1 {
-  margin-bottom: 10px;
-}
-
-.apm-license-gate-badge {
-  display: inline-flex;
-  align-items: center;
-  margin-bottom: 14px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
+.apm-license-modal h1 {
+  margin: 0 0 12px;
+  font-size: 22px;
   font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--text-primary, #0f172a);
+  line-height: 1.25;
 }
 
-.apm-license-gate-badge--danger {
-  color: #991b1b;
-  background: rgba(244, 63, 94, 0.1);
-}
-
-.apm-license-gate-badge--warning {
-  color: #92400e;
-  background: rgba(245, 158, 11, 0.14);
-}
-
-.apm-license-gate-lead {
-  margin: 0 0 18px;
+.apm-license-modal-subtext {
+  margin: 0 0 28px;
   color: var(--text-secondary, #64748b);
   font-size: 14px;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
-.apm-license-gate-facts {
-  list-style: none;
-  margin: 0 0 16px;
-  padding: 0;
-  border: 1px solid var(--border-primary, #e2e8f0);
-  border-radius: 12px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--bg-tertiary, #f8fafc) 80%, #fff);
-}
-
-.apm-license-gate-facts li {
-  display: grid;
-  grid-template-columns: 110px 1fr;
-  gap: 12px;
-  padding: 12px 14px;
-  border-top: 1px solid var(--border-primary, #e2e8f0);
-}
-
-.apm-license-gate-facts li:first-child {
-  border-top: 0;
-}
-
-.apm-license-gate-facts span {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-tertiary, #64748b);
-}
-
-.apm-license-gate-facts strong {
-  font-size: 13px;
-  font-weight: 650;
-  color: var(--text-primary, #0f172a);
-  line-height: 1.4;
-}
-
-.apm-license-gate-help {
-  margin: 0 0 20px;
-  color: var(--text-tertiary, #64748b);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.apm-license-gate-actions {
+.apm-license-modal-actions {
   display: grid;
   gap: 10px;
 }
 
-a.apm-license-gate-primary {
+a.apm-license-modal-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--accent-primary, #2563eb);
+  border-radius: 10px;
+  background: var(--accent-primary, #2563eb);
+  color: #ffffff !important;
   text-decoration: none;
-  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.22);
   box-sizing: border-box;
 }
 
-.apm-license-gate-secondary {
+a.apm-license-modal-primary:hover {
+  background: var(--accent-hover, #1d4ed8);
+  border-color: var(--accent-hover, #1d4ed8);
+}
+
+.apm-license-modal-secondary {
   min-height: 48px;
-  border: 1px solid var(--border-primary, #e2e8f0);
+  border: 0;
   border-radius: 10px;
   background: transparent;
   color: var(--text-secondary, #64748b);
   font: inherit;
-  font-weight: 750;
+  font-size: 14px;
+  font-weight: 700;
   cursor: pointer;
 }
 
-.apm-license-gate-secondary:hover {
-  background: color-mix(in srgb, var(--bg-tertiary, #f8fafc) 80%, #fff);
+.apm-license-modal-secondary:hover {
   color: var(--text-primary, #0f172a);
+  background: color-mix(in srgb, var(--bg-tertiary, #f8fafc) 80%, #fff);
 }
 
-body.dark-theme .apm-license-gate-badge--danger {
-  color: #fecaca;
+body.dark-theme .apm-license-modal-backdrop {
+  background:
+    radial-gradient(circle at 20% 18%, rgba(59, 130, 246, 0.1), transparent 32%),
+    radial-gradient(circle at 82% 78%, rgba(245, 158, 11, 0.08), transparent 28%),
+    var(--bg-primary, #0b1220);
 }
 
-body.dark-theme .apm-license-gate-badge--warning {
-  color: #fde68a;
+body.dark-theme .apm-license-modal {
+  background: var(--bg-secondary, #111827);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.32),
+    0 8px 16px rgba(0, 0, 0, 0.18);
 }
 
-body.dark-theme .apm-license-gate-facts {
-  background: color-mix(in srgb, var(--bg-secondary, #111827) 90%, #000);
+body.dark-theme .apm-license-modal-icon {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(251, 191, 36, 0.22);
 }
