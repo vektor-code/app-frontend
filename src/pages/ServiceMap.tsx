@@ -8,7 +8,7 @@ import { isSpanError } from '../utils/spanStatus';
 import { createPortal } from 'react-dom';
 import { LoadingState, NoDataState } from '../components/DataState';
 import CustomSelect from '../components/CustomSelect';
-import { LANG_ICONS } from '../components/LanguageIcon';
+import { LANG_ICONS, stackIconKey } from '../components/LanguageIcon';
 import { TECH_LOGOS } from '../components/TechIcon';
 import IconPack from '../components/IconPack';
 import { useTranslation } from '../utils/i18n';
@@ -2121,54 +2121,12 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         } else {
           // Standard/internet node
           const isInternet = node.serviceName === 'Internet';
-          const isFrontend = node.serviceName.toLowerCase().includes('frontend') || node.serviceName.toLowerCase().includes('ui') || node.serviceName.toLowerCase().includes('client');
-          const isBackend = !isInternet && !isFrontend;
 
           const iconSize = 22;
           const iconX = rx + 15;
           const iconY = ry + 14;
 
-          let imgKey = '';
-          if (isFrontend) {
-            imgKey = 'frontend';
-          } else if (isBackend && !isInternet) {
-            // First check if the backend dynamically detected the language
-            if (node.language) {
-              const lang = node.language.toLowerCase();
-              if (lang.includes('go') || lang.includes('golang')) imgKey = 'go';
-              else if (lang.includes('php')) imgKey = 'php';
-              else if (lang.includes('java') || lang.includes('jvm')) imgKey = 'java';
-              else if (lang.includes('node') || lang.includes('javascript') || lang.includes('typescript') || lang.includes('js')) imgKey = 'node';
-              else if (lang.includes('python')) imgKey = 'python';
-              else if (lang.includes('dotnet') || lang.includes('c#') || lang.includes('csharp')) imgKey = 'dotnet';
-              else if (lang.includes('ruby')) imgKey = 'ruby';
-              else if (lang.includes('rust')) imgKey = 'rust';
-            }
-            
-            // Fallback to name-based heuristics if language is not yet detected/populated
-            if (!imgKey) {
-              const sName = node.serviceName.toLowerCase();
-              if (sName.includes('php')) {
-                imgKey = 'php';
-              } else if (sName.includes('java') || sName.includes('spring') || sName.includes('boot')) {
-                imgKey = 'java';
-              } else if (sName.includes('go') || sName.includes('golang') || sName.includes('gopkg')) {
-                imgKey = 'go';
-              } else if (sName.includes('node') || sName.includes('express') || sName.includes('nestjs') || sName.includes('javascript') || sName.includes('typescript') || sName.includes('external')) {
-                imgKey = 'node';
-              } else if (sName.includes('python') || sName.includes('django') || sName.includes('flask') || sName.includes('fastapi') || sName.includes('adapter')) {
-                imgKey = 'python';
-              } else if (sName.includes('dotnet') || sName.includes('csharp') || sName.includes('aspnet')) {
-                imgKey = 'dotnet';
-              } else if (sName.includes('ruby') || sName.includes('rails')) {
-                imgKey = 'ruby';
-              } else if (sName.includes('rust')) {
-                imgKey = 'rust';
-              } else {
-                imgKey = 'backend';
-              }
-            }
-          }
+          let imgKey = isInternet ? '' : (stackIconKey(node.language) || 'backend');
 
           const img = imgKey ? iconImagesRef.current?.get(imgKey) : null;
           ctx.fillStyle = isDark ? `${nodeTone.color}18` : `${nodeTone.color}14`;

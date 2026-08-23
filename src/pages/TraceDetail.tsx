@@ -31,7 +31,7 @@ import { explainSpanError } from '../utils/errorAnalysis';
 import { isHttpMethodAttribute, isHttpStatusAttribute, isValidHttpStatus, normalizeHttpMethod, preferHttpStatusTag, readHttpStatus } from '../utils/httpTelemetry';
 import { analyzeTraceFailure, classificationLabel } from '../utils/traceFailureAnalyzer';
 import { buildSpanForest } from '../utils/spanTree';
-import { LANG_ICONS } from '../components/LanguageIcon';
+import { LANG_ICONS, stackIconKey } from '../components/LanguageIcon';
 import { TECH_LOGOS } from '../components/TechIcon';
 import { getSpanDependency, getQueryText, getQuerySummary } from '../utils/dependency';
 import { formatInvestigationState, formatObservationMessage, observationMark, observationTone } from '../utils/investigationDisplay';
@@ -985,33 +985,11 @@ const TOPO_ICONS: Record<string, string> = {
 };
 
 const getServiceLanguage = (serviceName: string, serviceSpans: Span[]): string => {
-  const sName = serviceName.toLowerCase();
-  if (sName.includes('php')) return 'php';
-  if (
-    sName.includes('java') || 
-    sName.includes('spring') || 
-    sName.includes('boot')
-  ) return 'java';
-  if (sName.includes('golang') || sName.includes('gopkg') || sName.startsWith('go-') || sName.endsWith('-go')) return 'go';
-  if (sName.includes('node') || sName.includes('express') || sName.includes('nestjs') || sName.includes('javascript') || sName.includes('typescript')) return 'node';
-  if (sName.includes('python') || sName.includes('django') || sName.includes('flask') || sName.includes('fastapi') || sName.includes('adapter')) return 'python';
-  if (sName.includes('dotnet') || sName.includes('csharp') || sName.includes('aspnet')) return 'dotnet';
-  if (sName.includes('ruby') || sName.includes('rails')) return 'ruby';
-  if (sName.includes('rust')) return 'rust';
-
   for (const span of serviceSpans) {
     if (span.serviceName === serviceName && span.attributes) {
       const lang = span.attributes['telemetry.sdk.language'] || span.attributes['process.runtime.name'];
       if (lang) {
-        const l = lang.toLowerCase();
-        if (l.includes('php')) return 'php';
-        if (l.includes('java') || l.includes('jvm') || l.includes('kotlin') || l.includes('scala')) return 'java';
-        if (l === 'go' || l === 'golang' || l.includes('golang')) return 'go';
-        if (l.includes('node') || l.includes('javascript') || l.includes('typescript') || l.includes('js')) return 'node';
-        if (l.includes('python')) return 'python';
-        if (l.includes('dotnet') || l.includes('c#') || l.includes('csharp')) return 'dotnet';
-        if (l.includes('ruby')) return 'ruby';
-        if (l.includes('rust')) return 'rust';
+        return stackIconKey(lang) || lang.toLowerCase();
       }
     }
   }
@@ -1021,12 +999,7 @@ const getServiceLanguage = (serviceName: string, serviceSpans: Span[]): string =
 const getTopoIconKey = (name: string, spans: Span[] = []): string => {
   const n = name.toLowerCase();
 
-  // 1. Check if it's a frontend service
-  if (n.includes('frontend') || n.includes('ui') || n.includes('client')) {
-    return 'frontend';
-  }
-
-  // 2. Check if it's a known database / infrastructure system
+  // Known infrastructure / datastore peers (not application classification).
   if (n.includes('mygov')) return 'mygov';
   if (n.includes('redis')) return 'redis';
   if (n.includes('kafka')) return 'kafka';
@@ -1050,40 +1023,17 @@ const getTopoIconKey = (name: string, spans: Span[] = []): string => {
   if (n.includes('vm') || n.includes('virtual machine') || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(n)) return 'vm';
   if (n.includes('bridge') || n.includes('gov.az')) return 'bridge';
 
-  // 3. Dynamic lookup: Scan spans of this service to find dynamic language
-  let detectedLang = '';
+  // Scan spans of this service for the SDK language (assigned stack / runtime).
   for (const span of spans) {
     if (span.serviceName === name && span.attributes) {
       const lang = span.attributes['telemetry.sdk.language'] || span.attributes['process.runtime.name'];
-      if (lang) {
-        const l = lang.toLowerCase();
-        if (l === 'go' || l === 'golang' || l.includes('golang')) detectedLang = 'go';
-        else if (l.includes('php')) detectedLang = 'php';
-        else if (l.includes('java') || l.includes('jvm')) detectedLang = 'java';
-        else if (l.includes('node') || l.includes('javascript') || l.includes('typescript') || l.includes('js')) detectedLang = 'node';
-        else if (l.includes('python')) detectedLang = 'python';
-        else if (l.includes('dotnet') || l.includes('c#') || l.includes('csharp')) detectedLang = 'dotnet';
-        else if (l.includes('ruby')) detectedLang = 'ruby';
-        else if (l.includes('rust')) detectedLang = 'rust';
+      const key = stackIconKey(lang);
+      if (key) {
+        return key;
       }
     }
   }
 
-  if (detectedLang) {
-    return detectedLang;
-  }
-
-  // 4. Name-based heuristics fallback
-  if (n.includes('php')) return 'php';
-  if (n.includes('java') || n.includes('spring') || n.includes('boot')) return 'java';
-  if (n.includes('golang') || n.includes('gopkg') || n.startsWith('go-') || n.endsWith('-go')) return 'go';
-  if (n.includes('node') || n.includes('express') || n.includes('nestjs') || n.includes('javascript') || n.includes('typescript') || n.includes('external')) return 'node';
-  if (n.includes('python') || n.includes('django') || n.includes('flask') || n.includes('fastapi') || n.includes('adapter')) return 'python';
-  if (n.includes('dotnet') || n.includes('csharp') || n.includes('aspnet')) return 'dotnet';
-  if (n.includes('ruby') || n.includes('rails')) return 'ruby';
-  if (n.includes('rust')) return 'rust';
-
-  // 5. Default fallback to backend (go) as in ServiceMap
   return 'backend';
 };
 

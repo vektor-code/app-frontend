@@ -227,7 +227,6 @@ function workloadProfile(name: string, namespace = ''): { icon: string; kind: st
   if (lower.includes('java') || lower.includes('spring')) return { icon: '/logos/java.svg', kind: 'Java app' };
   if (lower.includes('go') || lower.includes('golang') || lower.includes('highping') || lower.includes('proxy') || lower.includes('gateway')) return { icon: '/logos/go.svg', kind: 'Go service' };
   if (lower.includes('api') || lower.includes('backend') || lower.includes('server')) return { icon: INFRA_ICONS.node, kind: 'API service' };
-  if (lower.includes('front') || lower.includes('ui') || lower.includes('portal')) return { icon: INFRA_ICONS.apps, kind: 'Frontend' };
   if (lower.includes('worker') || lower.includes('job') || lower.includes('consumer')) return { icon: INFRA_ICONS.activity, kind: 'Worker' };
   return { icon: INFRA_ICONS.apps, kind: 'Application' };
 }

@@ -18,11 +18,31 @@ export const LANG_ICONS: Record<string, string> = {
   swift: '/logos/swift.svg',
   elixir: '/logos/elixir.svg',
   scala: '/logos/scala.svg',
+  nginx: '/logos/nginx.svg',
+  'apache-httpd': '/logos/nginx.svg',
+  apache: '/logos/nginx.svg',
+  httpd: '/logos/nginx.svg',
 };
 
 export function languageLogoFor(language?: string): string | null {
   if (!language) return null;
-  return LANG_ICONS[language.toLowerCase().trim()] ?? null;
+  const key = stackIconKey(language);
+  if (!key) return null;
+  return LANG_ICONS[key] ?? LANG_ICONS[language.toLowerCase().trim()] ?? null;
+}
+
+/** Map an assigned tech stack to an icon key. Names of workloads are not used. */
+export function stackIconKey(language?: string): string | undefined {
+  if (!language) return undefined;
+  const l = language.toLowerCase().trim();
+  if (l === 'nginx' || l === 'openresty' || l === 'caddy' || l === 'apache' || l === 'httpd' || l === 'apache-httpd') {
+    return 'nginx';
+  }
+  if (l === 'nodejs' || l === 'node' || l === 'javascript' || l === 'typescript' || l === 'js') return 'nodejs';
+  if (l === 'go' || l === 'golang') return 'go';
+  if (l === 'dotnet' || l === 'csharp' || l === 'c#' || l === '.net') return 'dotnet';
+  if (LANG_ICONS[l]) return l;
+  return undefined;
 }
 
 interface LanguageIconProps {
