@@ -450,7 +450,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
               options={sortOptions}
             />
           </label>
-          <button type="button" className="traces-refresh-btn" onClick={loadTraces}>
+          <button type="button" className="traces-refresh-btn" onClick={() => { void loadTraces(); }}>
             <RefreshCw size={13} />
             {t('Refresh')}
           </button>
