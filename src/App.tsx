@@ -1,6 +1,6 @@
 import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { api } from './api/client';
 import type { NamespaceStats } from './entities';
 import Sidebar from './components/Sidebar';
@@ -167,6 +167,7 @@ function HeaderDropdown({
 
 export default function App() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [authChecking, setAuthChecking] = useState(true);
   const [user, setUser] = useState<any | null>(null);
   const [license, setLicense] = useState<{ valid?: boolean; code?: string; message?: string; expires_at?: string | null } | null>(null);
@@ -244,6 +245,7 @@ export default function App() {
     setIsDark(localStorage.getItem('theme') === 'dark');
     setUser(loggedInUser);
     setLicenseBlock(null);
+    navigate('/', { replace: true });
     api.getLicense()
       .then((licenseStatus) => {
         setLicense(licenseStatus);
@@ -258,7 +260,7 @@ export default function App() {
         }
       })
       .catch(() => setLicense({ valid: true }));
-  }, []);
+  }, [navigate]);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem('token');
@@ -556,6 +558,7 @@ export default function App() {
         <main className="app-content">
           <Suspense fallback={<PageFallback />}>
             <Routes>
+              <Route path="/login" element={<Navigate to="/" replace />} />
               <Route path="/" element={<Dashboard namespaces={namespaces} selectedNamespace={selectedNamespace} />} />
               <Route path="/services" element={<Services namespace={selectedNamespace} />} />
               <Route path="/traces" element={<TraceExplorer namespace={selectedNamespace} cluster={selectedCluster} />} />
