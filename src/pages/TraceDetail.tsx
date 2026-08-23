@@ -23,6 +23,7 @@ import {
 import { api } from '../api/client';
 import type { DiagnosticReport, Span, Trace, TraceInvestigation } from '../entities';
 import { isMissingHttpResponse, isSpanError } from '../utils/spanStatus';
+import { displayOperationName } from '../utils/operationName';
 import { useTranslation } from '../utils/i18n';
 import { createPortal } from 'react-dom';
 import SpanTimeline, { getSpanDestination } from '../components/SpanTimeline';
@@ -121,8 +122,15 @@ function getTraceServiceSummary(spans: Span[]): TraceServiceSummary[] {
     .sort((a, b) => b.durationMs - a.durationMs);
 }
 
+const SLOW_SPAN_MS = 1000;
+
+function isSlowSpan(span: Span) {
+  return span.durationMs >= SLOW_SPAN_MS;
+}
+
 function getCriticalSpans(spans: Span[], limit = 5) {
-  return [...spans]
+  return spans
+    .filter(span => isSpanError(span) || isSlowSpan(span))
     .sort((a, b) => {
       const errorDelta = Number(isSpanError(b)) - Number(isSpanError(a));
       if (errorDelta !== 0) return errorDelta;
@@ -162,7 +170,7 @@ function getTraceHealthTone(trace: Trace): TraceTone {
 
 function getSpanTone(span: Span): TraceTone {
   if (isSpanError(span)) return 'critical';
-  if (span.durationMs > 1000) return 'warning';
+  if (isSlowSpan(span)) return 'warning';
   return 'neutral';
 }
 
@@ -179,7 +187,7 @@ function getSpanOperationLabel(span: Span) {
   const rpcMethod = attrs['rpc.method'];
   if (rpcMethod) return String(rpcMethod);
 
-  return span.name;
+  return displayOperationName(span.name);
 }
 
 function getErrorCategoryLabel(category: string) {
@@ -2665,7 +2673,9 @@ export default function TraceDetail() {
     return trace?.spans ? getSpanKindSummary(trace.spans) : {};
   }, [trace]);
 
-  const rootOperation = trace?.rootSpan?.name || trace?.spans?.[0]?.name || 'Trace';
+  const rootOperation = trace?.rootSpan
+    ? getSpanOperationLabel(trace.rootSpan)
+    : displayOperationName(trace?.spans?.[0]?.name || '', 'Trace');
   const erroredServiceCount = serviceSummary.filter(item => item.errorCount > 0).length;
   const dominantService = serviceSummary[0];
   const traceTone = trace ? getTraceHealthTone(trace) : 'neutral';
@@ -2728,8 +2738,10 @@ export default function TraceDetail() {
               icon="latency"
               label={t('Duration')}
               value={formatDuration(trace.durationMs)}
-              detail={`${formatTraceNumber(criticalSpans.length)} ${t('slow/error spans')}`}
-              tone={trace.durationMs > 1500 ? 'warning' : 'healthy'}
+              detail={criticalSpans.length > 0
+                ? `${formatTraceNumber(criticalSpans.length)} ${t('slow/error spans')}`
+                : t('No slow or error spans')}
+              tone={criticalSpans.length > 0 || trace.durationMs > 1500 ? 'warning' : 'healthy'}
             />
             <TraceMetricCard
               icon="alert"
@@ -2972,7 +2984,9 @@ export default function TraceDetail() {
                 <strong>{formatTraceNumber(criticalSpans.length)}</strong>
               </div>
               <div className="trace-span-chip-list">
-                {criticalSpans.map(span => (
+                {criticalSpans.length === 0 ? (
+                  <p className="trace-empty-hint">{t('No slow or error spans')}</p>
+                ) : criticalSpans.map(span => (
                   <TraceSpanChip key={span.spanId} span={span} onClick={() => setSelectedSpan(span)} />
                 ))}
               </div>

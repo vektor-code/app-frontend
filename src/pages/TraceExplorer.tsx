@@ -23,6 +23,7 @@ import CustomSelect from '../components/CustomSelect';
 import LanguageIcon from '../components/LanguageIcon';
 import IconPack from '../components/IconPack';
 import { useTranslation } from '../utils/i18n';
+import { displayOperationName } from '../utils/operationName';
 import { useColumnResize } from '../utils/useColumnResize';
 
 interface TraceExplorerProps {
@@ -269,7 +270,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
     const list = endpoints.map(endpoint => {
       const errorRate = endpoint.count > 0 ? (endpoint.errorCount / endpoint.count) * 100 : 0;
       return {
-        operationName: endpoint.operationName || '-',
+        operationName: displayOperationName(endpoint.operationName || ''),
         serviceName: endpoint.serviceName,
         namespace: endpoint.namespace,
         avgDurationMs: endpoint.avgDurationMs,
@@ -696,7 +697,7 @@ function TraceRow({
       <div className="trace-main">
         <div className="trace-title-line">
           <LanguageIcon language={language} size={18} />
-          <strong>{trace.rootName || trace.serviceName}</strong>
+          <strong>{displayOperationName(trace.rootName || '', trace.serviceName)}</strong>
         </div>
         <div className="trace-subline">
           <span>{trace.serviceName}</span>

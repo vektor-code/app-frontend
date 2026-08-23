@@ -538,13 +538,15 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
           >
             Errors <em>{errorCount}</em>
           </button>
-          <button
-            type="button"
-            className={`tab-btn critical-path ${filterType === 'critical' ? 'active' : ''}`}
-            onClick={() => setFilterType('critical')}
-          >
-            Critical <em>{criticalPathSet.size}</em>
-          </button>
+          {spans.length > 1 && (
+            <button
+              type="button"
+              className={`tab-btn critical-path ${filterType === 'critical' ? 'active' : ''}`}
+              onClick={() => setFilterType('critical')}
+            >
+              Longest path <em>{criticalPathSet.size}</em>
+            </button>
+          )}
         </div>
 
         <label className="trace-waterfall-toggle">

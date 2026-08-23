@@ -16711,6 +16711,12 @@ body.dark-theme .row-status.is-error:hover {
   gap: 8px;
 }
 
+.trace-empty-hint {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+}
+
 .trace-service-card,
 .trace-span-chip {
   width: 100%;
@@ -18540,6 +18546,7 @@ body:not(.dark-theme) .sidebar-collapsed .primary-nav-item.active {
 .apm-donut-legend .healthy i { background: var(--chart-green); }
 .apm-donut-legend .warning i { background: var(--chart-amber); }
 .apm-donut-legend .critical i { background: var(--chart-rose); }
+.apm-donut-legend .idle i { background: var(--border-primary); }
 
 .apm-donut-legend strong {
   color: var(--text-primary);

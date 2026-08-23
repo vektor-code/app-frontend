@@ -138,9 +138,11 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
   const totalRequests = serviceRequests > 0 ? serviceRequests : timeseriesRequests;
   const totalErrors = serviceRequests > 0 ? serviceErrorsTotal : timeseriesErrors;
   const activeServicesCount = services.length || serviceErrors.length;
+  const traffickedServices = services.filter(service => service.requestCount > 0);
+  const traffickedServicesCount = traffickedServices.length;
   const errorRate = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
-  const serviceHealthScore = weightedServiceValue(services, service => service.healthScore ?? inferHealthScore(service), 100);
-  const healthScore = services.length > 0 ? serviceHealthScore : clamp(100 - Math.min(70, errorRate * 4.5), 0, 100);
+  const serviceHealthScore = weightedServiceValue(traffickedServices, service => service.healthScore ?? inferHealthScore(service), 100);
+  const healthScore = traffickedServicesCount > 0 ? serviceHealthScore : clamp(100 - Math.min(70, errorRate * 4.5), 0, 100);
   const healthTone = getHealthTone(healthScore, totalRequests);
   const recentErrorRate = average(errorRateData.slice(-3));
   const recentP99 = average(latencyP99Data.slice(-3));
@@ -181,7 +183,7 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
     {
       label: t('Health score'),
       value: healthScore.toFixed(0),
-      detail: `${healthLabel(healthTone)} / ${activeServicesCount} ${t('services')}`,
+      detail: `${healthLabel(healthTone)} / ${traffickedServicesCount} ${t('active')} · ${activeServicesCount} ${t('total')}`,
       tone: healthTone,
       icon: 'shield',
       progress: healthScore,
@@ -260,6 +262,7 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
       <VisualOverview
         healthMix={serviceHealthMix}
         totalServices={activeServicesCount}
+        activeServices={traffickedServicesCount}
         successfulRequests={successfulRequests}
         failedRequests={totalErrors}
         successRate={successRate}
@@ -464,6 +467,7 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
 function VisualOverview({
   healthMix,
   totalServices,
+  activeServices,
   successfulRequests,
   failedRequests,
   successRate,
@@ -475,6 +479,7 @@ function VisualOverview({
 }: {
   healthMix: { healthy: number; warning: number; critical: number; neutral: number };
   totalServices: number;
+  activeServices: number;
   successfulRequests: number;
   failedRequests: number;
   successRate: number;
@@ -484,17 +489,17 @@ function VisualOverview({
   p99: number;
   t: (key: string) => string;
 }) {
-  const mixTotal = healthMix.healthy + healthMix.warning + healthMix.critical + healthMix.neutral;
-  const divisor = Math.max(mixTotal, 1);
+  const trafficTotal = healthMix.healthy + healthMix.warning + healthMix.critical;
+  const idleCount = Math.max(healthMix.neutral, totalServices - activeServices);
+  const divisor = Math.max(trafficTotal, 1);
   const healthyEnd = (healthMix.healthy / divisor) * 100;
   const warningEnd = healthyEnd + (healthMix.warning / divisor) * 100;
   const criticalEnd = warningEnd + (healthMix.critical / divisor) * 100;
-  const donutBackground = mixTotal > 0
+  const donutBackground = trafficTotal > 0
     ? `conic-gradient(
         var(--chart-green) 0% ${healthyEnd}%,
         var(--chart-amber) ${healthyEnd}% ${warningEnd}%,
-        var(--chart-rose) ${warningEnd}% ${criticalEnd}%,
-        var(--border-primary) ${criticalEnd}% 100%
+        var(--chart-rose) ${warningEnd}% ${criticalEnd}%
       )`
     : 'conic-gradient(var(--border-primary) 0% 100%)';
   const maxLatency = Math.max(p50, p95, p99, 1);
@@ -504,12 +509,12 @@ function VisualOverview({
       <article className="apm-visual-card apm-health-mix">
         <div className="apm-visual-card-head">
           <h2>{t('Service health')}</h2>
-          <span>{totalServices} {t('services')}</span>
+          <span>{activeServices} {t('active')} · {totalServices} {t('total')}</span>
         </div>
         <div className="apm-health-mix-body">
           <div className="apm-donut" style={{ background: donutBackground }}>
             <div>
-              <strong>{mixTotal > 0 ? Math.round(healthyEnd) : 0}%</strong>
+              <strong>{trafficTotal > 0 ? Math.round(healthyEnd) : 0}%</strong>
               <span>{t('Healthy')}</span>
             </div>
           </div>
@@ -517,6 +522,7 @@ function VisualOverview({
             <span className="healthy"><i />{t('Healthy')}<strong>{healthMix.healthy}</strong></span>
             <span className="warning"><i />{t('Degraded')}<strong>{healthMix.warning}</strong></span>
             <span className="critical"><i />{t('Critical')}<strong>{healthMix.critical}</strong></span>
+            <span className="idle"><i />{t('No traffic')}<strong>{idleCount}</strong></span>
           </div>
         </div>
       </article>
@@ -1242,7 +1248,8 @@ function ChartTooltip({ leftPercent, children }: { leftPercent: number; children
 function weightedServiceValue(services: ServiceStats[], getValue: (service: ServiceStats) => number, fallback = 0) {
   const totals = services.reduce(
     (acc, service) => {
-      const weight = Math.max(service.requestCount, 1);
+      const weight = service.requestCount;
+      if (weight <= 0) return acc;
       const value = getValue(service);
       if (Number.isFinite(value)) {
         acc.value += value * weight;
