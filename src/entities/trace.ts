@@ -4,6 +4,12 @@ export interface SpanEvent {
   attributes?: Record<string, string>;
 }
 
+export interface SpanLink {
+  traceId?: string;
+  spanId?: string;
+  attributes?: Record<string, string>;
+}
+
 export interface Span {
   traceId: string;
   spanId: string;
@@ -21,6 +27,7 @@ export interface Span {
   kind: 'SERVER' | 'CLIENT' | 'PRODUCER' | 'CONSUMER' | 'INTERNAL';
   attributes?: Record<string, string>;
   events?: SpanEvent[];
+  links?: SpanLink[];
   error?: string;
 }
 

@@ -185,10 +185,12 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
     setFilterVal('page', Math.max(1, nextPage).toString());
   };
 
-  const loadTraces = useCallback(async () => {
+  const loadTraces = useCallback(async (opts?: { silent?: boolean }) => {
     try {
-      setLoading(true);
-      setLoadError(false);
+      if (!opts?.silent) {
+        setLoading(true);
+        setLoadError(false);
+      }
       const params: Record<string, string> = {};
       if (namespace) params.namespace = namespace;
       if (cluster) params.cluster = cluster;
@@ -213,9 +215,13 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
       }
     } catch (err) {
       console.error('load traces:', err);
-      setLoadError(true);
+      if (!opts?.silent) {
+        setLoadError(true);
+      }
     } finally {
-      setLoading(false);
+      if (!opts?.silent) {
+        setLoading(false);
+      }
     }
   }, [namespace, cluster, serviceFilter, errorFilter, operationFilter, traceIdFilter, minSpans, minDuration, maxDuration, timeRangeFilter, page, pageSize, activeTab]);
 
@@ -224,7 +230,9 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
   }, [loadTraces]);
 
   useEffect(() => {
-    const interval = setInterval(loadTraces, 5000);
+    const interval = setInterval(() => {
+      void loadTraces({ silent: true });
+    }, 5000);
     return () => clearInterval(interval);
   }, [loadTraces]);
 

@@ -49,6 +49,11 @@ export function buildSpanForest(spans: Span[]): SpanForest {
   const orphans: Span[] = [];
   for (const sp of ordered) {
     if (isRootParentId(sp.parentSpanId)) {
+      const linked = linkedParentInTrace(sp, byId);
+      if (linked && linked.spanId !== sp.spanId) {
+        addChild(linked.spanId, sp);
+        continue;
+      }
       trueRoots.push(sp);
       continue;
     }
@@ -79,7 +84,7 @@ export function buildSpanForest(spans: Span[]): SpanForest {
   const midTreeMissing: Span[] = [];
   for (const sp of orphans) {
     if (displayRoot && sp.spanId === displayRoot.spanId) continue;
-    let host = tightestContainer(ordered, sp);
+    let host = linkedParentInTrace(sp, byId) || tightestContainer(ordered, sp);
     if (!host || createsCycle(parentOf, normalizeSpanId(sp.spanId), normalizeSpanId(host.spanId))) {
       host = displayRoot;
     }
@@ -156,4 +161,27 @@ function tightestContainer(all: Span[], child: Span): Span | null {
     }
   }
   return best;
+}
+
+function linkedParentInTrace(sp: Span, byId: Map<string, Span>): Span | undefined {
+  const links = sp.links && sp.links.length > 0
+    ? sp.links
+    : parseStoredLinks(sp.attributes?.['otel.span.links']);
+  for (const link of links) {
+    if (!link.spanId) continue;
+    if (link.traceId && normalizeSpanId(link.traceId) !== normalizeSpanId(sp.traceId)) continue;
+    const parent = byId.get(normalizeSpanId(link.spanId));
+    if (parent && parent.spanId !== sp.spanId) return parent;
+  }
+  return undefined;
+}
+
+function parseStoredLinks(raw?: string): { traceId?: string; spanId?: string }[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
