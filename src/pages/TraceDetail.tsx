@@ -1,12 +1,25 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import {
+  Activity,
+  AlertTriangle,
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  Clock,
+  Copy,
+  Flame,
+  GitFork,
+  Layers,
+  Network,
+  Share2,
+} from 'lucide-react';
 import { api } from '../api/client';
 import type { Span, Trace, TraceInvestigation } from '../entities';
 import SpanTimeline, { getSpanDestination as getSpanDestination } from '../components/SpanTimeline';
 import SideDrawer from '../components/SideDrawer';
 import { FlameGraph as FlameGraph } from '../components/trace/FlameGraph';
 import { SpanDrawerContent as SpanDrawerContent } from '../components/trace/SpanDrawer';
-import { TraceDetailIcon as TraceDetailIcon, type TraceDetailIconName } from '../components/trace/TraceDetailIcon';
 import { TraceTopology as TraceTopology } from '../components/trace/TraceTopology';
 import { explainSpanError as explainSpanError } from '../utils/errorAnalysis';
 import {
@@ -117,6 +130,16 @@ function getSpanTone(span: Span): TraceTone {
   return 'neutral';
 }
 
+function TraceChip({
+  children,
+  tone = 'neutral',
+}: {
+  children: ReactNode;
+  tone?: 'neutral' | 'violet' | 'error' | 'accent' | 'warning';
+}) {
+  return <span className={`trace-chip ${tone}`}>{children}</span>;
+}
+
 function TraceMetricCard({
   icon,
   label,
@@ -124,7 +147,7 @@ function TraceMetricCard({
   detail,
   tone = 'neutral',
 }: {
-  icon: TraceDetailIconName;
+  icon: ReactNode;
   label: string;
   value: string;
   detail: string;
@@ -132,9 +155,7 @@ function TraceMetricCard({
 }) {
   return (
     <div className={`trace-detail-metric-card ${tone}`}>
-      <div className="trace-detail-metric-icon">
-        <TraceDetailIcon name={icon} />
-      </div>
+      <div className="trace-detail-metric-icon">{icon}</div>
       <div>
         <span>{label}</span>
         <strong>{value}</strong>
@@ -151,14 +172,14 @@ function TraceViewButton({
   onClick,
 }: {
   active: boolean;
-  icon: TraceDetailIconName;
+  icon: ReactNode;
   label: string;
   onClick: () => void;
 }) {
   return (
-    <button className={`trace-detail-view-button ${active ? 'active' : ''}`} onClick={onClick}>
-      <TraceDetailIcon name={icon} />
-      {label}
+    <button type="button" className={`trace-detail-view-button ${active ? 'active' : ''}`} onClick={onClick}>
+      {icon}
+      <span>{label}</span>
     </button>
   );
 }
@@ -186,9 +207,9 @@ function TraceServiceCard({
         <i style={{ width: `${Math.max(3, share)}%`, background: color }} />
       </div>
       <div className="trace-service-card-meta">
-        <span>{formatTraceNumber(item.spanCount)} spans</span>
-        <span>{formatDuration(item.avgDurationMs)} avg</span>
-        <span>{formatTraceNumber(item.errorCount)} errors</span>
+        <TraceChip>{formatTraceNumber(item.spanCount)} spans</TraceChip>
+        <TraceChip>{formatDuration(item.avgDurationMs)} avg</TraceChip>
+        <TraceChip tone={item.errorCount > 0 ? 'error' : 'neutral'}>{formatTraceNumber(item.errorCount)} errors</TraceChip>
       </div>
     </div>
   );
@@ -403,35 +424,39 @@ export default function TraceDetail() {
 
   return (
     <div className="trace-detail-page animate-fade-in">
+      <div className="trace-detail-glow" aria-hidden="true" />
+      <nav className="trace-detail-breadcrumb" aria-label={t('Breadcrumb')}>
+        <button type="button" onClick={() => navigate('/traces')}>{t('Traces')}</button>
+        <ChevronRight size={14} aria-hidden="true" />
+        <em>{t('Trace')}</em>
+      </nav>
       <section className={`trace-detail-hero ${traceTone}`}>
         <div className="trace-detail-hero-main">
-          <nav className="trace-detail-breadcrumb" aria-label={t('Breadcrumb')}>
-            <button type="button" onClick={() => navigate('/traces')}>{t('Traces')}</button>
-            <span aria-hidden="true">/</span>
-            <em>{t('Trace')}</em>
-          </nav>
-          <button className="trace-detail-back-button" onClick={() => navigate('/traces')}>
-            <TraceDetailIcon name="back" />
+          <button type="button" className="trace-detail-back-button" onClick={() => navigate('/traces')}>
+            <ArrowLeft size={16} />
             {t('Back to Explorer')}
           </button>
           <span className="trace-detail-eyebrow">
-            <TraceDetailIcon name="network" />
+            <Share2 size={14} />
             {t('Trace detail')}
           </span>
           <h1 title={rootOperation}>{rootOperation}</h1>
-          <div className="trace-detail-id-row">
+          <button
+            type="button"
+            className={`trace-detail-id-copy ${copiedTraceId ? 'copied' : ''}`}
+            onClick={handleCopyTraceId}
+            title={copiedTraceId ? t('Copied!') : t('Copy Full Trace ID')}
+          >
             <code title={trace.traceId}>{trace.traceId}</code>
-            <button onClick={handleCopyTraceId} title={copiedTraceId ? t('Copied!') : t('Copy Full Trace ID')}>
-              <TraceDetailIcon name={copiedTraceId ? 'check' : 'copy'} />
-            </button>
-          </div>
+            {copiedTraceId ? <Check size={16} /> : <Copy size={16} />}
+          </button>
         </div>
         <div className="trace-detail-hero-side">
           <span className={`trace-detail-status ${trace.hasError ? 'critical' : 'healthy'}`}>
             <i />
             {trace.hasError ? 'ERROR' : 'OK'}
           </span>
-          <strong>{formatDuration(trace.durationMs)}</strong>
+          <strong className={trace.hasError ? 'is-error' : ''}>{formatDuration(trace.durationMs)}</strong>
           <em>{formatTraceDate(trace.startTime)}</em>
         </div>
       </section>
@@ -440,14 +465,14 @@ export default function TraceDetail() {
         <div className="trace-detail-main-content">
           <section className="trace-detail-metric-grid">
             <TraceMetricCard
-              icon="server"
+              icon={<Layers size={20} />}
               label={t('Root Service')}
               value={trace.serviceName}
               detail={dominantService ? `${dominantService.namespace} / ${formatTraceNumber(dominantService.spanCount)} spans` : (trace.namespace || 'default')}
               tone="info"
             />
             <TraceMetricCard
-              icon="waterfall"
+              icon={<Network size={20} />}
               label={t('Spans')}
               value={formatTraceNumber(trace.spanCount)}
               detail={brokenLinkSpans.length > 0
@@ -456,7 +481,7 @@ export default function TraceDetail() {
               tone={brokenLinkSpans.length > 0 ? 'warning' : 'healthy'}
             />
             <TraceMetricCard
-              icon="latency"
+              icon={<Clock size={20} />}
               label={t('Duration')}
               value={formatDuration(trace.durationMs)}
               detail={criticalSpans.length > 0
@@ -465,7 +490,7 @@ export default function TraceDetail() {
               tone={criticalSpans.length > 0 || trace.durationMs > 1500 ? 'warning' : 'healthy'}
             />
             <TraceMetricCard
-              icon="alert"
+              icon={<AlertTriangle size={20} />}
               label={t('Errors')}
               value={formatTraceNumber(errorSpans.length)}
               detail={`${formatTraceNumber(erroredServiceCount)} ${t('affected services')}`}
@@ -482,10 +507,12 @@ export default function TraceDetail() {
               <div className="trace-detail-namespace-flow">
                 {(traceNamespaces.length > 0 ? traceNamespaces : [trace.namespace]).map((ns, idx) => (
                   <React.Fragment key={ns}>
-                    {idx > 0 && <em>{'->'}</em>}
-                    <span>{ns}</span>
+                    {idx > 0 && <ChevronRight className="trace-chip-chevron" size={14} />}
+                    <TraceChip tone="violet">{ns}</TraceChip>
                   </React.Fragment>
                 ))}
+                <ChevronRight className="trace-chip-chevron" size={14} />
+                <TraceChip>{trace.serviceName}</TraceChip>
               </div>
             </div>
 
@@ -495,16 +522,22 @@ export default function TraceDetail() {
                 <strong>{Object.keys(spanKindSummary).length}</strong>
               </div>
               <div className="trace-detail-kind-list">
-                {Object.entries(spanKindSummary).map(([kind, count]) => (
-                  <span key={kind}>{kind.toLowerCase()} <b>{count}</b></span>
-                ))}
+                {Object.entries(spanKindSummary).map(([kind, count]) => {
+                  const key = kind.toLowerCase();
+                  const tone = key === 'server' ? 'violet' : key === 'client' ? 'accent' : 'neutral';
+                  return (
+                    <TraceChip key={kind} tone={tone}>
+                      {key} <b>{count}</b>
+                    </TraceChip>
+                  );
+                })}
               </div>
             </div>
           </section>
 
           {brokenLinkSpans.length > 0 ? (
             <div className="trace-detail-alert warning compact">
-              <TraceDetailIcon name="alert" />
+              <AlertTriangle size={16} />
               <span>
                 <strong>{t('Incomplete flow')}</strong>
                 {brokenLinkSpans.length} span{brokenLinkSpans.length > 1 ? 's' : ''} reference{brokenLinkSpans.length > 1 ? '' : 's'} a parent that was not captured
@@ -513,7 +546,7 @@ export default function TraceDetail() {
             </div>
           ) : !(failureDiagnosis || errorSpans.length > 0) ? (
             <div className="trace-detail-alert ok compact">
-              <TraceDetailIcon name="check" />
+              <Check size={16} />
               <span>
                 <strong>{t('Complete span tree')}</strong>
                 {t('Every parent in this trace was captured.')}
@@ -539,7 +572,7 @@ export default function TraceDetail() {
               <div className={`trace-detail-problems-panel ${diagnosisTone}`}>
                 <div className="problems-panel-header">
                   <div>
-                    <TraceDetailIcon name="alert" />
+                    <AlertTriangle size={16} />
                     <span>{t('Trace Error Summary')}</span>
                   </div>
                   <div className="problems-panel-pills">
@@ -740,9 +773,13 @@ export default function TraceDetail() {
                     <span>{t('Trace Metadata Tags')}</span>
                     <strong>{formatTraceNumber(uniqueTags.length)}</strong>
                   </div>
-                  <div className="trace-detail-chip-cloud">
+                  <div className="trace-detail-tag-tiles">
                     {uniqueTags.map(([k, v]) => (
-                      <div key={k} className={`trace-detail-chip ${isHttpMethodAttribute(k) ? 'method' : ''}`} title={`${k}: ${v}`}>
+                      <div
+                        key={k}
+                        className={`trace-detail-tag-tile ${v.length > 56 ? 'wide' : ''}`}
+                        title={`${k}: ${v}`}
+                      >
                         <span>{k}</span>
                         <strong>{v}</strong>
                       </div>
@@ -770,19 +807,19 @@ export default function TraceDetail() {
               <div className="trace-detail-view-toggle">
                 <TraceViewButton
                   active={viewMode === 'waterfall'}
-                  icon="waterfall"
+                  icon={<Activity size={16} />}
                   label={t('Waterfall')}
                   onClick={() => setViewMode('waterfall')}
                 />
                 <TraceViewButton
                   active={viewMode === 'flame'}
-                  icon="flame"
+                  icon={<Flame size={16} />}
                   label={t('Flame')}
                   onClick={() => setViewMode('flame')}
                 />
                 <TraceViewButton
                   active={viewMode === 'topology'}
-                  icon="topology"
+                  icon={<GitFork size={16} />}
                   label={t('Topology')}
                   onClick={() => setViewMode('topology')}
                 />
