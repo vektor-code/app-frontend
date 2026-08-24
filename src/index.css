@@ -2102,11 +2102,13 @@ thead th:last-child .resize-handle {
 .live-volume-bars span {
   min-height: 4px;
   border-radius: 999px 999px 2px 2px;
-  background: color-mix(in srgb, var(--accent-blue) 62%, transparent);
+  background: linear-gradient(180deg, var(--accent-cyan), var(--accent-indigo));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 28%, transparent);
 }
 
 .live-volume-bars span.has-error {
-  background: var(--accent-rose);
+  background: linear-gradient(180deg, #fb7185, var(--accent-rose));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-rose) 35%, transparent);
 }
 
 .live-hot-services {
@@ -7223,10 +7225,22 @@ button.admin-integration-card:hover {
   grid-template-columns: repeat(6, minmax(135px, 1fr));
   margin-bottom: 12px;
   overflow: hidden;
-  border: 1px solid var(--border-primary);
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--accent-indigo) 16%, var(--border-primary));
   border-radius: 8px;
-  background: var(--bg-secondary);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-tertiary) 70%, transparent), var(--bg-secondary));
   box-shadow: var(--shadow-sm);
+}
+
+.apm-kpi-strip::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-indigo) 42%, transparent 78%);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .apm-overview-grid {
@@ -7673,6 +7687,11 @@ button.admin-integration-card:hover {
 .apm-chart-stage {
   position: relative;
   height: 232px;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--accent-indigo) 11%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent-indigo) 11%, transparent) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: center top;
 }
 
 .apm-svg-chart {
@@ -7682,9 +7701,9 @@ button.admin-integration-card:hover {
 }
 
 .apm-grid-line {
-  stroke: var(--border-secondary);
+  stroke: color-mix(in srgb, var(--accent-cyan) 22%, var(--border-secondary));
   stroke-width: 1;
-  opacity: 0.58;
+  opacity: 0.7;
 }
 
 .apm-axis-text {
@@ -7883,8 +7902,8 @@ button.admin-integration-card:hover {
 }
 
 .apm-heatmap-cell.active {
-  border-color: var(--text-primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-primary) 14%, transparent);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-cyan) 28%, transparent), 0 0 14px color-mix(in srgb, var(--accent-cyan) 22%, transparent);
   opacity: 1;
 }
 
@@ -13912,7 +13931,7 @@ body.dark-theme .row-status.is-error:hover {
 .trace-duration-bar {
   height: 7px;
   border-radius: 999px;
-  background: var(--bg-tertiary);
+  background: color-mix(in srgb, var(--border-primary) 70%, var(--bg-tertiary));
   overflow: hidden;
 }
 
@@ -13920,15 +13939,18 @@ body.dark-theme .row-status.is-error:hover {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--accent-blue);
+  background: linear-gradient(90deg, var(--accent-indigo), var(--accent-cyan));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-cyan) 35%, transparent);
 }
 
 .trace-duration-bar i.warning {
-  background: var(--accent-amber);
+  background: linear-gradient(90deg, var(--accent-amber), #f59e0b);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-amber) 40%, transparent);
 }
 
 .trace-duration-bar i.critical {
-  background: var(--accent-rose);
+  background: linear-gradient(90deg, var(--accent-rose), #fb7185);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-rose) 40%, transparent);
 }
 
 .trace-metric {
@@ -14047,15 +14069,41 @@ body.dark-theme .row-status.is-error:hover {
 }
 
 .trace-quicklook {
-  width: min(560px, 100vw);
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-left: 1px solid var(--border-primary);
   background: var(--bg-secondary);
-  box-shadow: -24px 0 60px rgba(15, 23, 42, 0.18);
-  animation: slideInRight 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.trace-detail-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.trace-detail-breadcrumb button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent-indigo);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.trace-detail-breadcrumb button:hover {
+  text-decoration: underline;
+}
+
+.trace-detail-breadcrumb em {
+  font-style: normal;
+  color: var(--text-secondary);
+  font-weight: 650;
 }
 
 .trace-quicklook.critical {
@@ -14067,8 +14115,10 @@ body.dark-theme .row-status.is-error:hover {
   justify-content: space-between;
   gap: 16px;
   padding: 22px 24px 18px;
-  border-bottom: 1px solid var(--border-primary);
-  background: linear-gradient(180deg, var(--bg-primary), var(--bg-secondary));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-indigo) 18%, var(--border-primary));
+  background:
+    radial-gradient(420px 90px at 100% 0%, color-mix(in srgb, var(--accent-cyan) 12%, transparent), transparent 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 70%, var(--accent-indigo) 8%), var(--bg-secondary));
 }
 
 .trace-quicklook-title {
@@ -14148,15 +14198,26 @@ body.dark-theme .row-status.is-error:hover {
 }
 
 .trace-drawer-metric {
+  position: relative;
+  overflow: hidden;
   min-width: 0;
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  background: var(--bg-primary);
+  border: 1px solid color-mix(in srgb, var(--accent-indigo) 16%, var(--border-primary));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-tertiary) 72%, transparent);
   padding: 11px;
+}
+
+.trace-drawer-metric::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent-cyan), transparent 72%);
 }
 
 .trace-drawer-metric-icon {
@@ -16342,6 +16403,31 @@ body.dark-theme .row-status.is-error:hover {
   padding: 17px 20px 17px 22px;
 }
 
+.trace-detail-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.trace-detail-breadcrumb button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent-indigo);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.trace-detail-breadcrumb em {
+  font-style: normal;
+  color: var(--text-secondary);
+  font-weight: 650;
+}
+
 .trace-detail-back-button {
   min-height: 30px;
   display: inline-flex;
@@ -16984,9 +17070,11 @@ body.dark-theme .row-status.is-error:hover {
 .trace-topology-panel {
   position: relative;
   width: 100%;
-  border: 1px solid var(--border-primary);
+  border: 1px solid color-mix(in srgb, var(--accent-indigo) 16%, var(--border-primary));
   border-radius: var(--radius-sm);
-  background: var(--bg-secondary);
+  background:
+    radial-gradient(680px 180px at 0% 0%, color-mix(in srgb, var(--accent-indigo) 10%, transparent), transparent 55%),
+    var(--bg-secondary);
   overflow: hidden;
 }
 
@@ -21439,9 +21527,11 @@ body.dark-theme .service-map-canvas-area {
   min-width: 0;
   min-height: 252px;
   overflow: hidden;
-  border: 1px solid var(--border-primary);
+  border: 1px solid color-mix(in srgb, var(--accent-indigo) 16%, var(--border-primary));
   border-radius: 15px;
-  background: var(--bg-secondary);
+  background:
+    radial-gradient(420px 120px at 100% 0%, color-mix(in srgb, var(--accent-cyan) 9%, transparent), transparent 60%),
+    var(--bg-secondary);
   box-shadow: 0 12px 34px rgba(15, 23, 42, 0.045);
 }
 
@@ -21866,9 +21956,11 @@ body.dark-theme .service-map-canvas-area {
   min-width: 0;
   min-height: 256px;
   overflow: hidden;
-  border: 1px solid var(--border-primary);
+  border: 1px solid color-mix(in srgb, var(--accent-indigo) 16%, var(--border-primary));
   border-radius: 15px;
-  background: var(--bg-secondary);
+  background:
+    radial-gradient(420px 120px at 100% 0%, color-mix(in srgb, var(--accent-cyan) 9%, transparent), transparent 60%),
+    var(--bg-secondary);
   box-shadow: 0 12px 34px rgba(15, 23, 42, 0.045);
 }
 

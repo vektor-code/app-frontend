@@ -626,9 +626,11 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           position: relative;
           min-width: 0;
           padding: 16px;
-          border: 1px solid var(--border-primary);
+          border: 1px solid color-mix(in srgb, var(--accent-indigo) 16%, var(--border-primary));
           border-radius: 10px;
-          background: linear-gradient(135deg, var(--bg-secondary), color-mix(in srgb, var(--bg-tertiary) 32%, var(--bg-secondary)));
+          background:
+            radial-gradient(280px 90px at 100% 0%, color-mix(in srgb, var(--accent-cyan) 10%, transparent), transparent 62%),
+            linear-gradient(135deg, var(--bg-secondary), color-mix(in srgb, var(--bg-tertiary) 32%, var(--bg-secondary)));
           box-shadow: var(--shadow-sm);
           overflow: hidden;
           transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
@@ -636,18 +638,19 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
         .db-metric-card::before {
           content: "";
           position: absolute;
-          inset: 0 auto 0 0;
-          width: 4px;
-          background: var(--accent-indigo);
+          inset: 0 auto auto 0;
+          width: 100%;
+          height: 2px;
+          background: linear-gradient(90deg, var(--accent-cyan), var(--accent-indigo) 55%, transparent);
         }
         .db-metric-card.emerald::before {
-          background: var(--accent-emerald);
+          background: linear-gradient(90deg, var(--accent-emerald), transparent 70%);
         }
         .db-metric-card.amber::before {
-          background: var(--accent-amber);
+          background: linear-gradient(90deg, var(--accent-amber), transparent 70%);
         }
         .db-metric-card.rose::before {
-          background: var(--accent-rose);
+          background: linear-gradient(90deg, var(--accent-rose), transparent 70%);
         }
         .db-metric-card:hover {
           border-color: var(--border-secondary);

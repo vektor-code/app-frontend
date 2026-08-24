@@ -4,6 +4,7 @@ import { isSpanError } from '../utils/spanStatus';
 import { isValidHttpStatus, normalizeHttpMethod, readHttpStatus } from '../utils/httpTelemetry';
 import { getSpanDependency, isDatabaseSpan, getQueryText, getQuerySummary } from '../utils/dependency';
 import { buildSpanForest } from '../utils/spanTree';
+import { formatDuration, getServiceColor as svcColor } from '../utils/traceDisplay';
 
 export interface DestinationInfo {
   type: 'infra' | '3rdparty' | 'service' | null;
@@ -124,19 +125,6 @@ interface SpanTimelineProps {
   traceDuration: number;
   onSelectSpan?: (span: Span) => void;
   selectedSpanId?: string;
-}
-
-const SERVICE_COLORS: Record<string, string> = {};
-const PALETTE = [
-  '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316',
-  '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
-];
-
-function svcColor(name: string): string {
-  if (!SERVICE_COLORS[name]) {
-    SERVICE_COLORS[name] = PALETTE[Object.keys(SERVICE_COLORS).length % PALETTE.length];
-  }
-  return SERVICE_COLORS[name];
 }
 
 const KIND_LABELS: Record<string, { label: string; color: string }> = {
@@ -1160,17 +1148,20 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
           min-width: 2px;
           max-width: 100%;
           border-radius: 3px;
-          box-shadow: none;
+          box-shadow: 0 0 10px color-mix(in srgb, currentColor 18%, transparent);
           overflow: hidden;
-          transition: height var(--transition-fast), box-shadow var(--transition-fast);
+          transition: height var(--transition-fast), box-shadow var(--transition-fast), filter var(--transition-fast);
         }
 
         .waterfall-visualizer .waterfall-row:hover .waterfall-bar {
           height: 14px;
+          filter: brightness(1.08);
         }
 
         .waterfall-visualizer .waterfall-row.is-selected .waterfall-bar {
-          box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-indigo) 35%, transparent);
+          box-shadow:
+            0 0 0 2px color-mix(in srgb, var(--accent-cyan) 55%, transparent),
+            0 0 16px color-mix(in srgb, var(--accent-cyan) 32%, transparent);
         }
 
         .waterfall-bar-self {
@@ -1181,11 +1172,20 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
         }
 
         .waterfall-bar.is-critical {
-          box-shadow: inset 0 2px 0 var(--accent-amber);
+          box-shadow: inset 0 2px 0 var(--accent-amber), 0 0 10px color-mix(in srgb, var(--accent-amber) 28%, transparent);
+          background-image: repeating-linear-gradient(
+            90deg,
+            transparent,
+            transparent 6px,
+            color-mix(in srgb, #fff 16%, transparent) 6px,
+            color-mix(in srgb, #fff 16%, transparent) 7px
+          );
         }
 
         .waterfall-bar.is-error {
-          box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-rose) 45%, transparent);
+          box-shadow:
+            0 0 0 1px color-mix(in srgb, var(--accent-rose) 55%, transparent),
+            0 0 14px color-mix(in srgb, var(--accent-rose) 35%, transparent);
         }
 
         .waterfall-bar.is-collapsed::after {
@@ -1220,10 +1220,4 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
       `}</style>
     </div>
   );
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1) return `${(ms * 1000).toFixed(0)}us`;
-  if (ms < 1000) return `${ms.toFixed(1)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
 }

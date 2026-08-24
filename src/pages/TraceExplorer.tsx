@@ -25,6 +25,8 @@ import IconPack from '../components/IconPack';
 import { useTranslation } from '../utils/i18n';
 import { displayOperationName } from '../utils/operationName';
 import { useColumnResize } from '../utils/useColumnResize';
+import SideDrawer from '../components/SideDrawer';
+import { formatDuration, getServiceColor as getServiceColor } from '../utils/traceDisplay';
 
 interface TraceExplorerProps {
   namespace: string;
@@ -73,12 +75,6 @@ const traceColumnMinimums: Record<TraceColumn, number> = {
 
 const endpointColumnOrder: EndpointColumn[] = ['transaction', 'latency', 'throughput', 'errors', 'impact'];
 const traceColumnOrder: TraceColumn[] = ['trace', 'status', 'flow', 'duration', 'spans'];
-
-const serviceColors: Record<string, string> = {};
-const colorPalette = [
-  '#2563eb', '#7c3aed', '#db2777', '#e11d48', '#ea580c',
-  '#ca8a04', '#059669', '#0f766e', '#0891b2', '#4f46e5',
-];
 
 const TRACE_DRAWER_ICONS = {
   duration: '/observability-icons/clock-bolt.svg',
@@ -770,17 +766,9 @@ function TraceQuickLook({
   const statusText = trace.hasError ? t('Error') : t('Operational');
   const serviceCount = new Set([trace.serviceName, ...flow].filter(Boolean)).size;
 
-  useEffect(() => {
-    const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   return (
-    <div className="modal-backdrop trace-drawer-backdrop" onClick={onClose}>
-      <aside className={`trace-quicklook ${statusTone}`} onClick={event => event.stopPropagation()}>
+    <SideDrawer open onClose={onClose} width={480} ariaLabel={t('Trace detail')}>
+      <aside className={`trace-quicklook ${statusTone}`}>
         <header className="trace-quicklook-header">
           <div className="trace-quicklook-title">
             <span className="trace-quicklook-kicker">{t('Trace detail')}</span>
@@ -872,7 +860,7 @@ function TraceQuickLook({
           <button className="btn btn-primary" onClick={onOpenFull}>{t('View full trace')}</button>
         </footer>
       </aside>
-    </div>
+    </SideDrawer>
   );
 }
 
@@ -1059,13 +1047,6 @@ function FilterInput({ label, value, onChange, placeholder, type = 'text' }: { l
   );
 }
 
-function getServiceColor(name: string) {
-  if (!serviceColors[name]) {
-    serviceColors[name] = colorPalette[Object.keys(serviceColors).length % colorPalette.length];
-  }
-  return serviceColors[name];
-}
-
 function getStartTimeISO(range: string) {
   return new Date(Date.now() - getWindowMinutes(range) * 60 * 1000).toISOString();
 }
@@ -1091,13 +1072,6 @@ function weightedBy<T>(items: T[], getValue: (item: T) => number, getWeight: (it
     return acc;
   }, { value: 0, weight: 0 });
   return total.weight > 0 ? total.value / total.weight : 0;
-}
-
-function formatDuration(ms: number) {
-  if (!Number.isFinite(ms) || ms <= 0) return '0ms';
-  if (ms < 1) return `${(ms * 1000).toFixed(0)}us`;
-  if (ms < 1000) return `${ms.toFixed(ms < 10 ? 1 : 0)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
 }
 
 function formatTotalDuration(ms: number) {
