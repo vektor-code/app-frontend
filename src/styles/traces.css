@@ -1,0 +1,92 @@
+.waterfall-visualizer .waterfall-bar-container {
+  background-image:
+    linear-gradient(var(--apm-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--apm-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.waterfall-visualizer .waterfall-row.is-selected {
+  background: color-mix(in srgb, var(--accent-indigo) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-cyan) 28%, transparent);
+}
+
+.waterfall-visualizer .waterfall-bar {
+  box-shadow: 0 0 10px color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.waterfall-visualizer .waterfall-row.is-selected .waterfall-bar {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent-cyan) 55%, transparent),
+    0 0 16px var(--apm-glow);
+}
+
+.waterfall-visualizer .waterfall-bar.is-critical {
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 6px,
+    color-mix(in srgb, #fff 16%, transparent) 6px,
+    color-mix(in srgb, #fff 16%, transparent) 7px
+  );
+}
+
+.waterfall-visualizer .waterfall-bar.is-error {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent-rose) 55%, transparent),
+    0 0 14px color-mix(in srgb, var(--accent-rose) 35%, transparent);
+}
+
+.trace-detail-hero {
+  background:
+    radial-gradient(720px 180px at 100% 0%, color-mix(in srgb, var(--accent-indigo) 13%, transparent), transparent 60%),
+    var(--bg-secondary);
+}
+
+.trace-detail-hero.critical {
+  background:
+    radial-gradient(720px 180px at 100% 0%, color-mix(in srgb, var(--accent-rose) 16%, transparent), transparent 62%),
+    var(--bg-secondary);
+}
+
+.trace-detail-hero.warning {
+  background:
+    radial-gradient(720px 180px at 100% 0%, color-mix(in srgb, var(--accent-amber) 16%, transparent), transparent 62%),
+    var(--bg-secondary);
+}
+
+.trace-detail-status {
+  font-family: var(--font-mono);
+  letter-spacing: 0.12em;
+}
+
+.trace-detail-metric-card,
+.trace-detail-context-panel,
+.trace-detail-visualization-panel,
+.trace-detail-tag-panel,
+.trace-detail-insight-panel {
+  border-color: color-mix(in srgb, var(--accent-indigo) 16%, var(--border-primary));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-tertiary) 55%, transparent), var(--bg-secondary));
+}
+
+.trace-detail-view-toggle button.active,
+.view-toggle-btn.active,
+.trace-detail-view-button.active {
+  background: color-mix(in srgb, var(--accent-indigo) 16%, var(--bg-primary));
+  color: var(--accent-indigo);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-indigo) 28%, transparent), 0 0 18px var(--apm-glow);
+}
+
+.trace-flame-panel,
+.trace-topology-panel {
+  background:
+    radial-gradient(680px 180px at 0% 0%, color-mix(in srgb, var(--accent-indigo) 10%, transparent), transparent 55%),
+    var(--bg-secondary);
+  border-color: color-mix(in srgb, var(--accent-indigo) 16%, var(--border-primary));
+}
+
+.trace-flame-controls button:hover,
+.trace-topology-controls button:hover {
+  color: var(--accent-cyan);
+  border-color: color-mix(in srgb, var(--accent-cyan) 35%, var(--border-primary));
+}

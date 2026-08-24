@@ -1,0 +1,143 @@
+.standard-table-toolbar {
+  min-height: 44px;
+  padding: 8px 12px 8px 14px;
+  background: color-mix(in srgb, var(--bg-tertiary) 55%, var(--bg-secondary));
+  border-bottom: 1px solid var(--border-primary);
+  backdrop-filter: blur(12px);
+}
+
+.standard-column-head {
+  height: 36px;
+  padding: 0 12px;
+  background: color-mix(in srgb, var(--bg-tertiary) 70%, var(--bg-secondary));
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.standard-column-head.active {
+  color: var(--accent-indigo);
+  background: color-mix(in srgb, var(--accent-indigo) 8%, var(--bg-secondary));
+}
+
+.standard-column-resizer {
+  color: var(--text-muted);
+}
+
+.standard-column-resizer:hover,
+.standard-column-resizer:focus-visible {
+  color: var(--accent-cyan);
+  background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+}
+
+.trace-table-head,
+.trace-results-panel .trace-table-head {
+  backdrop-filter: blur(12px);
+  background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+}
+
+.endpoint-row,
+.trace-row,
+.live-trace-row {
+  min-height: var(--table-row-height);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 80%, transparent);
+}
+
+.endpoint-row > div,
+.trace-row > div {
+  padding: 8px 12px;
+}
+
+.trace-row:hover,
+.endpoint-row:hover,
+.live-trace-row:hover {
+  background: color-mix(in srgb, var(--accent-indigo) 6%, var(--bg-secondary));
+}
+
+.row-status.is-error,
+.live-trace-row.error {
+  background: color-mix(in srgb, var(--accent-rose) 6%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent-rose);
+}
+
+.row-status.is-slow {
+  box-shadow: inset 3px 0 0 var(--accent-amber);
+}
+
+.trace-duration-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-primary) 75%, var(--bg-tertiary));
+  overflow: hidden;
+}
+
+.trace-duration-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-indigo), var(--accent-cyan));
+  box-shadow: 0 0 10px var(--apm-glow);
+}
+
+.trace-duration-bar i.warning {
+  background: linear-gradient(90deg, var(--accent-amber), #f59e0b);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-amber) 40%, transparent);
+}
+
+.trace-duration-bar i.critical {
+  background: linear-gradient(90deg, var(--accent-rose), #fb7185);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-rose) 40%, transparent);
+}
+
+.trace-duration strong,
+.trace-metric strong,
+.endpoint-impact strong {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+.db-table,
+.standard-native-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.db-table thead th,
+.standard-native-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 36px;
+  padding: 0 12px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--bg-tertiary) 82%, var(--bg-secondary));
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.db-table tbody td,
+.standard-native-table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 80%, transparent);
+  font-size: 12.5px;
+}
+
+.db-table tbody tr:hover td,
+.standard-native-table tbody tr:hover td,
+.hover-row:hover {
+  background: color-mix(in srgb, var(--accent-indigo) 6%, var(--bg-secondary));
+}
+
+body.dark-theme .standard-column-head,
+body.dark-theme .db-table thead th {
+  background: color-mix(in srgb, var(--bg-primary) 70%, var(--bg-tertiary));
+}

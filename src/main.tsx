@@ -3,8 +3,14 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { I18nProvider } from './utils/i18n'
+import './styles/tokens.css'
 import './index.css'
-import './apmSurface.css'
+import './styles/base.css'
+import './styles/chrome.css'
+import './styles/table.css'
+import './styles/charts.css'
+import './styles/drawer.css'
+import './styles/traces.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
