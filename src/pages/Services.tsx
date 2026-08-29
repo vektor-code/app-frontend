@@ -11,7 +11,8 @@ import { api } from '../api/client';
 import type { ServiceStats } from '../entities';
 import { LoadingState, NoDataState } from '../components/DataState';
 import LanguageIcon from '../components/LanguageIcon';
-import { MiniTrend, seriesDelta, type MiniTrendTone } from '../components/MiniTrend';
+import { MiniTrend, type MiniTrendTone } from '../components/MiniTrend';
+import { KpiCard } from '../components/KpiCard';
 import { useTranslation } from '../utils/i18n';
 import { useColumnResize } from '../utils/useColumnResize';
 
@@ -561,44 +562,6 @@ function MetricCell({
         <strong>{value}</strong>
       </div>
       <MiniTrend data={trend} tone={tone} compact />
-    </div>
-  );
-}
-
-function KpiCard({
-  label,
-  value,
-  detail,
-  tone,
-  trend,
-  positiveIsGood = true,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  tone: MiniTrendTone;
-  trend: number[];
-  positiveIsGood?: boolean;
-}) {
-  const delta = seriesDelta(trend);
-  const showDelta = delta != null && Number.isFinite(delta);
-  const deltaGood = positiveIsGood ? (delta ?? 0) >= 0 : (delta ?? 0) <= 0;
-
-  return (
-    <div className={`apm-signal-card ${tone}`}>
-      <div className="apm-signal-topline">
-        <span className="apm-signal-label">{label}</span>
-        {showDelta && (
-          <span className={`apm-signal-delta ${Math.abs(delta) < 0.15 ? 'flat' : deltaGood ? 'good' : 'bad'}`}>
-            {delta >= 0 ? '↑' : '↓'} {Math.abs(delta).toFixed(1)}%
-          </span>
-        )}
-      </div>
-      <div className="apm-signal-value-row">
-        <strong>{value}</strong>
-      </div>
-      <p>{detail}</p>
-      <MiniTrend data={trend} tone={tone} />
     </div>
   );
 }

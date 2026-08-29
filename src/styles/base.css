@@ -21,7 +21,8 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   letter-spacing: -0.011em;
-  font-feature-settings: 'cv11', 'ss01';
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
 }
 
 ::selection {

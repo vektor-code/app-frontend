@@ -1,17 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   IconActivity,
   IconAlertTriangle,
   IconChartHistogram,
   IconClock,
   IconDatabase,
-  IconFlame,
   IconGauge,
 } from '@tabler/icons-react';
 import { api } from '../api/client';
 import type { DatabaseQueryMetric, LatencyDistribution, NamespaceStats, ServiceErrorSeries, ServiceStats, TimeseriesData } from '../entities';
 import { LoadingState, NoDataState } from '../components/DataState';
-import { MiniTrend, seriesDelta } from '../components/MiniTrend';
+import { seriesDelta } from '../components/MiniTrend';
+import { KpiCard } from '../components/KpiCard';
 import { useTranslation } from '../utils/i18n';
 
 interface DashboardProps {
@@ -33,7 +34,7 @@ interface SignalMetric {
   progress?: number;
 }
 
-type IconName = 'apdex' | 'database' | 'errors' | 'heatmap' | 'histogram' | 'latency' | 'traffic';
+type IconName = 'apdex' | 'database' | 'errors' | 'histogram' | 'latency' | 'traffic';
 
 const chartWidth = 720;
 const chartHeight = 250;
@@ -259,7 +260,17 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
 
       <section className="apm-kpi-strip" aria-label={t('Application health metrics')}>
         {signalMetrics.map(metric => (
-          <SignalCard key={metric.label} metric={metric} />
+          <KpiCard
+            key={metric.label}
+            label={metric.label}
+            value={metric.value}
+            detail={metric.detail}
+            tone={metric.tone}
+            trend={metric.trend}
+            delta={metric.delta}
+            positiveIsGood={metric.positiveIsGood}
+            progress={metric.progress}
+          />
         ))}
       </section>
 
@@ -351,11 +362,10 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
       <section className="apm-chart-grid">
         <ChartPanel
           title={t('Service errors')}
-          icon="heatmap"
+          icon="errors"
           legend={[
-            { label: t('Healthy'), color: 'var(--chart-green)' },
-            { label: t('Degraded'), color: 'var(--chart-amber)' },
-            { label: t('Critical'), color: 'var(--chart-rose)' },
+            { label: t('Errors'), color: 'var(--chart-rose)' },
+            { label: t('Quiet'), color: 'color-mix(in srgb, var(--text-tertiary) 35%, transparent)' },
           ]}
           summary={{
             label: t('Affected'),
@@ -364,7 +374,7 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
           }}
           tone={affectedServices > 3 ? 'critical' : affectedServices > 0 ? 'warning' : 'healthy'}
         >
-          <ServiceHeatmap
+          <ServiceErrorBoard
             services={serviceErrors}
             labels={timeLabels}
             loading={tsLoading}
@@ -587,41 +597,6 @@ function VisualOverview({
         </div>
       </article>
     </section>
-  );
-}
-
-function SignalCard({ metric }: { metric: SignalMetric }) {
-  const progress = clamp(metric.progress ?? 0, 0, 100);
-  const delta = metric.delta;
-  const showDelta = delta != null && Number.isFinite(delta);
-  const deltaGood = metric.positiveIsGood === false ? (delta ?? 0) <= 0 : (delta ?? 0) >= 0;
-  return (
-    <div className={`apm-signal-card ${metric.tone}`}>
-      <div className="apm-signal-topline">
-        <span className="apm-signal-label">{metric.label}</span>
-        {showDelta && (
-          <span className={`apm-signal-delta ${Math.abs(delta) < 0.15 ? 'flat' : deltaGood ? 'good' : 'bad'}`}>
-            {delta >= 0 ? '↑' : '↓'} {Math.abs(delta).toFixed(1)}%
-          </span>
-        )}
-      </div>
-      <div className="apm-signal-value-row">
-        <strong>{metric.value}</strong>
-      </div>
-      <p>{metric.detail}</p>
-      {metric.progress !== undefined && (
-        <span
-          className="apm-kpi-progress"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={progress}
-        >
-          <i style={{ width: `${progress}%` }} />
-        </span>
-      )}
-      {metric.trend && <MiniTrend data={metric.trend} tone={metric.tone} />}
-    </div>
   );
 }
 
@@ -938,7 +913,7 @@ function DatabaseChart({
   );
 }
 
-function ServiceHeatmap({
+function ServiceErrorBoard({
   services,
   labels,
   loading,
@@ -959,80 +934,92 @@ function ServiceHeatmap({
   containerRef: React.RefObject<HTMLDivElement>;
   t: (key: string) => string;
 }) {
+  const navigate = useNavigate();
+  const rows = services.slice(0, 6);
+  const maxBucketErrors = Math.max(1, ...rows.flatMap(service => service.errors));
+  const totalErrors = rows.reduce((sum, service) => sum + service.errors.reduce((acc, value) => acc + value, 0), 0);
+  const axisStep = Math.max(1, Math.ceil(labels.length / 4));
+
   if (loading) {
     return <LoadingState height={235} label={t('Loading service health...')} />;
   }
-  if (services.length === 0 || labels.length === 0) {
+  if (rows.length === 0 || labels.length === 0) {
     return <NoDataState height={235} title={t('No service activity')} hint={t('Per-service errors appear once traffic flows.')} />;
   }
 
   return (
     <div
-      className="apm-heatmap"
+      className="apm-error-board"
       ref={containerRef}
+      style={{ '--error-buckets': labels.length } as React.CSSProperties}
       onMouseLeave={() => {
         setHoverCell(null);
         setTooltipPos(null);
       }}
     >
-      {services.slice(0, 9).map((service, svcIdx) => (
-        <div className="apm-heatmap-row" key={`${service.namespace}:${service.service}`}>
-          <div className="apm-heatmap-label" title={`${service.namespace}/${service.service}`}>{service.service}</div>
-          <div className="apm-heatmap-cells">
-            {labels.map((label, timeIdx) => {
-              const spans = service.spans[timeIdx] || 0;
-              const errors = service.errors[timeIdx] || 0;
-              const cellTone = heatmapTone(spans, errors);
-              const active = hoverCell?.svcIdx === svcIdx && hoverCell?.timeIdx === timeIdx;
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  className={`apm-heatmap-cell ${cellTone} ${active ? 'active' : ''}`}
-                  onMouseEnter={() => setHoverCell({ svcIdx, timeIdx })}
-                  onMouseMove={event => {
-                    const container = containerRef.current;
-                    if (!container) return;
-                    const rect = container.getBoundingClientRect();
-                    let x = event.clientX - rect.left + 16;
-                    let y = event.clientY - rect.top + container.scrollTop + 16;
-                    if (x + 250 > rect.width) x = event.clientX - rect.left - 260;
-                    setTooltipPos({ x, y });
-                  }}
-                  aria-label={`${service.service} ${label}`}
-                />
-              );
-            })}
+      {rows.map((service, svcIdx) => {
+        const errorTotal = service.errors.reduce((sum, value) => sum + value, 0);
+        const spanTotal = service.spans.reduce((sum, value) => sum + value, 0);
+        const rate = spanTotal > 0 ? (errorTotal / spanTotal) * 100 : 0;
+        const share = totalErrors > 0 ? (errorTotal / totalErrors) * 100 : 0;
+        return (
+          <div className="apm-error-board-row" key={`${service.namespace}:${service.service}`}>
+            <div className="apm-error-board-head">
+              <strong title={`${service.namespace}/${service.service}`}>{service.service}</strong>
+              <b>{formatMetric(errorTotal, 'count')}</b>
+              <em className={errorTotal > 0 ? 'is-hot' : undefined}>{formatPercent(rate)}</em>
+            </div>
+            <div className="apm-error-board-track">
+              <i className="apm-error-board-share" style={{ width: `${Math.max(share, errorTotal > 0 ? 4 : 0)}%` }} />
+              <div className="apm-error-board-bars">
+                {labels.map((label, timeIdx) => {
+                  const spans = service.spans[timeIdx] || 0;
+                  const errors = service.errors[timeIdx] || 0;
+                  const height = errors <= 0 ? 3 : Math.max(6, (errors / maxBucketErrors) * 26);
+                  const active = hoverCell?.svcIdx === svcIdx && hoverCell?.timeIdx === timeIdx;
+                  return (
+                    <button
+                      key={`${label}:${timeIdx}`}
+                      type="button"
+                      className={`apm-error-board-bar ${heatmapTone(spans, errors)} ${active ? 'active' : ''}`}
+                      style={{ height }}
+                      onMouseEnter={() => setHoverCell({ svcIdx, timeIdx })}
+                      onMouseMove={event => {
+                        const container = containerRef.current;
+                        if (!container) return;
+                        const rect = container.getBoundingClientRect();
+                        let x = event.clientX - rect.left + 14;
+                        let y = event.clientY - rect.top + container.scrollTop + 14;
+                        if (x + 220 > rect.width) x = event.clientX - rect.left - 230;
+                        setTooltipPos({ x, y });
+                      }}
+                      onClick={() => navigate(`/traces?service=${encodeURIComponent(service.service)}&hasError=true`)}
+                      aria-label={`${service.service} ${label}`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
           </div>
-          <span className={`apm-heatmap-total ${heatmapTone(
-            service.spans.reduce((sum, value) => sum + value, 0),
-            service.errors.reduce((sum, value) => sum + value, 0)
-          )}`}>
-            {formatMetric(service.errors.reduce((sum, value) => sum + value, 0), 'count')}
-          </span>
-        </div>
-      ))}
-      <div className="apm-heatmap-times">
-        <span />
-        <div className="apm-heatmap-times-cells">
-          {labels.map((label, idx) => (
-            <em key={`${label}:${idx}`}>{idx % 3 === 0 ? label : ''}</em>
-          ))}
-        </div>
-        <em>{t('Errors')}</em>
+        );
+      })}
+      <div className="apm-error-board-axis">
+        {labels.map((label, idx) => (
+          <em key={`${label}:${idx}`}>{idx % axisStep === 0 || idx === labels.length - 1 ? label : ''}</em>
+        ))}
       </div>
-      {hoverCell && tooltipPos && services[hoverCell.svcIdx] && (
+      {hoverCell && tooltipPos && rows[hoverCell.svcIdx] && (
         <div className="apm-floating-tooltip" style={{ left: tooltipPos.x, top: tooltipPos.y }}>
           {(() => {
-            const service = services[hoverCell.svcIdx];
+            const service = rows[hoverCell.svcIdx];
             const spans = service.spans[hoverCell.timeIdx] || 0;
             const errors = service.errors[hoverCell.timeIdx] || 0;
             const errorRate = spans > 0 ? (errors / spans) * 100 : 0;
             return (
               <>
-                <strong>{service.service} / {labels[hoverCell.timeIdx]}</strong>
-                <span>{t('Spans')}: {formatMetric(spans, 'count')}</span>
+                <strong>{service.service} · {labels[hoverCell.timeIdx]}</strong>
                 <span>{t('Errors')}: {formatMetric(errors, 'count')} ({formatPercent(errorRate)})</span>
+                <span>{t('Spans')}: {formatMetric(spans, 'count')}</span>
               </>
             );
           })()}
@@ -1118,7 +1105,6 @@ function DashboardIcon({ name }: { name: IconName }) {
     apdex: IconGauge,
     database: IconDatabase,
     errors: IconAlertTriangle,
-    heatmap: IconFlame,
     histogram: IconChartHistogram,
     latency: IconClock,
     traffic: IconActivity,
