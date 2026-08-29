@@ -1,6 +1,19 @@
-html {
-  font-size: 14px;
-  hanging-punctuation: first last;
+.cloudraft-mark {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+
+.cloudraft-mark-img.dark {
+  display: none;
+}
+
+body.dark-theme .cloudraft-mark-img.light {
+  display: none;
+}
+
+body.dark-theme .cloudraft-mark-img.dark {
+  display: block;
 }
 
 body {
@@ -17,7 +30,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent-cyan) 70%, var(--accent-indigo));
+  outline: 2px solid color-mix(in srgb, var(--accent-indigo) 70%, transparent);
   outline-offset: 2px;
 }
 

@@ -129,7 +129,7 @@ interface SpanTimelineProps {
 
 const KIND_LABELS: Record<string, { label: string; color: string }> = {
   SERVER: { label: 'SVR', color: '#6366f1' },
-  CLIENT: { label: 'CLI', color: '#06b6d4' },
+  CLIENT: { label: 'CLI', color: '#2563eb' },
   PRODUCER: { label: 'PUB', color: '#22c55e' },
   CONSUMER: { label: 'SUB', color: '#f97316' },
   INTERNAL: { label: 'INT', color: '#64748b' },

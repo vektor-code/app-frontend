@@ -1,21 +1,11 @@
-import React from 'react';
+import { CloudraftMark } from './CloudraftMark';
 
-/**
- * Compact generated companion mark for the CRNET APM handwritten lockup.
- */
-export default function CrnetApmMark({
-  size = 40,
-}: {
-  size?: number;
-  color?: string;
-}) {
+export default function CrnetApmMark({ size = 40 }: { size?: number; color?: string }) {
   return (
-    <img
-      src="/branding/crnet-apm-mark.png"
-      width={size}
-      height={size}
-      alt="CRNET APM"
-      style={{ display: 'block', objectFit: 'contain' }}
-    />
+    <span className="apm-brand-mark-wrap" style={{ height: size, display: 'inline-flex' }}>
+      <CloudraftMark className="apm-brand-mark" title="Cloudraft" />
+    </span>
   );
 }
+
+export { CloudraftMark };

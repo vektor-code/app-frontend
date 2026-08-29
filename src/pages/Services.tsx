@@ -1,21 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Activity,
   ArrowDown,
-  ArrowRight,
   ArrowUp,
-  Gauge,
   GripVertical,
-  Layers3,
   RotateCcw,
   Search,
-  ShieldCheck,
 } from 'lucide-react';
 import { api } from '../api/client';
 import type { ServiceStats } from '../entities';
 import { LoadingState, NoDataState } from '../components/DataState';
 import LanguageIcon from '../components/LanguageIcon';
+import { MiniTrend, seriesDelta, type MiniTrendTone } from '../components/MiniTrend';
 import { useTranslation } from '../utils/i18n';
 import { useColumnResize } from '../utils/useColumnResize';
 
@@ -318,12 +314,14 @@ export default function Services({ namespace }: ServicesProps) {
     <div className="services-page apm-dashboard animate-fade-in">
       <section className="apm-dashboard-header services-dashboard-header">
         <div className="apm-title-block">
-          <span className="apm-title-icon services-title-icon">
-            <Layers3 size={20} />
-          </span>
           <h1>{t('Services')}</h1>
         </div>
         <div className="apm-header-meta">
+          <div className="apm-health-chips" aria-label={t('Service health')}>
+            <span className="healthy">{summary.healthy} {t('healthy')}</span>
+            <span className="warning">{summary.degraded} {t('degraded')}</span>
+            <span className="critical">{summary.critical} {t('critical')}</span>
+          </div>
           <div className="apm-live-pill">
             <span />
             {t('Live')}
@@ -331,38 +329,38 @@ export default function Services({ namespace }: ServicesProps) {
         </div>
       </section>
 
-      <section className="services-summary-grid">
-        <SummaryCard
-          icon={<Layers3 size={17} />}
+      <section className="apm-kpi-strip" aria-label={t('Service health metrics')}>
+        <KpiCard
           label={t('Monitored services')}
           value={summary.totalServices.toString()}
           detail={`${summary.activeServices} ${t('with traffic')}`}
           tone="info"
           trend={summaryTrends.active}
+          positiveIsGood
         />
-        <SummaryCard
-          icon={<ShieldCheck size={17} />}
+        <KpiCard
           label={t('Fleet health')}
           value={`${summary.avgHealth.toFixed(0)}%`}
           detail={summary.critical > 0 ? `${summary.critical} ${t('critical')}` : summary.degraded > 0 ? `${summary.degraded} ${t('degraded')}` : t('All systems healthy')}
           tone={summary.critical > 0 ? 'critical' : summary.degraded > 0 ? 'warning' : 'healthy'}
           trend={summaryTrends.health}
+          positiveIsGood
         />
-        <SummaryCard
-          icon={<Activity size={17} />}
+        <KpiCard
           label={t('Request volume')}
           value={formatCompact(summary.totalRequests)}
           detail={`${formatThroughput(summary.totalRequests)} · ${t('current window')}`}
-          tone="violet"
+          tone="info"
           trend={summaryTrends.requests}
+          positiveIsGood
         />
-        <SummaryCard
-          icon={<Gauge size={17} />}
+        <KpiCard
           label={t('P95 latency')}
           value={formatDuration(summary.avgP95)}
           detail={`${formatPercent(summary.errorRate)} ${t('error rate')}`}
           tone={summary.errorRate > 5 ? 'critical' : summary.errorRate > 0 || summary.avgP95 > 500 ? 'warning' : 'healthy'}
           trend={summaryTrends.latency}
+          positiveIsGood={false}
         />
       </section>
 
@@ -405,7 +403,6 @@ export default function Services({ namespace }: ServicesProps) {
               <span>{filteredServices.length} {filteredServices.length === 1 ? t('service') : t('services')}</span>
             </div>
             <div className="services-resize-tools">
-              <span><GripVertical size={13} /> {t('Drag column edges to resize')}</span>
               <button type="button" onClick={resetWidths}>
                 <RotateCcw size={13} />
                 {t('Reset columns')}
@@ -521,108 +518,87 @@ function ServiceRow({
       </div>
 
       <div className="service-health-cell">
-        <div className="service-health-topline">
-          <div className={`service-status-pill ${tone.kind}`}>
-            <i />
-            {tone.label}
-          </div>
-          <strong style={{ color: tone.color }}>{getHealthCategory(service) === 'unknown' ? '--' : service.healthScore.toFixed(0)}</strong>
-        </div>
-        <div className={`service-cell-bar ${tone.kind}`}>
-          <i style={{ width: `${clamp(service.healthScore, 0, 100)}%` }} />
+        <div className={`service-status-pill ${tone.kind}`}>
+          <i />
+          {tone.label}
         </div>
         <span>Apdex {service.apdex.toFixed(2)}</span>
       </div>
 
       <MetricCell
-        label="P95"
         value={formatDuration(service.p95Ms)}
-        sub={`P50 ${formatDuration(service.p50Ms)} / P99 ${formatDuration(service.p99Ms)}`}
-        tone={latencyTone}
+        tone={latencyTone === 'neutral' ? 'info' : latencyTone}
         trend={service.latencyHistory}
-        trendColor="#4f46e5"
       />
 
       <MetricCell
-        label="Throughput"
         value={formatThroughput(service.requestCount)}
-        sub={`${formatCompact(service.requestCount)} spans`}
-        tone="neutral"
+        tone="info"
         trend={service.throughputHistory}
-        trendColor="#0891b2"
       />
 
       <MetricCell
-        label="Error rate"
         value={formatPercent(service.errorRate)}
-        sub={`${formatCompact(service.errorCount)} failed`}
-        tone={errorTone}
+        tone={errorTone === 'neutral' ? 'healthy' : errorTone}
         trend={service.errorsHistory}
-        trendColor="#e11d48"
       />
-      <ArrowRight className="service-row-arrow" size={16} aria-hidden="true" />
     </button>
   );
 }
 
 function MetricCell({
-  label,
   value,
-  sub,
   tone,
   trend,
-  trendColor,
 }: {
-  label: string;
   value: string;
-  sub: string;
-  tone: 'critical' | 'warning' | 'neutral';
+  tone: MiniTrendTone;
   trend: number[];
-  trendColor: string;
 }) {
   return (
     <div className={`service-metric-cell ${tone}`}>
       <div>
-        <span>{label}</span>
         <strong>{value}</strong>
-        <em>{sub}</em>
       </div>
-      <Sparkline data={trend} color={trendColor} />
+      <MiniTrend data={trend} tone={tone} compact />
     </div>
   );
 }
 
-function SummaryCard({
-  icon,
+function KpiCard({
   label,
   value,
   detail,
   tone,
   trend,
+  positiveIsGood = true,
 }: {
-  icon: React.ReactNode;
   label: string;
   value: string;
   detail: string;
-  tone: 'healthy' | 'warning' | 'critical' | 'info' | 'violet';
+  tone: MiniTrendTone;
   trend: number[];
+  positiveIsGood?: boolean;
 }) {
-  const trendColor = summaryToneColor(tone);
+  const delta = seriesDelta(trend);
+  const showDelta = delta != null && Number.isFinite(delta);
+  const deltaGood = positiveIsGood ? (delta ?? 0) >= 0 : (delta ?? 0) <= 0;
 
   return (
-    <div className={`services-summary-card ${tone}`}>
-      <div className="services-summary-topline">
-        <span className="services-summary-icon">{icon}</span>
-        <span>{label}</span>
-        <i />
+    <div className={`apm-signal-card ${tone}`}>
+      <div className="apm-signal-topline">
+        <span className="apm-signal-label">{label}</span>
+        {showDelta && (
+          <span className={`apm-signal-delta ${Math.abs(delta) < 0.15 ? 'flat' : deltaGood ? 'good' : 'bad'}`}>
+            {delta >= 0 ? '↑' : '↓'} {Math.abs(delta).toFixed(1)}%
+          </span>
+        )}
       </div>
-      <div className="services-summary-value-row">
-        <div>
-          <strong>{value}</strong>
-          <em>{detail}</em>
-        </div>
-        <Sparkline data={trend} color={trendColor} className="services-summary-sparkline" />
+      <div className="apm-signal-value-row">
+        <strong>{value}</strong>
       </div>
+      <p>{detail}</p>
+      <MiniTrend data={trend} tone={tone} />
     </div>
   );
 }
@@ -696,46 +672,6 @@ function ColumnHeader({
         </button>
       )}
     </div>
-  );
-}
-
-function Sparkline({ data, color, className = '' }: { data: number[]; color: string; className?: string }) {
-  const gradientId = React.useId().replace(/:/g, '');
-  const cleanData = data.filter(value => Number.isFinite(value));
-
-  if (cleanData.length < 2) {
-    return (
-      <svg className={`service-sparkline ${className}`} viewBox="0 0 88 28" aria-hidden="true">
-        <line x1="2" y1="14" x2="86" y2="14" stroke="var(--border-secondary)" strokeWidth="1.4" strokeDasharray="4 4" />
-      </svg>
-    );
-  }
-
-  const width = 88;
-  const height = 28;
-  const padding = 3;
-  const max = Math.max(...cleanData, 1);
-  const min = Math.min(...cleanData, 0);
-  const range = max - min || 1;
-  const points = cleanData.map((value, idx) => {
-    const x = padding + (idx / (cleanData.length - 1)) * (width - padding * 2);
-    const y = height - padding - ((value - min) / range) * (height - padding * 2);
-    return { x, y };
-  });
-  const path = smoothPath(points);
-  const area = `${path} L ${points[points.length - 1].x} ${height - padding} L ${points[0].x} ${height - padding} Z`;
-
-  return (
-    <svg className={`service-sparkline ${className}`} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
-      <defs>
-        <linearGradient id={`service-spark-${gradientId}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.18" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={area} fill={`url(#service-spark-${gradientId})`} />
-      <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }
 
@@ -870,14 +806,6 @@ function buildSummaryTrends(services: AggregatedService[]) {
   return { active, requests, latency, health };
 }
 
-function summaryToneColor(tone: 'healthy' | 'warning' | 'critical' | 'info' | 'violet') {
-  if (tone === 'healthy') return '#10b981';
-  if (tone === 'warning') return '#f59e0b';
-  if (tone === 'critical') return '#f43f5e';
-  if (tone === 'violet') return '#8b5cf6';
-  return '#2563eb';
-}
-
 function healthTone(status: ServiceHealthStatus, score: number) {
   if (status === 'unknown') {
     return { color: 'var(--text-tertiary)', kind: 'neutral', label: 'No traffic' };
@@ -889,18 +817,6 @@ function healthTone(status: ServiceHealthStatus, score: number) {
     return { color: 'var(--accent-amber)', kind: 'warning', label: 'Degraded' };
   }
   return { color: 'var(--accent-emerald)', kind: 'healthy', label: 'Healthy' };
-}
-
-function smoothPath(points: { x: number; y: number }[]) {
-  if (points.length === 0) return '';
-  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
-  const [first, ...rest] = points;
-  return rest.reduce((path, point, idx) => {
-    const prev = points[idx];
-    const midX = (prev.x + point.x) / 2;
-    const midY = (prev.y + point.y) / 2;
-    return `${path} Q ${prev.x.toFixed(2)} ${prev.y.toFixed(2)} ${midX.toFixed(2)} ${midY.toFixed(2)}${idx === rest.length - 1 ? ` T ${point.x.toFixed(2)} ${point.y.toFixed(2)}` : ''}`;
-  }, `M ${first.x.toFixed(2)} ${first.y.toFixed(2)}`);
 }
 
 function formatDuration(ms: number) {

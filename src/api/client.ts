@@ -19,6 +19,22 @@ import type {
   TraceListItem,
   UserPermission,
 } from '../entities';
+import {
+  createMockSession,
+  isLocalMockAuth,
+  isMockToken,
+  MOCK_LICENSE,
+  mockUserFromToken,
+  shouldUseMockTelemetry,
+} from './mockAuth';
+import {
+  mockClusters,
+  mockDatabaseMetrics,
+  mockLatencyDistribution,
+  mockNamespaces,
+  mockStats,
+  mockTimeseries,
+} from './mockTelemetry';
 
 const API_BASE = '/api';
 
@@ -42,7 +58,7 @@ function tokenMsUntilExpiry(token: string): number {
 }
 
 function shouldRefreshToken(token: string, skewMs = 60_000): boolean {
-  if (!token) return false;
+  if (!token || isMockToken(token)) return false;
   return tokenMsUntilExpiry(token) <= skewMs;
 }
 
@@ -66,6 +82,7 @@ class ApiClient {
     this.refreshPromise = (async () => {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('Unauthorized');
+      if (isMockToken(token)) return token;
 
       const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: 'POST',
@@ -118,6 +135,10 @@ class ApiClient {
     };
     const res = await fetch(url, { ...options, headers });
 
+    if (res.status === 401 && isMockToken(localStorage.getItem('token'))) {
+      throw new Error('API unavailable in local mock session');
+    }
+
     if (res.status === 401 && !isAuthPublic && !_retried) {
       try {
         await this.refreshAccessToken();
@@ -163,10 +184,16 @@ class ApiClient {
   }
 
   login(credentials: { username: string; password: string; mode: string }) {
+    if (isLocalMockAuth()) {
+      return Promise.resolve(createMockSession(credentials.username));
+    }
     return this.post<{ token: string; user: any; expires_in?: number }>('/auth/login', credentials);
   }
 
   lookupAccount(payload: { username: string; mode: string }) {
+    if (isLocalMockAuth()) {
+      return Promise.resolve({ exists: Boolean(payload.username.trim()) });
+    }
     return this.post<{ exists: boolean }>('/auth/lookup', payload);
   }
 
@@ -175,10 +202,18 @@ class ApiClient {
   }
 
   getCurrentUser() {
+    const token = localStorage.getItem('token');
+    if (isLocalMockAuth() && isMockToken(token)) {
+      const user = mockUserFromToken(token);
+      if (user) return Promise.resolve(user);
+    }
     return this.get<any>('/auth/me');
   }
 
   getLicense() {
+    if (isLocalMockAuth() && isMockToken(localStorage.getItem('token'))) {
+      return Promise.resolve(MOCK_LICENSE);
+    }
     return this.get<{
       valid: boolean;
       status?: string;
@@ -191,11 +226,16 @@ class ApiClient {
   // Core APIs
   getHealth() { return this.get<{ status: string }>('/health'); }
   getNamespaces(cluster?: string) {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockNamespaces(cluster));
     const qs = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
     return this.get<{ namespaces: string[] }>(`/namespaces${qs}`);
   }
-  getStats() { return this.get<{ namespaces: NamespaceStats[] }>('/stats'); }
+  getStats() {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockStats());
+    return this.get<{ namespaces: NamespaceStats[] }>('/stats');
+  }
   getTimeseries(namespace?: string, minutes = 60) {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockTimeseries(namespace, minutes));
     const params = new URLSearchParams();
     if (namespace) params.set('namespace', namespace);
     params.set('minutes', String(minutes));
@@ -203,6 +243,7 @@ class ApiClient {
   }
 
   getLatencyDistribution(namespace?: string, minutes = 60) {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockLatencyDistribution(namespace, minutes));
     const params = new URLSearchParams();
     if (namespace) params.set('namespace', namespace);
     params.set('minutes', String(minutes));
@@ -216,6 +257,7 @@ class ApiClient {
     return this.get<InfrastructureMetrics>(`/metrics/infrastructure${qs ? `?${qs}` : ''}`);
   }
   getClusters() {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockClusters());
     return this.get<{ clusters: Array<string | { name: string; displayName?: string; status?: string }> }>('/clusters');
   }
   getAdminConfig() { return this.get<any>('/admin/config'); }
@@ -311,10 +353,15 @@ class ApiClient {
   getTraceFailureDiagnosis(id: string) { return this.get<TraceFailureDiagnosis | { traceId: string; diagnosis: null }>(`/traces/${id}/failure-diagnosis`); }
   getTraceInvestigation(id: string) { return this.get<TraceInvestigation>(`/traces/${id}/investigation`); }
   getDatabaseMetrics(namespace?: string) {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockDatabaseMetrics(namespace));
     const qs = namespace ? `?namespace=${namespace}` : '';
     return this.get<{ metrics: DatabaseQueryMetric[] }>(`/metrics/database${qs}`);
   }
   getServices(namespace?: string) {
+    if (shouldUseMockTelemetry()) {
+      const services = mockStats(namespace).namespaces.flatMap((ns) => ns.services || []);
+      return Promise.resolve({ services });
+    }
     const qs = namespace ? `?namespace=${namespace}` : '';
     return this.get<{ services: ServiceStats[] }>(`/services${qs}`);
   }

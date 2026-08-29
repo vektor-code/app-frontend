@@ -1,8 +1,9 @@
-import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import React, { Suspense, useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { IconServer, IconStack2 } from '@tabler/icons-react';
 import { api } from './api/client';
 import type { NamespaceStats } from './entities';
+import HeaderDropdown, { type HeaderDropdownOption } from './components/HeaderDropdown';
 import Sidebar from './components/Sidebar';
 import { useTranslation } from './utils/i18n';
 
@@ -24,11 +25,6 @@ function PageFallback() {
   return <div style={{ minHeight: '240px' }} />;
 }
 
-type HeaderDropdownOption = {
-  value: string;
-  label: string;
-};
-
 function clusterOption(cluster: string | { name?: string; displayName?: string }): HeaderDropdownOption | null {
   if (typeof cluster === 'string') {
     return cluster ? { value: cluster, label: cluster } : null;
@@ -39,130 +35,6 @@ function clusterOption(cluster: string | { name?: string; displayName?: string }
     value: name,
     label: cluster.displayName || name,
   };
-}
-
-function HeaderDropdown({
-  label,
-  value,
-  options,
-  icon,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: HeaderDropdownOption[];
-  icon?: React.ReactNode;
-  onChange: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number; width: number } | null>(null);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const selected = options.find(option => option.value === value) || options[0];
-
-  const updateMenuPosition = useCallback(() => {
-    const rect = rootRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const viewportPadding = 12;
-    const width = Math.min(Math.max(rect.width, 220), window.innerWidth - viewportPadding * 2, 300);
-    const left = Math.min(
-      Math.max(viewportPadding, rect.right - width),
-      window.innerWidth - width - viewportPadding
-    );
-    setMenuPosition({
-      top: rect.bottom + 8,
-      left,
-      width
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    const closeOnOutsideClick = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) {
-        setOpen(false);
-      }
-    };
-    const reposition = () => updateMenuPosition();
-    updateMenuPosition();
-    document.addEventListener('pointerdown', closeOnOutsideClick);
-    window.addEventListener('resize', reposition);
-    window.addEventListener('scroll', reposition, true);
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutsideClick);
-      window.removeEventListener('resize', reposition);
-      window.removeEventListener('scroll', reposition, true);
-    };
-  }, [open, updateMenuPosition]);
-
-  const menu = (
-    <div
-      ref={menuRef}
-      className="header-dropdown-menu"
-      role="listbox"
-      aria-label={label}
-      style={menuPosition ? { top: menuPosition.top, left: menuPosition.left, width: menuPosition.width } : undefined}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
-          setOpen(false);
-          rootRef.current?.querySelector('button')?.focus();
-        }
-      }}
-    >
-      {options.map((option, index) => (
-        <button
-          key={`${option.value || '__all__'}-${index}`}
-          type="button"
-          role="option"
-          aria-selected={option.value === value}
-          className={option.value === value ? 'selected' : ''}
-          onClick={() => {
-            onChange(option.value);
-            setOpen(false);
-          }}
-        >
-          <span title={option.label}>{option.label}</span>
-          {option.value === value && (
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          )}
-        </button>
-      ))}
-    </div>
-  );
-
-  return (
-    <div
-      className={`header-dropdown ${open ? 'open' : ''}`}
-      ref={rootRef}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
-          setOpen(false);
-        }
-      }}
-    >
-      <button
-        type="button"
-        className="header-dropdown-trigger"
-        aria-label={label}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => {
-        if (!open) updateMenuPosition();
-          setOpen(current => !current);
-        }}
-      >
-        {icon && <span className="header-filter-icon" aria-hidden="true">{icon}</span>}
-        <span className="header-dropdown-value" title={selected?.label}>{selected?.label}</span>
-        <svg className="header-dropdown-chevron" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-      {open && createPortal(menu, document.body)}
-    </div>
-  );
 }
 
 export default function App() {
@@ -352,16 +224,10 @@ export default function App() {
     document.body.classList.toggle('dark-theme', isDark);
   }, [isDark]);
 
-  const toggleTheme = () => {
-    if (isDark) {
-      document.body.classList.remove('dark-theme');
-      localStorage.setItem('theme', 'light');
-      setIsDark(false);
-    } else {
-      document.body.classList.add('dark-theme');
-      localStorage.setItem('theme', 'dark');
-      setIsDark(true);
-    }
+  const setTheme = (dark: boolean) => {
+    document.body.classList.toggle('dark-theme', dark);
+    localStorage.setItem('theme', dark ? 'dark' : 'light');
+    setIsDark(dark);
   };
 
   // Loading spinner while checking auth
@@ -501,57 +367,40 @@ export default function App() {
         user={user}
         onLogout={handleLogout}
         isDark={isDark}
-        onToggleTheme={toggleTheme}
+        onThemeChange={setTheme}
       />
       <div className="app-main">
         <header className="app-header">
           <div className="header-actions">
-            <div className="header-filter">
-              <HeaderDropdown
-                label={t('Cluster')}
-                value={selectedCluster}
-                icon={(
-                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3Z" />
-                    <path d="m4.5 8 7.5 4.2L19.5 8" />
-                    <path d="M12 21v-8.8" />
-                  </svg>
-                )}
-                options={[
-                  { value: '', label: t('All Clusters') },
-                  ...clusters.map(clusterOption).filter((option): option is HeaderDropdownOption => Boolean(option)),
-                ]}
-                onChange={(nextCluster) => {
-                  handleClusterChange(nextCluster);
-                  handleNamespaceChange('');
-                }}
-              />
-            </div>
+            <HeaderDropdown
+              label={t('Cluster')}
+              value={selectedCluster}
+              icon={<IconServer size={16} stroke={1.7} />}
+              options={[
+                { value: '', label: t('All Clusters') },
+                ...clusters.map(clusterOption).filter((option): option is HeaderDropdownOption => Boolean(option)),
+              ]}
+              onChange={(nextCluster) => {
+                handleClusterChange(nextCluster);
+                handleNamespaceChange('');
+              }}
+            />
 
-            <div className="header-filter">
-              <HeaderDropdown
-                label={t('Namespace')}
-                value={selectedNamespace}
-                icon={(
-                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                    <rect x="14" y="3" width="7" height="7" rx="1.5" />
-                    <rect x="3" y="14" width="7" height="7" rx="1.5" />
-                    <rect x="14" y="14" width="7" height="7" rx="1.5" />
-                  </svg>
-                )}
-                options={[
-                  { value: '', label: t('All Namespaces') },
-                  ...namespaces
+            <HeaderDropdown
+              label={t('Namespace')}
+              value={selectedNamespace}
+              icon={<IconStack2 size={16} stroke={1.7} />}
+              options={[
+                { value: '', label: t('All Namespaces') },
+                ...namespaces
                   .filter(ns => !selectedCluster || ns.cluster === selectedCluster)
                   .map((ns) => ({
                     value: ns.namespace,
                     label: ns.namespace,
                   })),
-                ]}
-                onChange={handleNamespaceChange}
-              />
-            </div>
+              ]}
+              onChange={handleNamespaceChange}
+            />
 
           </div>
         </header>

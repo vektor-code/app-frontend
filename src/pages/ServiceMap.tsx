@@ -569,8 +569,8 @@ const drawInfraIcon = (
     }
   } else if (sys.includes('bridge') || sys.includes('gov.az')) {
     // Bridge / API Gateway: Two columns connected by bridge deck
-    ctx.strokeStyle = isDark ? '#06b6d4' : '#0891b2';
-    ctx.fillStyle = isDark ? 'rgba(6, 182, 212, 0.15)' : 'rgba(6, 182, 212, 0.08)';
+    ctx.strokeStyle = isDark ? '#818cf8' : '#4338ca';
+    ctx.fillStyle = isDark ? 'rgba(129, 140, 248, 0.15)' : 'rgba(67, 56, 202, 0.08)';
     ctx.lineWidth = 1.5;
 
     ctx.beginPath();
@@ -676,12 +676,12 @@ const getColumnTheme = (name: string, index: number, isDark: boolean) => {
       headerBg: isDark ? 'rgba(244, 63, 94, 0.12)' : 'rgba(244, 63, 94, 0.05)',
       text: isDark ? '#fda4af' : '#e11d48',
     },
-    // Cyan
+    // Amber
     {
-      bg: isDark ? 'rgba(6, 182, 212, 0.04)' : 'rgba(6, 182, 212, 0.02)',
-      border: isDark ? 'rgba(6, 182, 212, 0.3)' : 'rgba(6, 182, 212, 0.15)',
-      headerBg: isDark ? 'rgba(6, 182, 212, 0.12)' : 'rgba(6, 182, 212, 0.05)',
-      text: isDark ? '#67e8f9' : '#0891b2',
+      bg: isDark ? 'rgba(217, 119, 6, 0.06)' : 'rgba(217, 119, 6, 0.04)',
+      border: isDark ? 'rgba(251, 191, 36, 0.3)' : 'rgba(217, 119, 6, 0.16)',
+      headerBg: isDark ? 'rgba(217, 119, 6, 0.14)' : 'rgba(217, 119, 6, 0.06)',
+      text: isDark ? '#fbbf24' : '#c2410c',
     }
   ];
 
@@ -2480,9 +2480,6 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
     <div className="service-map-page apm-dashboard animate-fade-in">
       <section className="apm-dashboard-header service-map-dashboard-header">
         <div className="apm-title-block">
-          <span className="apm-title-icon service-map-title-icon">
-            <ServiceMapIcon name="network" />
-          </span>
           <h1>{t('Service Map')}</h1>
         </div>
         <div className="apm-header-meta">

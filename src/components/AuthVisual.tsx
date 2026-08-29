@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, Network, Percent } from 'lucide-react';
+import { CloudraftMark } from './CloudraftMark';
 
 const SPANS = [
   { name: 'POST /checkout', svc: 'gateway', left: '4%', width: '88%', ms: '42ms', tone: 'root' },
@@ -49,8 +50,8 @@ function LatencyGraph() {
     <svg className="apm-auth-latency-graph" viewBox="0 0 280 96" preserveAspectRatio="none" aria-hidden="true">
       <defs>
         <linearGradient id="apmAuthP95Fill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#0e7490" stopOpacity="0.28" />
-          <stop offset="100%" stopColor="#0e7490" stopOpacity="0" />
+          <stop offset="0%" stopColor="#4338ca" stopOpacity="0.28" />
+          <stop offset="100%" stopColor="#4338ca" stopOpacity="0" />
         </linearGradient>
       </defs>
       <g className="apm-auth-latency-grid">
@@ -72,6 +73,14 @@ function LatencyGraph() {
         className="apm-auth-latency-p50"
         d="M0 68 C28 66 46 62 70 63 C98 64 118 52 146 54 C172 56 196 61 224 56 C248 52 266 50 280 46"
       />
+      <circle className="apm-auth-latency-pulse" r="3.2" fill="#4338ca">
+        <animateMotion
+          dur="5.4s"
+          repeatCount="indefinite"
+          rotate="auto"
+          path="M0 58 C24 54 42 46 64 48 C92 51 110 28 138 32 C164 36 182 52 210 40 C236 30 258 34 280 24"
+        />
+      </circle>
     </svg>
   );
 }
@@ -81,8 +90,8 @@ function ThroughputSpark() {
     <svg className="apm-auth-spark" viewBox="0 0 120 36" preserveAspectRatio="none" aria-hidden="true">
       <defs>
         <linearGradient id="apmAuthSparkFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#0e7490" stopOpacity="0.28" />
-          <stop offset="100%" stopColor="#0e7490" stopOpacity="0" />
+          <stop offset="0%" stopColor="#4338ca" stopOpacity="0.28" />
+          <stop offset="100%" stopColor="#4338ca" stopOpacity="0" />
         </linearGradient>
       </defs>
       <path
@@ -181,8 +190,7 @@ export function AuthVisual() {
   return (
     <aside className="apm-auth-visual" aria-hidden="true" ref={visualRef}>
       <div className="apm-auth-visual-brand">
-        <img src="/branding/crnet-apm-mark.png" alt="" className="apm-auth-visual-brand__mark" />
-        <strong>CRNET APM</strong>
+        <CloudraftMark className="apm-auth-visual-brand__mark" title="Cloudraft" />
       </div>
       <div className="apm-auth-visual-grid" />
       <div className="apm-auth-product-stage" ref={stageRef}>

@@ -1,25 +1,23 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  Activity,
-  BellRing,
-  Boxes,
-  ChevronLeft,
-  Database,
-  GitBranch,
-  LayoutDashboard,
-  LogOut,
-  Moon,
-  Radio,
-  Search,
-  Server,
-  ShieldCheck,
-  Sun,
-  Waypoints,
-  X,
-  type LucideIcon,
-} from 'lucide-react';
+  IconActivity,
+  IconBell,
+  IconChartHistogram,
+  IconDatabase,
+  IconGitFork,
+  IconLayoutDashboard,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
+  IconLogout,
+  IconNetwork,
+  IconServer,
+  IconSettings,
+  IconStack2,
+  type Icon,
+} from '@tabler/icons-react';
 import CrnetApmMark from './CrnetApmMark';
+import { ThemeSwapper } from './ThemeSwapper';
 import { useTranslation } from '../utils/i18n';
 
 interface SidebarProps {
@@ -28,28 +26,28 @@ interface SidebarProps {
   user: any;
   onLogout: () => void;
   isDark: boolean;
-  onToggleTheme: () => void;
+  onThemeChange: (dark: boolean) => void;
 }
 
 type NavigationItem = {
   label: string;
   to: string;
-  icon: LucideIcon;
+  icon: Icon;
   end?: boolean;
   adminOnly?: boolean;
 };
 
 const navigationItems: NavigationItem[] = [
-  { label: 'Dashboard', to: '/', icon: LayoutDashboard, end: true },
-  { label: 'Services', to: '/services', icon: Boxes },
-  { label: 'Traces', to: '/traces', icon: Activity },
-  { label: 'Service Map', to: '/servicemap', icon: Waypoints },
-  { label: 'Dependencies', to: '/dependencies', icon: GitBranch },
-  { label: 'Database', to: '/database', icon: Database },
-  { label: 'Infrastructure', to: '/infrastructure', icon: Server },
-  { label: 'Live Stream', to: '/live', icon: Radio },
-  { label: 'Alerts', to: '/alerts', icon: BellRing },
-  { label: 'Admin', to: '/admin', icon: ShieldCheck, adminOnly: true },
+  { label: 'Dashboard', to: '/', icon: IconLayoutDashboard, end: true },
+  { label: 'Services', to: '/services', icon: IconStack2 },
+  { label: 'Traces', to: '/traces', icon: IconChartHistogram },
+  { label: 'Service Map', to: '/servicemap', icon: IconNetwork },
+  { label: 'Dependencies', to: '/dependencies', icon: IconGitFork },
+  { label: 'Database', to: '/database', icon: IconDatabase },
+  { label: 'Infrastructure', to: '/infrastructure', icon: IconServer },
+  { label: 'Live Stream', to: '/live', icon: IconActivity },
+  { label: 'Alerts', to: '/alerts', icon: IconBell },
+  { label: 'Admin', to: '/admin', icon: IconSettings, adminOnly: true },
 ];
 
 export default function Sidebar({
@@ -58,19 +56,16 @@ export default function Sidebar({
   user,
   onLogout,
   isDark,
-  onToggleTheme,
+  onThemeChange,
 }: SidebarProps) {
   const { t } = useTranslation();
-  const [query, setQuery] = useState('');
-  const searchRef = useRef<HTMLInputElement | null>(null);
 
   const visibleItems = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
     return navigationItems.filter(item => {
       if (item.adminOnly && user?.role !== 'admin') return false;
-      return !normalizedQuery || t(item.label).toLowerCase().includes(normalizedQuery);
+      return true;
     });
-  }, [query, t, user?.role]);
+  }, [user?.role]);
 
   const displayName = user?.name || user?.username || t('User');
   const secondaryIdentity = user?.email || (
@@ -83,15 +78,6 @@ export default function Sidebar({
     .map(word => word[0]?.toUpperCase() || '')
     .join('') || 'U';
 
-  const expandAndFocusSearch = () => {
-    if (collapsed) {
-      onToggleCollapse();
-      window.requestAnimationFrame(() => searchRef.current?.focus());
-      return;
-    }
-    searchRef.current?.focus();
-  };
-
   return (
     <aside className="app-sidebar" aria-label={t('Primary navigation')}>
       <div className="primary-sidebar">
@@ -99,9 +85,8 @@ export default function Sidebar({
           <div className="sidebar-brand-mark">
             <CrnetApmMark size={40} />
           </div>
-          <div className="sidebar-brand-lockup">
-            <img className="light" src="/branding/crnet-apm-light.png" alt="CRNET APM" />
-            <img className="dark" src="/branding/crnet-apm-dark.png" alt="CRNET APM" />
+          <div className="sidebar-brand-copy">
+            <strong>APM</strong>
           </div>
           <button
             type="button"
@@ -110,46 +95,13 @@ export default function Sidebar({
             aria-label={collapsed ? t('Expand sidebar') : t('Collapse sidebar')}
             title={collapsed ? t('Expand sidebar') : t('Collapse sidebar')}
           >
-            <ChevronLeft size={16} strokeWidth={2.4} />
+            {collapsed ? (
+              <IconLayoutSidebarLeftExpand size={16} stroke={1.8} />
+            ) : (
+              <IconLayoutSidebarLeftCollapse size={16} stroke={1.8} />
+            )}
           </button>
         </div>
-
-        {collapsed ? (
-          <button
-            type="button"
-            className="sidebar-search-collapsed"
-            onClick={expandAndFocusSearch}
-            aria-label={t('Search navigation')}
-            title={t('Search navigation')}
-          >
-            <Search size={19} />
-          </button>
-        ) : (
-          <label className="sidebar-search">
-            <Search size={18} aria-hidden="true" />
-            <input
-              ref={searchRef}
-              type="search"
-              value={query}
-              onChange={event => setQuery(event.target.value)}
-              placeholder={t('Search navigation…')}
-              aria-label={t('Search navigation')}
-            />
-            {query && (
-              <button
-                type="button"
-                className="sidebar-search-clear"
-                onClick={() => {
-                  setQuery('');
-                  searchRef.current?.focus();
-                }}
-                aria-label={t('Clear search')}
-              >
-                <X size={15} />
-              </button>
-            )}
-          </label>
-        )}
 
         <div className="sidebar-section-label">{t('Workspace')}</div>
         <nav className="primary-sidebar-nav">
@@ -164,15 +116,12 @@ export default function Sidebar({
                 title={t(item.label)}
               >
                 <span className="primary-nav-icon">
-                  <Icon size={20} strokeWidth={1.9} />
+                  <Icon size={20} stroke={1.8} />
                 </span>
                 <span className="primary-nav-label">{t(item.label)}</span>
               </NavLink>
             );
           })}
-          {!collapsed && visibleItems.length === 0 && (
-            <div className="sidebar-search-empty">{t('No navigation items found')}</div>
-          )}
         </nav>
 
         <div className="primary-sidebar-footer">
@@ -188,22 +137,13 @@ export default function Sidebar({
             <span className="sidebar-profile-status" aria-hidden="true" />
           </div>
 
-          <button
-            type="button"
-            className="sidebar-utility-item"
-            onClick={onToggleTheme}
-            aria-label={isDark ? t('Switch to light mode') : t('Switch to dark mode')}
-            aria-pressed={isDark}
-            title={isDark ? t('Switch to light mode') : t('Switch to dark mode')}
-          >
-            <span className="sidebar-utility-icon">
-              {isDark ? <Moon size={19} /> : <Sun size={19} />}
-            </span>
-            <span className="sidebar-utility-label">{t('Dark mode')}</span>
-            <span className={`sidebar-theme-switch ${isDark ? 'active' : ''}`} aria-hidden="true">
-              <span />
-            </span>
-          </button>
+          <div className="sidebar-theme-row">
+            <ThemeSwapper
+              dark={isDark}
+              onChange={onThemeChange}
+              variant={collapsed ? 'icon' : 'segmented'}
+            />
+          </div>
 
           <button
             type="button"
@@ -212,7 +152,7 @@ export default function Sidebar({
             title={t('Sign out')}
           >
             <span className="sidebar-utility-icon">
-              <LogOut size={19} />
+              <IconLogout size={18} stroke={1.8} />
             </span>
             <span className="sidebar-utility-label">{t('Sign out')}</span>
           </button>

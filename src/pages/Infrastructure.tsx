@@ -684,9 +684,6 @@ export default function Infrastructure({ namespace }: InfrastructureProps) {
     <div className="infra-page">
       <section className="apm-dashboard-header infrastructure-dashboard-header">
         <div className="apm-title-block">
-          <span className="apm-title-icon infrastructure-title-icon">
-            <IconPack src={INFRA_ICONS.node} size={20} />
-          </span>
           <h1>{t('Infrastructure')}</h1>
         </div>
         <div className="apm-header-meta">

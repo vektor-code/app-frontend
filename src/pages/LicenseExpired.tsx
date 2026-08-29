@@ -4,7 +4,7 @@ import '../auth.css';
 
 export default function LicenseExpired({
   onLogout,
-  product = 'CRNET APM',
+  product = 'APM',
   supportEmail = 'support@cloudraft.net',
 }: {
   code?: string;
@@ -34,7 +34,7 @@ export default function LicenseExpired({
 
           <h1>{t('License Not Activated')}</h1>
           <p className="apm-license-gate-copy">
-            {t(`${product} is waiting for an active license period.`)}
+            {t('No active license.')}
           </p>
 
           <div className="apm-license-gate-actions">

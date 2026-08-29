@@ -1,8 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { KeyRound, Users } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, LoaderCircle, User, Users } from 'lucide-react';
 import { api } from '../api/client';
+import { isLocalMockAuth } from '../api/mockAuth';
 import { useTranslation } from '../utils/i18n';
 import { AuthVisual } from '../components/AuthVisual';
+import { CloudraftMark } from '../components/CloudraftMark';
+import { ThemeSwapper } from '../components/ThemeSwapper';
 import '../auth.css';
 
 interface LoginProps {
@@ -27,12 +30,14 @@ function loadRemembered() {
 
 export default function Login({ onLogin }: LoginProps) {
   const { t } = useTranslation();
+  const localMock = isLocalMockAuth();
   const remembered = loadRemembered();
   const [username, setUsername] = useState(remembered.username);
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(remembered.remember);
   const [mode, setMode] = useState<'local' | 'ldap'>('local');
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [peekPassword, setPeekPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(() => document.body.classList.contains('dark-theme'));
@@ -44,21 +49,16 @@ export default function Login({ onLogin }: LoginProps) {
     return () => cancelAnimationFrame(frame);
   }, [passwordVisible]);
 
-  const toggleTheme = () => {
-    if (isDark) {
-      document.body.classList.remove('dark-theme');
-      localStorage.setItem('theme', 'light');
-      setIsDark(false);
-    } else {
-      document.body.classList.add('dark-theme');
-      localStorage.setItem('theme', 'dark');
-      setIsDark(true);
-    }
+  const applyTheme = (dark: boolean) => {
+    document.body.classList.toggle('dark-theme', dark);
+    localStorage.setItem('theme', dark ? 'dark' : 'light');
+    setIsDark(dark);
   };
 
   const resetPasswordStep = () => {
     setPasswordVisible(false);
     setPassword('');
+    setPeekPassword(false);
   };
 
   const onUsernameChange = (value: string) => {
@@ -126,7 +126,7 @@ export default function Login({ onLogin }: LoginProps) {
       await revealPassword();
       return;
     }
-    if (!password) return;
+    if (!password && !localMock) return;
     await signIn();
   };
 
@@ -136,38 +136,14 @@ export default function Login({ onLogin }: LoginProps) {
 
       <main className="apm-auth-panel">
         <div className="apm-auth-panel-tools">
-          <button
-            type="button"
-            className="apm-auth-theme-toggle"
-            data-mode={isDark ? 'dark' : 'light'}
-            onClick={toggleTheme}
-            title={isDark ? t('Switch to light mode') : t('Switch to dark mode')}
-          >
-            <span className="apm-auth-theme-icon" aria-hidden="true">
-              {isDark ? (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                </svg>
-              ) : (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <circle cx="12" cy="12" r="5" />
-                  <line x1="12" y1="1" x2="12" y2="3" />
-                  <line x1="12" y1="21" x2="12" y2="23" />
-                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                  <line x1="1" y1="12" x2="3" y2="12" />
-                  <line x1="21" y1="12" x2="23" y2="12" />
-                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-                </svg>
-              )}
-            </span>
-            <span className="apm-auth-theme-label">{isDark ? t('Dark') : t('Light')}</span>
-          </button>
+          <ThemeSwapper dark={isDark} onChange={applyTheme} />
         </div>
 
         <form className="apm-auth-form" onSubmit={handleSubmit}>
-          <h1>{t('Welcome back')}</h1>
+          <div className="apm-auth-form-brand">
+            <CloudraftMark title="Cloudraft" />
+          </div>
+          <h1>{t('Sign in')}</h1>
 
           <div className="apm-auth-tabs" data-mode={mode}>
             <span className="apm-auth-tab-pill" aria-hidden="true" />
@@ -191,57 +167,89 @@ export default function Login({ onLogin }: LoginProps) {
 
           {error ? <div className="apm-auth-error">{error}</div> : null}
 
-          <label htmlFor="username">{t('Username')}</label>
-          <input
-            id="username"
-            name="username"
-            type="text"
-            autoComplete="username"
-            autoFocus
-            value={username}
-            onChange={(e) => onUsernameChange(e.target.value)}
-            placeholder="admin"
-            disabled={loading}
-            required
-          />
+          <label className="apm-auth-field" htmlFor="username">
+            {t('Username')}
+            <span className="apm-auth-field-control">
+              <User className="apm-auth-field-icon" size={16} strokeWidth={1.8} />
+              <input
+                id="username"
+                name="username"
+                type="text"
+                autoComplete="username"
+                autoFocus
+                value={username}
+                onChange={(e) => onUsernameChange(e.target.value)}
+                disabled={loading}
+                required
+              />
+            </span>
+          </label>
 
           <div className={`apm-auth-password-slot${passwordVisible ? ' is-open' : ''}`}>
             <div className="apm-auth-password-inner">
-              <label htmlFor="password">{t('Password')}</label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                ref={passwordRef}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                disabled={loading}
-                required={passwordVisible}
-                tabIndex={passwordVisible ? 0 : -1}
-              />
+              <label className="apm-auth-field" htmlFor="password">
+                {t('Password')}
+                <span className="apm-auth-field-control">
+                  <input
+                    id="password"
+                    name="password"
+                    type={peekPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    ref={passwordRef}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={loading}
+                    required={passwordVisible && !localMock}
+                    tabIndex={passwordVisible ? 0 : -1}
+                  />
+                  <button
+                    aria-label={peekPassword ? t('Hide password') : t('Show password')}
+                    className="apm-auth-peek"
+                    onClick={() => setPeekPassword((open) => !open)}
+                    tabIndex={passwordVisible ? 0 : -1}
+                    type="button"
+                  >
+                    {peekPassword ? <EyeOff size={16} strokeWidth={1.8} /> : <Eye size={16} strokeWidth={1.8} />}
+                  </button>
+                </span>
+              </label>
             </div>
           </div>
 
-          <label className="apm-auth-remember">
-            <input
-              type="checkbox"
-              checked={remember}
-              onChange={(e) => setRemember(e.target.checked)}
-            />
-            {t('Remember me')}
-          </label>
+          <div className="apm-auth-actions">
+            <label className="apm-auth-remember">
+              <input
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                type="checkbox"
+              />
+              <span aria-hidden="true" className="apm-auth-checkbox" />
+              <span>{t('Remember me')}</span>
+            </label>
 
-          <button className="apm-auth-submit" type="submit" disabled={loading}>
-            {loading
-              ? passwordVisible
-                ? t('Signing in…')
-                : t('Checking…')
-              : passwordVisible
-                ? t('Sign in')
-                : t('Continue')}
-          </button>
+            <button
+              aria-busy={loading}
+              className="apm-auth-submit"
+              disabled={loading}
+              type="submit"
+            >
+              {loading ? (
+                <LoaderCircle aria-hidden className="apm-auth-submit-spinner" size={16} strokeWidth={2.4} />
+              ) : null}
+              <span>
+                {loading
+                  ? passwordVisible
+                    ? t('Signing in')
+                    : t('Checking')
+                  : passwordVisible
+                    ? t('Sign in')
+                    : t('Continue')}
+              </span>
+            </button>
+          </div>
+          {localMock ? (
+            <p className="apm-auth-local-hint">{t('Localhost mock — any username and password.')}</p>
+          ) : null}
         </form>
       </main>
     </div>

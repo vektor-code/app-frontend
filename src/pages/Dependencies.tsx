@@ -790,9 +790,6 @@ export default function Dependencies({ namespace }: DependenciesProps) {
     <div className="animate-fade-in dependencies-page apm-dashboard">
       <section className="apm-dashboard-header dependencies-dashboard-header">
         <div className="apm-title-block">
-          <span className="apm-title-icon dependencies-title-icon">
-            <Network size={20} />
-          </span>
           <h1>{t('Dependencies')}</h1>
         </div>
         <div className="apm-header-meta">

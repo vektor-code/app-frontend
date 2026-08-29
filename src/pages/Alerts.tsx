@@ -471,7 +471,7 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
             <span style={{ margin: '0 8px', color: 'var(--text-muted)' }}>&gt;</span>
             <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{t('Real-time Incidents')}</span>
           </div>
-          <h1 style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>{t('Alerts & Incidents')}</h1>
+          <h1 style={{ fontSize: '22px', fontWeight: 650, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.03em' }}>{t('Alerts & Incidents')}</h1>
         </div>
 
         {/* Dynamic Namespace Selector */}
@@ -491,41 +491,37 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
       </div>
 
       {/* Modern Aggregate Cards */}
-      <div className="alerts-overview-grid" style={{ marginBottom: '28px' }}>
-        <div className="card alert-stat-card" style={{ '--card-border-color': 'var(--accent-rose)', padding: '20px' } as React.CSSProperties}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>{t('Firing Alerts')}</span>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-rose)', boxShadow: '0 0 8px var(--accent-rose)' }} />
+      <div className="alerts-overview-grid">
+        <div className="alert-stat-card">
+          <div className="alert-stat-topline">
+            <span className="alert-stat-label">{t('Firing Alerts')}</span>
           </div>
           <div className="alert-stat-value">{totalFiring}</div>
-          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px' }}>{t('Violations requiring action')}</div>
+          <div className="alert-stat-detail">{t('Violations requiring action')}</div>
         </div>
 
-        <div className="card alert-stat-card" style={{ '--card-border-color': 'var(--accent-amber)', padding: '20px' } as React.CSSProperties}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>{t('Acknowledged')}</span>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-amber)' }} />
+        <div className="alert-stat-card">
+          <div className="alert-stat-topline">
+            <span className="alert-stat-label">{t('Acknowledged')}</span>
           </div>
           <div className="alert-stat-value">{totalAcked}</div>
-          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px' }}>{t('Being investigated')}</div>
+          <div className="alert-stat-detail">{t('Being investigated')}</div>
         </div>
 
-        <div className="card alert-stat-card" style={{ '--card-border-color': 'var(--accent-blue)', padding: '20px' } as React.CSSProperties}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>{t('Silenced Services')}</span>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-blue)' }} />
+        <div className="alert-stat-card">
+          <div className="alert-stat-topline">
+            <span className="alert-stat-label">{t('Silenced Services')}</span>
           </div>
           <div className="alert-stat-value">{totalSilenced}</div>
-          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px' }}>{t('Muted by silences')}</div>
+          <div className="alert-stat-detail">{t('Muted by silences')}</div>
         </div>
 
-        <div className="card alert-stat-card" style={{ '--card-border-color': 'var(--accent-emerald)', padding: '20px' } as React.CSSProperties}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>{t('Active Rules')}</span>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-emerald)' }} />
+        <div className="alert-stat-card">
+          <div className="alert-stat-topline">
+            <span className="alert-stat-label">{t('Active Rules')}</span>
           </div>
           <div className="alert-stat-value">{rules.filter(r => r.active).length} / {rules.length}</div>
-          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px' }}>{t('Evaluated live')}</div>
+          <div className="alert-stat-detail">{t('Evaluated live')}</div>
         </div>
       </div>
 

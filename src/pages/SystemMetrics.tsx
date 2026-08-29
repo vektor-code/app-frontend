@@ -248,18 +248,18 @@ export default function SystemMetrics({ namespace }: SystemMetricsProps) {
         .stats-cards-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 16px;
+          gap: 10px;
         }
 
         .stat-card {
           background: var(--bg-secondary);
           border: 1px solid var(--border-primary);
-          border-radius: 8px;
-          padding: 16px;
+          border-radius: 10px;
+          padding: 14px 16px 12px;
           display: flex;
           flex-direction: column;
-          gap: 6px;
-          box-shadow: var(--shadow-sm);
+          gap: 0;
+          box-shadow: none;
         }
 
         .stat-card-label {
@@ -269,15 +269,20 @@ export default function SystemMetrics({ namespace }: SystemMetricsProps) {
         }
 
         .stat-card-value {
-          font-size: 24px;
-          font-weight: 700;
+          margin-top: 8px;
+          font-size: 28px;
+          font-weight: 650;
+          letter-spacing: -0.045em;
           color: var(--text-primary);
+          font-variant-numeric: tabular-nums;
         }
 
-        .stat-card.stat-total { border-left: 4px solid var(--accent-indigo); }
-        .stat-card.stat-running { border-left: 4px solid var(--accent-emerald); }
-        .stat-card.stat-pending { border-left: 4px solid var(--accent-amber); }
-        .stat-card.stat-failed { border-left: 4px solid var(--accent-rose); }
+        .stat-card.stat-total,
+        .stat-card.stat-running,
+        .stat-card.stat-pending,
+        .stat-card.stat-failed {
+          border-left: 1px solid var(--border-primary);
+        }
 
         .filters-bar-wrapper {
           display: flex;

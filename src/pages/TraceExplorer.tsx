@@ -11,7 +11,6 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
-  GitBranch,
   GripVertical,
   RefreshCw,
   RotateCcw,
@@ -415,16 +414,25 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
     <div className="traces-page apm-dashboard animate-fade-in">
       <section className="apm-dashboard-header traces-dashboard-header">
         <div className="apm-title-block">
-          <span className="apm-title-icon traces-title-icon">
-            <GitBranch size={20} />
-          </span>
           <h1>{t('Traces')}</h1>
         </div>
-        <div className="traces-header-actions">
-          <MetricBox label={activeTab === 'top' ? t('Endpoints') : t('Traces')} value={formatCompact(summary.primaryCount)} />
-          <MetricBox label={t('Volume')} value={formatCompact(summary.count)} />
-          <MetricBox label={t('Errors')} value={formatPercent(summary.errorRate)} tone={summary.errorRate > 5 ? 'critical' : summary.errorRate > 0 ? 'warning' : 'neutral'} />
-          <MetricBox label={t('Avg latency')} value={formatDuration(summary.avgLatency)} tone={summary.avgLatency > 1000 ? 'warning' : 'neutral'} />
+        <div className="apm-header-meta traces-header-actions">
+          <div className="apm-meta-item">
+            <span>{activeTab === 'top' ? t('Endpoints') : t('Traces')}</span>
+            <strong>{formatCompact(summary.primaryCount)}</strong>
+          </div>
+          <div className="apm-meta-item">
+            <span>{t('Volume')}</span>
+            <strong>{formatCompact(summary.count)}</strong>
+          </div>
+          <div className="apm-meta-item">
+            <span>{t('Errors')}</span>
+            <strong>{formatPercent(summary.errorRate)}</strong>
+          </div>
+          <div className="apm-meta-item">
+            <span>{t('Avg latency')}</span>
+            <strong>{formatDuration(summary.avgLatency)}</strong>
+          </div>
         </div>
       </section>
 
@@ -571,6 +579,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
                     maxDuration={maxTraceDuration}
                     language={(serviceLanguages[`${trace.namespace}:${trace.serviceName}`] || serviceLanguages[trace.serviceName])}
                     gridStyle={traceGridStyle}
+                    selected={selectedTrace?.traceId === trace.traceId}
                     onClick={() => setSelectedTrace(trace)}
                   />
                 ))}
@@ -633,10 +642,38 @@ function EndpointRow({
   const rowStatus = item.errorRate > 0 ? 'is-error' : item.avgDurationMs > 1000 ? 'is-slow' : '';
 
   return (
-    <div className={`endpoint-row row-status ${rowStatus}`} style={gridStyle}>
+    <div
+      className={`endpoint-row row-status ${rowStatus}`}
+      style={gridStyle}
+      role="button"
+      tabIndex={0}
+      onClick={onOperation}
+      onKeyDown={event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOperation();
+        }
+      }}
+    >
       <div className="endpoint-main">
-        <button type="button" className="endpoint-name" onClick={onOperation}>{item.operationName}</button>
-        <button type="button" className="endpoint-service" onClick={onService}>
+        <button
+          type="button"
+          className="endpoint-name"
+          onClick={event => {
+            event.stopPropagation();
+            onOperation();
+          }}
+        >
+          {item.operationName}
+        </button>
+        <button
+          type="button"
+          className="endpoint-service"
+          onClick={event => {
+            event.stopPropagation();
+            onService();
+          }}
+        >
           <LanguageIcon language={language} size={18} />
           <span>{item.serviceName}</span>
           {item.namespace && <em className="endpoint-namespace">{item.namespace}</em>}
@@ -672,12 +709,14 @@ function TraceRow({
   maxDuration,
   language,
   gridStyle,
+  selected,
   onClick,
 }: {
   trace: TraceListItem;
   maxDuration: number;
   language?: string;
   gridStyle: CSSProperties;
+  selected: boolean;
   onClick: () => void;
 }) {
   const flow = trace.serviceFlow && trace.serviceFlow.length > 0 ? trace.serviceFlow : (trace.services || []);
@@ -689,7 +728,7 @@ function TraceRow({
   const rowStatus = trace.hasError ? 'is-error' : trace.durationMs > 1000 ? 'is-slow' : '';
 
   return (
-    <button type="button" className={`trace-row row-status ${rowStatus}`} style={gridStyle} onClick={onClick}>
+    <button type="button" className={`trace-row row-status ${rowStatus} ${selected ? 'is-selected' : ''}`} style={gridStyle} onClick={onClick} aria-pressed={selected}>
       <div className="trace-main">
         <div className="trace-title-line">
           <LanguageIcon language={language} size={18} />
@@ -910,7 +949,6 @@ function ResultsHeader({
         <p>{formatCompact(count)} {t('results')}</p>
       </div>
       <div className="trace-results-tools">
-        <span className="trace-resize-hint"><GripVertical size={13} /> {t('Drag column edges to resize')}</span>
         <button type="button" className="trace-reset-columns" onClick={onResetColumns}>
           <RotateCcw size={13} />
           {t('Reset columns')}
@@ -1011,15 +1049,6 @@ function TraceMetric({ label, value, detail, tone }: { label: string; value: str
       <span>{label}</span>
       <strong>{value}</strong>
       <em>{detail}</em>
-    </div>
-  );
-}
-
-function MetricBox({ label, value, tone = 'neutral' }: { label: string; value: string; tone?: Tone }) {
-  return (
-    <div className={`trace-metric-box ${tone}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   );
 }

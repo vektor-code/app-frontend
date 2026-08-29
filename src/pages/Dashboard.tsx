@@ -1,7 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  IconActivity,
+  IconAlertTriangle,
+  IconChartHistogram,
+  IconClock,
+  IconDatabase,
+  IconFlame,
+  IconGauge,
+} from '@tabler/icons-react';
 import { api } from '../api/client';
 import type { DatabaseQueryMetric, LatencyDistribution, NamespaceStats, ServiceErrorSeries, ServiceStats, TimeseriesData } from '../entities';
 import { LoadingState, NoDataState } from '../components/DataState';
+import { MiniTrend, seriesDelta } from '../components/MiniTrend';
 import { useTranslation } from '../utils/i18n';
 
 interface DashboardProps {
@@ -18,11 +28,12 @@ interface SignalMetric {
   tone: ToneName;
   icon: IconName;
   trend?: number[];
+  delta?: number;
+  positiveIsGood?: boolean;
   progress?: number;
-  featured?: boolean;
 }
 
-type IconName = 'activity' | 'apdex' | 'database' | 'errors' | 'latency' | 'services' | 'shield' | 'traffic';
+type IconName = 'apdex' | 'database' | 'errors' | 'heatmap' | 'histogram' | 'latency' | 'traffic';
 
 const chartWidth = 720;
 const chartHeight = 250;
@@ -143,7 +154,7 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
   const errorRate = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
   const serviceHealthScore = weightedServiceValue(traffickedServices, service => service.healthScore ?? inferHealthScore(service), 100);
   const healthScore = traffickedServicesCount > 0 ? serviceHealthScore : clamp(100 - Math.min(70, errorRate * 4.5), 0, 100);
-  const healthTone = getHealthTone(healthScore, totalRequests);
+  const healthTone = getHealthTone(Math.round(healthScore), totalRequests);
   const recentErrorRate = average(errorRateData.slice(-3));
   const recentP99 = average(latencyP99Data.slice(-3));
   const peakDbLatency = Math.max(...dbLatencyData, 0);
@@ -181,21 +192,14 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
 
   const signalMetrics: SignalMetric[] = [
     {
-      label: t('Health score'),
-      value: healthScore.toFixed(0),
-      detail: `${healthLabel(healthTone)} / ${traffickedServicesCount} ${t('active')} · ${activeServicesCount} ${t('total')}`,
-      tone: healthTone,
-      icon: 'shield',
-      progress: healthScore,
-      featured: true,
-    },
-    {
-      label: t('Requests'),
+      label: t('Request rate'),
       value: formatMetric(totalRequests, 'count'),
       detail: `${timeseries?.windowMinutes || 60}m ${t('window')}`,
       tone: 'info',
       icon: 'traffic',
       trend: trafficData,
+      delta: seriesDelta(trafficData),
+      positiveIsGood: true,
     },
     {
       label: t('Error rate'),
@@ -204,6 +208,8 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
       tone: recentErrorRate > 5 ? 'critical' : recentErrorRate > 1 ? 'warning' : 'healthy',
       icon: 'errors',
       trend: errorRateData,
+      delta: seriesDelta(errorRateData),
+      positiveIsGood: false,
     },
     {
       label: t('P99 Latency'),
@@ -212,6 +218,8 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
       tone: (recentP99 || avgP99) > 1200 ? 'critical' : (recentP99 || avgP99) > 500 ? 'warning' : 'info',
       icon: 'latency',
       trend: latencyP99Data,
+      delta: seriesDelta(latencyP99Data),
+      positiveIsGood: false,
     },
     {
       label: t('Apdex'),
@@ -220,14 +228,8 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
       tone: apdex >= 0.94 ? 'healthy' : apdex >= 0.85 ? 'warning' : 'critical',
       icon: 'apdex',
       trend: apdexTrend,
-    },
-    {
-      label: t('Database'),
-      value: formatMetric(peakDbLatency, 'latency'),
-      detail: `${formatMetric(dbCalls, 'count')} ${t('calls')} / ${dbLatencyBreaches} ${t('slow intervals')}`,
-      tone: peakDbLatency > 800 || dbErrorRate > 2 ? 'critical' : peakDbLatency > 400 ? 'warning' : 'neutral',
-      icon: 'database',
-      trend: dbVolumeData,
+      delta: seriesDelta(apdexTrend),
+      positiveIsGood: true,
     },
   ];
 
@@ -235,13 +237,15 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
     <div className="dashboard-page apm-dashboard animate-fade-in">
       <section className="apm-dashboard-header">
         <div className="apm-title-block">
-          <span className="apm-title-icon">
-            <DashboardIcon name="services" />
-          </span>
-          <h1>{t('Services overview')}</h1>
+          <h1>{t('Overview')}</h1>
         </div>
 
         <div className="apm-header-meta">
+          <div className="apm-health-chips" aria-label={t('Service health')}>
+            <span className="healthy">{serviceHealthMix.healthy} {t('healthy')}</span>
+            <span className="warning">{serviceHealthMix.warning} {t('degraded')}</span>
+            <span className="critical">{serviceHealthMix.critical} {t('critical')}</span>
+          </div>
           <div className="apm-live-pill">
             <span />
             {t('Live')}
@@ -259,57 +263,18 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
         ))}
       </section>
 
-      <VisualOverview
-        healthMix={serviceHealthMix}
-        totalServices={activeServicesCount}
-        activeServices={traffickedServicesCount}
-        successfulRequests={successfulRequests}
-        failedRequests={totalErrors}
-        successRate={successRate}
-        traffic={trafficData}
-        p50={latencyDist?.p50Ms || avgP50}
-        p95={latencyDist?.p95Ms || avgP95}
-        p99={latencyDist?.p99Ms || avgP99}
-        t={t}
-      />
-
-      <section className="apm-chart-grid">
+      <section className="apm-chart-grid apm-red-grid" aria-label={t('RED metrics')}>
         <ChartPanel
-          title={t('Request volume & error rate')}
-          legend={[
-            { label: t('Requests'), color: trafficColor },
-            { label: t('Error rate'), color: errorColor, dashed: true },
-          ]}
-          summary={{
-            label: t('Recent error rate'),
-            value: formatPercent(recentErrorRate),
-            tone: recentErrorRate > 5 ? 'critical' : recentErrorRate > 1 ? 'warning' : 'healthy',
-          }}
-          tone={recentErrorRate > 5 ? 'critical' : recentErrorRate > 1 ? 'warning' : 'info'}
-        >
-          <TrafficChart
-            successData={successData}
-            errorData={trafficErrorData}
-            errorRateData={errorRateData}
-            labels={timeLabels}
-            hoverIndex={timeseriesHover}
-            setHoverIndex={setTimeseriesHover}
-            loading={tsLoading}
-            empty={!hasTraffic}
-            t={t}
-          />
-        </ChartPanel>
-
-        <ChartPanel
-          title={t('Latency Percentiles')}
+          title={t('Latency')}
+          icon="latency"
           legend={[
             { label: t('Average'), color: latencyColor },
             { label: t('P99'), color: tailLatencyColor },
           ]}
           summary={{
-            label: t('Threshold breaches'),
-            value: latencyBreaches.toLocaleString(),
-            tone: recentP99 > 1200 || latencyBreaches > 3 ? 'critical' : latencyBreaches > 0 ? 'warning' : 'healthy',
+            label: t('P99'),
+            value: formatMetric(recentP99 || avgP99, 'latency'),
+            tone: recentP99 > 1200 ? 'critical' : recentP99 > 500 ? 'warning' : 'healthy',
           }}
           tone={recentP99 > 1200 || latencyBreaches > 3 ? 'critical' : latencyBreaches > 0 ? 'warning' : 'info'}
         >
@@ -326,29 +291,27 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
             setHoverIndex={setTimeseriesHover}
             loading={tsLoading}
             empty={!hasTraffic}
-            warningThreshold={500}
-            criticalThreshold={1200}
             t={t}
           />
         </ChartPanel>
 
         <ChartPanel
-          title={t('Database Pressure')}
-          legend={[
-            { label: t('Calls'), color: dbColor },
-            { label: t('Latency'), color: dbLatencyColor },
-          ]}
+          title={t('Error rate')}
+          icon="errors"
+          legend={[{ label: t('Error rate'), color: errorColor }]}
           summary={{
-            label: t('Peak latency'),
-            value: formatMetric(peakDbLatency, 'latency'),
-            tone: peakDbLatency > 800 ? 'critical' : peakDbLatency > 400 ? 'warning' : 'healthy',
+            label: t('Recent'),
+            value: formatPercent(recentErrorRate),
+            tone: recentErrorRate > 5 ? 'critical' : recentErrorRate > 1 ? 'warning' : 'healthy',
           }}
-          tone={peakDbLatency > 800 ? 'critical' : peakDbLatency > 400 ? 'warning' : 'info'}
+          tone={recentErrorRate > 5 ? 'critical' : recentErrorRate > 1 ? 'warning' : 'info'}
         >
-          <DatabaseChart
-            calls={dbVolumeData}
-            latency={dbLatencyData}
+          <LineChart
+            primary={errorRateData}
             labels={timeLabels}
+            primaryLabel={t('Error rate')}
+            unit="percent"
+            primaryColor={errorColor}
             hoverIndex={timeseriesHover}
             setHoverIndex={setTimeseriesHover}
             loading={tsLoading}
@@ -358,7 +321,37 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
         </ChartPanel>
 
         <ChartPanel
-          title={t('Service Error Heatmap')}
+          title={t('Request rate')}
+          icon="traffic"
+          legend={[
+            { label: t('Requests'), color: trafficColor },
+            { label: t('Failed'), color: errorColor },
+          ]}
+          summary={{
+            label: t('Volume'),
+            value: formatMetric(totalRequests, 'count'),
+            tone: 'info',
+          }}
+          tone="info"
+        >
+          <TrafficChart
+            successData={successData}
+            errorData={trafficErrorData}
+            errorRateData={errorRateData}
+            labels={timeLabels}
+            hoverIndex={timeseriesHover}
+            setHoverIndex={setTimeseriesHover}
+            loading={tsLoading}
+            empty={!hasTraffic}
+            t={t}
+          />
+        </ChartPanel>
+      </section>
+
+      <section className="apm-chart-grid">
+        <ChartPanel
+          title={t('Service errors')}
+          icon="heatmap"
           legend={[
             { label: t('Healthy'), color: 'var(--chart-green)' },
             { label: t('Degraded'), color: 'var(--chart-amber)' },
@@ -383,11 +376,38 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
             t={t}
           />
         </ChartPanel>
+
+        <ChartPanel
+          title={t('Database')}
+          icon="database"
+          legend={[
+            { label: t('Calls'), color: dbColor },
+            { label: t('Latency'), color: dbLatencyColor },
+          ]}
+          summary={{
+            label: t('Peak latency'),
+            value: formatMetric(peakDbLatency, 'latency'),
+            tone: peakDbLatency > 800 ? 'critical' : peakDbLatency > 400 ? 'warning' : 'healthy',
+          }}
+          tone={peakDbLatency > 800 ? 'critical' : peakDbLatency > 400 ? 'warning' : 'info'}
+        >
+          <DatabaseChart
+            calls={dbVolumeData}
+            latency={dbLatencyData}
+            labels={timeLabels}
+            hoverIndex={timeseriesHover}
+            setHoverIndex={setTimeseriesHover}
+            loading={tsLoading}
+            empty={!hasTraffic}
+            t={t}
+          />
+        </ChartPanel>
       </section>
 
       <section className="apm-distribution-section">
         <ChartPanel
           title={t('Latency Distribution')}
+          icon="histogram"
           legend={[
             { label: 'P50', color: 'var(--chart-green)' },
             { label: 'P95', color: 'var(--chart-amber)' },
@@ -572,50 +592,35 @@ function VisualOverview({
 
 function SignalCard({ metric }: { metric: SignalMetric }) {
   const progress = clamp(metric.progress ?? 0, 0, 100);
-  const ringColor = toneColorFor(metric.tone);
+  const delta = metric.delta;
+  const showDelta = delta != null && Number.isFinite(delta);
+  const deltaGood = metric.positiveIsGood === false ? (delta ?? 0) <= 0 : (delta ?? 0) >= 0;
   return (
-    <div className={`apm-signal-card ${metric.tone} ${metric.featured ? 'featured' : ''}`}>
+    <div className={`apm-signal-card ${metric.tone}`}>
       <div className="apm-signal-topline">
-        <span className="apm-signal-label">
-          <span className="apm-signal-icon-shell"><DashboardIcon name={metric.icon} /></span>
-          <span>{metric.label}</span>
-        </span>
-        <i className="apm-signal-state" aria-hidden="true" />
+        <span className="apm-signal-label">{metric.label}</span>
+        {showDelta && (
+          <span className={`apm-signal-delta ${Math.abs(delta) < 0.15 ? 'flat' : deltaGood ? 'good' : 'bad'}`}>
+            {delta >= 0 ? '↑' : '↓'} {Math.abs(delta).toFixed(1)}%
+          </span>
+        )}
       </div>
-      {metric.featured ? (
-        <div className="apm-featured-metric">
-          <div
-            className="apm-score-ring"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progress}
-            style={{ background: `conic-gradient(${ringColor} 0% ${progress}%, var(--bg-tertiary) ${progress}% 100%)` }}
-          >
-            <span><strong>{metric.value}</strong><small>/100</small></span>
-          </div>
-          <p>{metric.detail}</p>
-        </div>
-      ) : (
-        <>
-          <div className="apm-signal-value-row">
-            <strong>{metric.value}</strong>
-            {metric.trend && <MiniTrend data={metric.trend} tone={metric.tone} />}
-          </div>
-          <p>{metric.detail}</p>
-          {metric.progress !== undefined && (
-            <span
-              className="apm-kpi-progress"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={progress}
-            >
-              <i style={{ width: `${progress}%` }} />
-            </span>
-          )}
-        </>
+      <div className="apm-signal-value-row">
+        <strong>{metric.value}</strong>
+      </div>
+      <p>{metric.detail}</p>
+      {metric.progress !== undefined && (
+        <span
+          className="apm-kpi-progress"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progress}
+        >
+          <i style={{ width: `${progress}%` }} />
+        </span>
       )}
+      {metric.trend && <MiniTrend data={metric.trend} tone={metric.tone} />}
     </div>
   );
 }
@@ -637,12 +642,14 @@ function PulseBars({ data }: { data: number[] }) {
 
 function ChartPanel({
   title,
+  icon,
   legend,
   summary,
   tone = 'info',
   children,
 }: {
   title: string;
+  icon?: IconName;
   legend: { label: string; color: string; dashed?: boolean }[];
   summary?: { label: string; value: string; tone: ToneName };
   tone?: ToneName;
@@ -652,7 +659,10 @@ function ChartPanel({
     <div className={`apm-chart-panel ${tone}`}>
       <div className="apm-chart-header">
         <div>
-          <h2>{title}</h2>
+          <h2>
+            {icon ? <DashboardIcon name={icon} /> : null}
+            {title}
+          </h2>
         </div>
         <div className="apm-chart-context">
           {summary && (
@@ -698,16 +708,11 @@ function TrafficChart({
   t: (key: string) => string;
 }) {
   const totalData = successData.map((value, idx) => value + (errorData[idx] || 0));
-  const maxValue = Math.max(...totalData, 1);
-  const trafficPoints = getPoints(totalData, maxValue);
-  const maxErrorRate = Math.max(...errorRateData, 6);
-  const ratePoints = getPoints(errorRateData, maxErrorRate);
+  const maxValue = Math.max(...totalData, 1) * 1.08;
   const usableWidth = chartWidth - chartLeft - chartRight;
   const barStep = usableWidth / Math.max(totalData.length, 1);
-  const barWidth = Math.min(28, Math.max(7, barStep * 0.58));
+  const barWidth = Math.max(3, barStep * 0.62);
   const plotBottom = chartHeight - chartBottom;
-  const activeTrafficPoint = hoverIndex !== null ? trafficPoints[hoverIndex] : null;
-  const activeRatePoint = hoverIndex !== null ? ratePoints[hoverIndex] : null;
 
   return (
     <div className="apm-chart-stage">
@@ -718,23 +723,6 @@ function TrafficChart({
         onMouseLeave={() => setHoverIndex(null)}
         onMouseMove={event => setHoverIndex(indexFromMouse(event, totalData.length))}
       >
-        <defs>
-          <linearGradient id="apm-db-bar-gradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--chart-purple)" stopOpacity="0.96" />
-            <stop offset="100%" stopColor="var(--chart-blue)" stopOpacity="0.62" />
-          </linearGradient>
-          <linearGradient id="apm-db-latency-area" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--chart-cyan)" stopOpacity="0.22" />
-            <stop offset="100%" stopColor="var(--chart-cyan)" stopOpacity="0.01" />
-          </linearGradient>
-        </defs>
-        <ThresholdZones
-          maxValue={maxErrorRate}
-          warningThreshold={1}
-          criticalThreshold={5}
-          axis="right"
-          unit="percent"
-        />
         <ChartGrid maxValue={maxValue} unit="count" />
         <g className="apm-request-bars">
           {totalData.map((_, idx) => {
@@ -743,13 +731,13 @@ function TrafficChart({
             const x = chartLeft + idx * barStep + (barStep - barWidth) / 2;
             const dimmed = hoverIndex !== null && hoverIndex !== idx;
             return (
-              <g key={idx} opacity={dimmed ? 0.28 : 1}>
+              <g key={idx} opacity={dimmed ? 0.35 : 1}>
                 <rect
                   x={x}
                   y={plotBottom - successHeight}
                   width={barWidth}
                   height={successHeight}
-                  rx="4"
+                  rx="1.5"
                   className="apm-request-bar-success"
                 />
                 {errorHeight > 0 && (
@@ -757,8 +745,8 @@ function TrafficChart({
                     x={x}
                     y={plotBottom - successHeight - errorHeight}
                     width={barWidth}
-                    height={Math.max(errorHeight, 2)}
-                    rx="3"
+                    height={Math.max(errorHeight, 1.5)}
+                    rx="1.5"
                     className="apm-request-bar-error"
                   />
                 )}
@@ -766,16 +754,16 @@ function TrafficChart({
             );
           })}
         </g>
-        <path d={smoothLinePath(ratePoints)} fill="none" stroke={errorColor} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="apm-error-rate-line" />
-        {activeTrafficPoint && activeRatePoint && (
-          <g>
-            <line x1={activeRatePoint.x} y1={chartTop} x2={activeRatePoint.x} y2={chartHeight - chartBottom} className="apm-crosshair" />
-            <circle cx={activeTrafficPoint.x} cy={activeTrafficPoint.y} r="4.5" fill={trafficColor} className="apm-point-ring" />
-            <circle cx={activeRatePoint.x} cy={activeRatePoint.y} r="5.5" fill={errorColor} className="apm-point-ring" />
-          </g>
+        {hoverIndex !== null && (
+          <line
+            x1={chartLeft + hoverIndex * barStep + barStep / 2}
+            y1={chartTop}
+            x2={chartLeft + hoverIndex * barStep + barStep / 2}
+            y2={plotBottom}
+            className="apm-crosshair"
+          />
         )}
         <XAxis labels={labels} />
-        <text x={chartWidth - 2} y={chartTop + 4} textAnchor="end" className="apm-axis-title">error %</text>
       </svg>
       {hoverIndex !== null && (
         <ChartTooltip leftPercent={tooltipPercent(hoverIndex, successData.length)}>
@@ -791,45 +779,41 @@ function TrafficChart({
 
 function LineChart({
   primary,
-  secondary,
+  secondary = [],
   labels,
   primaryLabel,
   secondaryLabel,
   unit,
   primaryColor,
-  secondaryColor,
+  secondaryColor = primaryColor,
   hoverIndex,
   setHoverIndex,
   loading,
   empty,
-  warningThreshold,
-  criticalThreshold,
   t,
 }: {
   primary: number[];
-  secondary: number[];
+  secondary?: number[];
   labels: string[];
   primaryLabel: string;
-  secondaryLabel: string;
-  unit: 'latency' | 'count';
+  secondaryLabel?: string;
+  unit: 'latency' | 'count' | 'percent';
   primaryColor: string;
-  secondaryColor: string;
+  secondaryColor?: string;
   hoverIndex: number | null;
   setHoverIndex: (idx: number | null) => void;
   loading: boolean;
   empty: boolean;
-  warningThreshold?: number;
-  criticalThreshold?: number;
   t: (key: string) => string;
 }) {
-  const maxValue = Math.max(...primary, ...secondary, (criticalThreshold || warningThreshold || 0) * 1.12, 1);
+  const fillId = React.useId().replace(/:/g, '');
+  const hasSecondary = secondary.length > 0;
+  const maxValue = Math.max(...primary, ...secondary, 1) * 1.08;
   const primaryPoints = getPoints(primary, maxValue);
-  const secondaryPoints = getPoints(secondary, maxValue);
-  const percentileBand = rangeBandPath(primaryPoints, secondaryPoints);
+  const secondaryPoints = hasSecondary ? getPoints(secondary, maxValue) : [];
   const hoverPoint = hoverIndex !== null ? primaryPoints[hoverIndex] : null;
-  const secondaryHoverPoint = hoverIndex !== null ? secondaryPoints[hoverIndex] : null;
-  const lastPrimaryPoint = primaryPoints[primaryPoints.length - 1];
-  const lastSecondaryPoint = secondaryPoints[secondaryPoints.length - 1];
+  const secondaryHoverPoint = hoverIndex !== null && hasSecondary ? secondaryPoints[hoverIndex] : null;
+  const formatValue = (value: number) => (unit === 'percent' ? formatPercent(value) : formatMetric(value, unit));
 
   return (
     <div className="apm-chart-stage">
@@ -840,27 +824,23 @@ function LineChart({
         onMouseLeave={() => setHoverIndex(null)}
         onMouseMove={event => setHoverIndex(indexFromMouse(event, primary.length))}
       >
-        {warningThreshold !== undefined && criticalThreshold !== undefined && (
-          <ThresholdZones
-            maxValue={maxValue}
-            warningThreshold={warningThreshold}
-            criticalThreshold={criticalThreshold}
-            axis="left"
-            unit={unit}
-          />
-        )}
+        <defs>
+          <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={primaryColor} stopOpacity="0.22" />
+            <stop offset="100%" stopColor={primaryColor} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
         <ChartGrid maxValue={maxValue} unit={unit} />
-        <path d={percentileBand} fill={secondaryColor} className="apm-percentile-band" />
-        <path d={areaPath(primaryPoints)} fill={primaryColor} className="apm-area-fill subtle" />
-        <path d={smoothLinePath(primaryPoints)} fill="none" stroke={primaryColor} strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
-        <path d={smoothLinePath(secondaryPoints)} fill="none" stroke={secondaryColor} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-        {lastPrimaryPoint && <circle cx={lastPrimaryPoint.x} cy={lastPrimaryPoint.y} r="3.5" fill={primaryColor} className="apm-series-endpoint" />}
-        {lastSecondaryPoint && <circle cx={lastSecondaryPoint.x} cy={lastSecondaryPoint.y} r="3.5" fill={secondaryColor} className="apm-series-endpoint" />}
-        {hoverPoint && secondaryHoverPoint && (
+        <path d={areaPath(primaryPoints)} fill={`url(#${fillId})`} />
+        <path d={smoothLinePath(primaryPoints)} fill="none" stroke={primaryColor} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+        {hasSecondary && (
+          <path d={smoothLinePath(secondaryPoints)} fill="none" stroke={secondaryColor} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+        )}
+        {hoverPoint && (
           <g>
             <line x1={hoverPoint.x} y1={chartTop} x2={hoverPoint.x} y2={chartHeight - chartBottom} className="apm-crosshair" />
-            <circle cx={hoverPoint.x} cy={hoverPoint.y} r="5" fill={primaryColor} className="apm-point-ring" />
-            <circle cx={secondaryHoverPoint.x} cy={secondaryHoverPoint.y} r="5" fill={secondaryColor} className="apm-point-ring" />
+            <circle cx={hoverPoint.x} cy={hoverPoint.y} r="3.25" fill={primaryColor} className="apm-point-ring" />
+            {secondaryHoverPoint && <circle cx={secondaryHoverPoint.x} cy={secondaryHoverPoint.y} r="3.25" fill={secondaryColor} className="apm-point-ring" />}
           </g>
         )}
         <XAxis labels={labels} />
@@ -868,9 +848,8 @@ function LineChart({
       {hoverIndex !== null && (
         <ChartTooltip leftPercent={tooltipPercent(hoverIndex, primary.length)}>
           <strong>{labels[hoverIndex]}</strong>
-          <span>{primaryLabel}: {formatMetric(primary[hoverIndex], unit)}</span>
-          <span>{secondaryLabel}: {formatMetric(secondary[hoverIndex], unit)}</span>
-          <span>{t('Gap')}: {formatMetric(Math.max(0, secondary[hoverIndex] - primary[hoverIndex]), unit)}</span>
+          <span>{primaryLabel}: {formatValue(primary[hoverIndex])}</span>
+          {hasSecondary && secondaryLabel ? <span>{secondaryLabel}: {formatValue(secondary[hoverIndex])}</span> : null}
         </ChartTooltip>
       )}
     </div>
@@ -896,11 +875,12 @@ function DatabaseChart({
   empty: boolean;
   t: (key: string) => string;
 }) {
-  const maxCalls = Math.max(...calls, 1);
-  const maxLatency = Math.max(...latency, 880);
+  const fillId = React.useId().replace(/:/g, '');
+  const maxCalls = Math.max(...calls, 1) * 1.08;
+  const maxLatency = Math.max(...latency, 1) * 1.08;
   const usableWidth = chartWidth - chartLeft - chartRight;
   const barStep = usableWidth / Math.max(calls.length, 1);
-  const barWidth = Math.min(14, Math.max(5, barStep * 0.34));
+  const barWidth = Math.max(3, barStep * 0.42);
   const latencyPoints = getPoints(latency, maxLatency);
 
   return (
@@ -912,15 +892,14 @@ function DatabaseChart({
         onMouseLeave={() => setHoverIndex(null)}
         onMouseMove={event => setHoverIndex(indexFromMouse(event, calls.length))}
       >
-        <ThresholdZones
-          maxValue={maxLatency}
-          warningThreshold={400}
-          criticalThreshold={800}
-          axis="right"
-          unit="latency"
-        />
+        <defs>
+          <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={dbLatencyColor} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={dbLatencyColor} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
         <ChartGrid maxValue={maxCalls} unit="count" />
-        <path d={areaPath(latencyPoints)} fill="url(#apm-db-latency-area)" className="apm-db-latency-fill" />
+        <path d={areaPath(latencyPoints)} fill={`url(#${fillId})`} />
         {calls.map((value, idx) => {
           const height = scaleY(value, maxCalls);
           const x = chartLeft + idx * barStep + (barStep - barWidth) / 2;
@@ -932,31 +911,21 @@ function DatabaseChart({
               y={y}
               width={barWidth}
               height={height}
-              rx="4"
-              fill="url(#apm-db-bar-gradient)"
+              rx="1.5"
+              fill={dbColor}
               className="apm-db-volume-bar"
-              opacity={hoverIndex === null || hoverIndex === idx ? 0.9 : 0.24}
+              opacity={hoverIndex === null || hoverIndex === idx ? 0.72 : 0.22}
             />
           );
         })}
-        <path d={smoothLinePath(latencyPoints)} fill="none" stroke={dbLatencyColor} strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
-        {latencyPoints[latencyPoints.length - 1] && (
-          <circle
-            cx={latencyPoints[latencyPoints.length - 1].x}
-            cy={latencyPoints[latencyPoints.length - 1].y}
-            r="3.8"
-            fill={dbLatencyColor}
-            className="apm-series-endpoint"
-          />
-        )}
+        <path d={smoothLinePath(latencyPoints)} fill="none" stroke={dbLatencyColor} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
         {hoverIndex !== null && latencyPoints[hoverIndex] && (
           <g>
             <line x1={latencyPoints[hoverIndex].x} y1={chartTop} x2={latencyPoints[hoverIndex].x} y2={chartHeight - chartBottom} className="apm-crosshair" />
-            <circle cx={latencyPoints[hoverIndex].x} cy={latencyPoints[hoverIndex].y} r="5" fill={dbLatencyColor} className="apm-point-ring" />
+            <circle cx={latencyPoints[hoverIndex].x} cy={latencyPoints[hoverIndex].y} r="3.25" fill={dbLatencyColor} className="apm-point-ring" />
           </g>
         )}
         <XAxis labels={labels} />
-        <text x={chartWidth - 2} y={chartTop + 4} textAnchor="end" className="apm-axis-title">latency</text>
       </svg>
       {hoverIndex !== null && (
         <ChartTooltip leftPercent={tooltipPercent(hoverIndex, calls.length)}>
@@ -1094,28 +1063,6 @@ function MetricPill({ label, value, tone }: { label: string; value: string; tone
   );
 }
 
-function MiniTrend({ data, tone }: { data: number[]; tone: ToneName }) {
-  const width = 74;
-  const height = 28;
-  const color = toneColorFor(tone);
-  const maxValue = Math.max(...data, 1);
-  const points = data.slice(-14).map((value, idx, arr) => {
-    const x = arr.length <= 1 ? 0 : (idx / (arr.length - 1)) * width;
-    const y = height - (value / maxValue) * (height - 4) - 2;
-    return { x, y };
-  });
-  const fillPath = points.length > 0
-    ? `M 0 ${height} ${points.map(point => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ')} L ${width} ${height} Z`
-    : '';
-
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="apm-mini-trend" aria-hidden="true">
-      <path d={fillPath} fill={color} className="apm-mini-trend-fill" />
-      <path d={linePath(points)} fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function ChartOverlay({ loading, empty, t }: { loading: boolean; empty: boolean; t: (key: string) => string }) {
   if (!loading && !empty) return null;
   return (
@@ -1129,8 +1076,8 @@ function ChartOverlay({ loading, empty, t }: { loading: boolean; empty: boolean;
   );
 }
 
-function ChartGrid({ maxValue, unit }: { maxValue: number; unit: 'latency' | 'count' }) {
-  const rows = [1, 2 / 3, 1 / 3, 0];
+function ChartGrid({ maxValue, unit }: { maxValue: number; unit: 'latency' | 'count' | 'percent' }) {
+  const rows = [1, 0.5, 0];
   return (
     <g>
       {rows.map(row => {
@@ -1138,62 +1085,12 @@ function ChartGrid({ maxValue, unit }: { maxValue: number; unit: 'latency' | 'co
         return (
           <g key={row}>
             <line x1={chartLeft} y1={y} x2={chartWidth - chartRight} y2={y} className="apm-grid-line" />
-            <text x={chartLeft - 12} y={y + 4} textAnchor="end" className="apm-axis-text">
+            <text x={chartLeft - 10} y={y + 3.5} textAnchor="end" className="apm-axis-text">
               {formatMetric(maxValue * row, unit)}
             </text>
           </g>
         );
       })}
-    </g>
-  );
-}
-
-function ThresholdZones({
-  maxValue,
-  warningThreshold,
-  criticalThreshold,
-  axis,
-  unit,
-}: {
-  maxValue: number;
-  warningThreshold: number;
-  criticalThreshold: number;
-  axis: 'left' | 'right';
-  unit: 'latency' | 'count' | 'percent';
-}) {
-  const plotBottom = chartHeight - chartBottom;
-  const plotHeight = plotBottom - chartTop;
-  const yFor = (value: number) => plotBottom - (clamp(value, 0, maxValue) / Math.max(maxValue, 1)) * plotHeight;
-  const warningY = yFor(warningThreshold);
-  const criticalY = yFor(criticalThreshold);
-  const labelX = axis === 'right' ? chartWidth - chartRight - 5 : chartLeft + 5;
-  const anchor = axis === 'right' ? 'end' : 'start';
-  const formatThreshold = (value: number) => unit === 'percent' ? `${value}%` : formatMetric(value, unit);
-
-  return (
-    <g className="apm-threshold-zones">
-      <rect
-        x={chartLeft}
-        y={chartTop}
-        width={chartWidth - chartLeft - chartRight}
-        height={Math.max(0, criticalY - chartTop)}
-        className="apm-threshold-area critical"
-      />
-      <rect
-        x={chartLeft}
-        y={criticalY}
-        width={chartWidth - chartLeft - chartRight}
-        height={Math.max(0, warningY - criticalY)}
-        className="apm-threshold-area warning"
-      />
-      <line x1={chartLeft} y1={warningY} x2={chartWidth - chartRight} y2={warningY} className="apm-threshold-line warning" />
-      <line x1={chartLeft} y1={criticalY} x2={chartWidth - chartRight} y2={criticalY} className="apm-threshold-line critical" />
-      <text x={labelX} y={warningY - 5} textAnchor={anchor} className="apm-threshold-label warning">
-        {formatThreshold(warningThreshold)} warn
-      </text>
-      <text x={labelX} y={criticalY + 12} textAnchor={anchor} className="apm-threshold-label critical">
-        {formatThreshold(criticalThreshold)} critical
-      </text>
     </g>
   );
 }
@@ -1217,24 +1114,17 @@ function XAxis({ labels }: { labels: string[] }) {
 }
 
 function DashboardIcon({ name }: { name: IconName }) {
-  const iconMap: Record<IconName, string> = {
-    activity: '/dashboard-icons/activity.svg',
-    apdex: '/dashboard-icons/gauge.svg',
-    database: '/dashboard-icons/database.svg',
-    errors: '/dashboard-icons/alert-triangle.svg',
-    latency: '/dashboard-icons/clock-bolt.svg',
-    services: '/dashboard-icons/server.svg',
-    shield: '/dashboard-icons/shield-check.svg',
-    traffic: '/dashboard-icons/chart-arrows-vertical.svg',
-  };
-
-  return (
-    <span
-      className="dashboard-svg-icon"
-      aria-hidden="true"
-      style={{ '--dashboard-icon-url': `url("${iconMap[name]}")` } as React.CSSProperties}
-    />
-  );
+  const icons = {
+    apdex: IconGauge,
+    database: IconDatabase,
+    errors: IconAlertTriangle,
+    heatmap: IconFlame,
+    histogram: IconChartHistogram,
+    latency: IconClock,
+    traffic: IconActivity,
+  } as const;
+  const Glyph = icons[name];
+  return <Glyph size={16} stroke={1.8} aria-hidden />;
 }
 
 function ChartTooltip({ leftPercent, children }: { leftPercent: number; children: React.ReactNode }) {
@@ -1320,28 +1210,6 @@ function getHealthTone(score: number, totalRequests: number): ToneName {
   if (score >= 90) return 'healthy';
   if (score >= 70) return 'warning';
   return 'critical';
-}
-
-function healthLabel(tone: ToneName) {
-  if (tone === 'healthy') return 'Healthy';
-  if (tone === 'warning') return 'Degraded';
-  if (tone === 'critical') return 'Critical';
-  return 'No traffic';
-}
-
-function toneColorFor(tone: ToneName) {
-  switch (tone) {
-    case 'healthy':
-      return 'var(--accent-emerald)';
-    case 'warning':
-      return 'var(--accent-amber)';
-    case 'critical':
-      return 'var(--accent-rose)';
-    case 'info':
-      return 'var(--accent-indigo)';
-    default:
-      return 'var(--text-tertiary)';
-  }
 }
 
 function scaleY(value: number, maxValue: number) {
@@ -1485,7 +1353,8 @@ function LatencyHistogram({ data, loading, t }: { data: LatencyDistribution | nu
   );
 }
 
-function formatMetric(value: number, metric: 'count' | 'latency') {
+function formatMetric(value: number, metric: 'count' | 'latency' | 'percent') {
+  if (metric === 'percent') return formatPercent(value);
   if (!Number.isFinite(value)) return metric === 'latency' ? '0ms' : '0';
   if (metric === 'latency') {
     if (value < 1) return `${(value * 1000).toFixed(0)}us`;

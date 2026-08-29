@@ -625,89 +625,56 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
         .db-metric-card {
           position: relative;
           min-width: 0;
-          padding: 16px;
-          border: 1px solid color-mix(in srgb, var(--accent-indigo) 16%, var(--border-primary));
+          padding: 14px 16px 12px;
+          border: 1px solid var(--border-primary);
           border-radius: 10px;
-          background:
-            radial-gradient(280px 90px at 100% 0%, color-mix(in srgb, var(--accent-cyan) 10%, transparent), transparent 62%),
-            linear-gradient(135deg, var(--bg-secondary), color-mix(in srgb, var(--bg-tertiary) 32%, var(--bg-secondary)));
-          box-shadow: var(--shadow-sm);
+          background: var(--bg-secondary);
+          box-shadow: none;
           overflow: hidden;
-          transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
         }
         .db-metric-card::before {
-          content: "";
-          position: absolute;
-          inset: 0 auto auto 0;
-          width: 100%;
-          height: 2px;
-          background: linear-gradient(90deg, var(--accent-cyan), var(--accent-indigo) 55%, transparent);
-        }
-        .db-metric-card.emerald::before {
-          background: linear-gradient(90deg, var(--accent-emerald), transparent 70%);
-        }
-        .db-metric-card.amber::before {
-          background: linear-gradient(90deg, var(--accent-amber), transparent 70%);
-        }
-        .db-metric-card.rose::before {
-          background: linear-gradient(90deg, var(--accent-rose), transparent 70%);
+          display: none;
         }
         .db-metric-card:hover {
           border-color: var(--border-secondary);
-          box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
-          transform: translateY(-1px);
+          box-shadow: none;
+          transform: none;
         }
         .db-metric-top {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 12px;
+          gap: 8px;
         }
-        /* Label only. Unscoped, this also matched the icon chip and the glyph
-           inside it, and at specificity 0,1,1 it outranked .db-metric-icon
-           (0,1,0) — so the card's accent tone never reached the icon. */
         .db-metric-top > span:not(.db-metric-icon) {
           color: var(--text-tertiary);
-          font-size: 10px;
-          font-weight: 850;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
+          font-size: 12px;
+          font-weight: 500;
+          letter-spacing: 0;
+          text-transform: none;
         }
-        /* Chip container. The background belongs on this wrapper, never on the
-           icon itself: IconPack paints its glyph with background: currentColor
-           behind a mask, so a background here would repaint the glyph — at 8%
-           opacity, which is why these icons were invisible. Matches
-           .dependency-metric-icon and .trace-detail-metric-icon. */
         .db-metric-icon {
-          width: 34px;
-          height: 34px;
-          flex: 0 0 auto;
-          display: grid;
-          place-items: center;
-          border-radius: var(--radius-sm);
-          color: var(--accent-indigo);
-          background: color-mix(in srgb, currentColor 10%, transparent);
+          display: none;
         }
-        .db-metric-card.emerald .db-metric-icon { color: var(--accent-emerald); }
-        .db-metric-card.amber .db-metric-icon { color: var(--accent-amber); }
-        .db-metric-card.rose .db-metric-icon { color: var(--accent-rose); }
         .db-metric-card strong {
           display: block;
-          margin-top: 12px;
+          margin-top: 8px;
           color: var(--text-primary);
-          font-family: var(--font-mono);
-          font-size: 29px;
-          line-height: 1;
-          font-weight: 850;
+          font-family: var(--font-sans);
+          font-size: 28px;
+          line-height: 1.05;
+          font-weight: 650;
+          letter-spacing: -0.045em;
+          font-variant-numeric: tabular-nums;
           white-space: nowrap;
         }
         .db-metric-card em {
           display: block;
-          margin-top: 7px;
-          color: var(--text-secondary);
-          font-size: 11px;
+          margin-top: 4px;
+          color: var(--text-muted);
+          font-size: 12px;
           font-style: normal;
-          font-weight: 700;
+          font-weight: 500;
         }
         .db-page-hero {
           display: flex;
@@ -720,6 +687,9 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
         }
         .db-page-hero .page-title {
           margin: 5px 0 0;
+          font-size: 22px;
+          font-weight: 650;
+          letter-spacing: -0.03em;
         }
         .db-page-kicker {
           display: inline-flex;
@@ -853,9 +823,9 @@ export default function DbAnalytics({ namespace }: DbAnalyticsProps) {
           border: 1px solid rgba(139, 92, 246, 0.3);
         }
         .badge-system-sql {
-          background: rgba(6, 182, 212, 0.15) !important;
-          color: #06b6d4 !important;
-          border: 1px solid rgba(6, 182, 212, 0.3);
+          background: rgba(67, 56, 202, 0.15) !important;
+          color: #4f46e5 !important;
+          border: 1px solid rgba(67, 56, 202, 0.3);
         }
         .badge-system-generic {
           background: rgba(113, 128, 150, 0.15) !important;

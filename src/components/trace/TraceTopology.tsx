@@ -99,7 +99,7 @@ const getNamespaceColor = (namespace: string): string => {
     '#f59e0b', // Amber
     '#ec4899', // Pink
     '#8b5cf6', // Violet
-    '#06b6d4', // Cyan
+    '#818cf8', // Periwinkle
     '#f43f5e', // Rose
     '#3b82f6', // Blue
   ];

@@ -1,0 +1,246 @@
+/* Shared KPI / panel language — same as Overview. Loaded last so it wins. */
+
+.services-summary-grid,
+.dependency-metric-grid,
+.infra-summary-grid,
+.live-metric-grid,
+.alerts-overview-grid,
+.db-metric-grid,
+.service-map-kpi-grid,
+.trace-detail-metric-grid,
+.admin-summary-grid,
+.stats-cards-grid {
+  gap: 10px;
+}
+
+.alerts-overview-grid {
+  margin-bottom: 24px;
+}
+
+.services-summary-card,
+.dependencies-page .dependency-metric-card,
+.infra-summary-card,
+.live-metric-card,
+.alert-stat-card,
+.db-metric-card,
+.service-map-stat-card,
+.trace-detail-metric-card,
+.admin-summary-card,
+.stat-card {
+  --kpi-accent: var(--text-tertiary);
+  position: relative;
+  min-height: 0 !important;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 14px 16px 12px !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: 10px;
+  background: var(--bg-secondary) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  transform: none !important;
+  color: var(--text-primary);
+}
+
+.services-summary-card {
+  padding: 14px 16px 0 !important;
+}
+
+.services-summary-card::before,
+.services-summary-card::after,
+.dependencies-page .dependency-metric-card::before,
+.dependencies-page .dependency-metric-card::after,
+.infra-summary-card::before,
+.infra-summary-card::after,
+.live-metric-card::before,
+.alert-stat-card::before,
+.db-metric-card::before,
+.service-map-stat-card::after,
+.admin-summary-card::before,
+.stat-card::before {
+  display: none !important;
+}
+
+.services-summary-card:hover,
+.dependencies-page .dependency-metric-card:hover,
+.infra-summary-card:hover,
+.live-metric-card:hover,
+.alert-stat-card:hover,
+.db-metric-card:hover,
+.service-map-stat-card:hover,
+.trace-detail-metric-card:hover,
+.admin-summary-card:hover,
+.stat-card:hover {
+  border-color: var(--border-secondary) !important;
+  background: var(--bg-secondary) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.services-summary-topline,
+.dependency-metric-top,
+.infra-summary-top,
+.db-metric-top,
+.alert-stat-topline {
+  display: flex !important;
+  grid-template-columns: none !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+}
+
+.services-summary-icon,
+.services-summary-topline > i,
+.dependency-metric-icon,
+.dependency-metric-top > i,
+.infra-summary-icon,
+.infra-summary-top > i,
+.db-metric-icon,
+.service-map-stat-icon,
+.trace-detail-metric-icon,
+.alert-stat-dot {
+  display: none !important;
+}
+
+.services-summary-topline > span:not(.services-summary-icon),
+.dependency-metric-top > span:not(.dependency-metric-icon),
+.infra-summary-top > span:nth-child(2),
+.db-metric-top > span:not(.db-metric-icon),
+.live-metric-card > span,
+.alert-stat-card .alert-stat-label,
+.service-map-stat-card span,
+.trace-detail-metric-card span,
+.admin-summary-card > span,
+.stat-card-label {
+  display: block;
+  color: var(--text-tertiary) !important;
+  font-family: var(--font-sans) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  line-height: 1.3;
+  text-transform: none !important;
+}
+
+.services-summary-card strong,
+.services-summary-card .services-summary-value-row strong,
+.dependencies-page .dependency-metric-card > strong,
+.infra-summary-card > strong,
+.live-metric-card strong,
+.live-metric-card.rose strong,
+.alert-stat-value,
+.db-metric-card strong,
+.service-map-stat-card strong,
+.trace-detail-metric-card strong,
+.admin-summary-card strong,
+.stat-card-value {
+  display: block;
+  margin-top: 8px !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-sans) !important;
+  font-size: 28px !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.045em !important;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.services-summary-card em,
+.services-summary-card .services-summary-value-row em,
+.dependencies-page .dependency-metric-card > em,
+.infra-summary-card > em,
+.live-metric-card em,
+.alert-stat-detail,
+.db-metric-card em,
+.service-map-stat-card em,
+.trace-detail-metric-card em,
+.admin-summary-card em {
+  display: block;
+  margin-top: 4px !important;
+  color: var(--text-muted) !important;
+  font-size: 12px !important;
+  font-style: normal !important;
+  font-weight: 500 !important;
+  line-height: 1.3;
+}
+
+.services-summary-value-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  margin-top: 0;
+}
+
+.services-summary-sparkline,
+.services-summary-card .service-sparkline,
+.services-summary-card .services-summary-sparkline {
+  display: block;
+  width: calc(100% + 32px) !important;
+  height: 40px !important;
+  flex: none !important;
+  margin: 12px -16px 0;
+}
+
+.service-map-stat-card > div,
+.trace-detail-metric-card > div {
+  min-width: 0;
+  width: 100%;
+}
+
+.apm-chart-panel,
+.apm-list-panel,
+.apm-health-panel,
+.infra-chart-card,
+.infra-workloads-panel,
+.infra-nodes-panel,
+.infra-namespace-panel,
+.dependency-list-panel,
+.dependency-insight-card,
+.live-stream-panel,
+.live-filter-panel,
+.traces-filter-panel,
+.trace-results-panel,
+.service-map-panel,
+.trace-detail-context-panel,
+.trace-detail-insight-panel,
+.trace-detail-tag-panel,
+.trace-detail-problems-panel,
+.trace-detail-visualization-panel,
+.trace-flame-panel,
+.trace-topology-panel {
+  border: 1px solid var(--border-primary) !important;
+  border-top: 1px solid var(--border-primary) !important;
+  border-radius: 10px;
+  background: var(--bg-secondary) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.infra-chart-card svg,
+.live-volume-card {
+  background-image: none !important;
+}
+
+.dependency-sparkline path,
+.service-sparkline path {
+  filter: none !important;
+}
+
+.infra-summary-card .infra-usage {
+  margin-top: 12px;
+  padding-top: 10px;
+}
+
+.infra-summary-card .infra-usage-head strong {
+  font-size: 11px !important;
+  font-weight: 650 !important;
+  margin-top: 0 !important;
+}
