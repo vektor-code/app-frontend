@@ -26,7 +26,7 @@ export function shouldUseMockTelemetry(): boolean {
   }
 }
 
-export function isMockToken(token: string | null | undefined): boolean {
+export function isMockToken(token: string | null | undefined): token is string {
   return Boolean(token?.startsWith(MOCK_PREFIX));
 }
 
