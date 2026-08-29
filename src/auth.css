@@ -47,9 +47,8 @@
 .apm-auth-visual::after {
   z-index: 3;
   inset: 0;
-  background: linear-gradient(110deg, transparent 38%, rgba(255, 255, 255, 0.32), transparent 62%);
-  translate: -100% 0;
-  animation: apm-auth-light-pass 9s 1.5s ease-in-out infinite;
+  pointer-events: none;
+  background: transparent;
 }
 
 .apm-auth-visual-brand {
@@ -88,25 +87,9 @@
 }
 
 .apm-auth-product-stage {
-  --auth-tilt-x: -1deg;
-  --auth-tilt-y: 2deg;
-  --auth-shift-x: 0px;
-  --auth-shift-y: 0px;
-  --auth-context-x: 0px;
-  --auth-context-y: 0px;
-  --auth-context-rotate-x: -6deg;
-  --auth-context-rotate-y: -14deg;
-  --auth-fix-x: 0px;
-  --auth-fix-y: 0px;
-  --auth-fix-rotate-x: 6deg;
-  --auth-fix-rotate-y: 11deg;
-  --auth-glow-x: 50%;
-  --auth-glow-y: 50%;
   position: relative;
   width: min(640px, calc(100% - 86px));
   min-height: 610px;
-  -webkit-perspective: 900px;
-  perspective: 900px;
 }
 
 .apm-auth-product-stage::before {
@@ -115,9 +98,9 @@
   inset: 40px 18px;
   border-radius: 40%;
   background: radial-gradient(
-    circle at var(--auth-glow-x) var(--auth-glow-y),
-    rgba(99, 102, 241, 0.22),
-    rgba(67, 56, 202, 0.08) 26%,
+    circle at 50% 50%,
+    rgba(99, 102, 241, 0.16),
+    rgba(67, 56, 202, 0.06) 26%,
     transparent 58%
   );
   content: '';
@@ -137,22 +120,14 @@
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.92);
   box-shadow:
-    0 42px 90px rgba(49, 46, 129, 0.16),
-    0 12px 30px rgba(49, 46, 129, 0.08),
+    0 16px 40px rgba(49, 46, 129, 0.08),
     0 1px 0 rgba(255, 255, 255, 0.9) inset;
-  transform:
-    translate3d(calc(-50% + var(--auth-shift-x)), calc(-50% + var(--auth-shift-y)), 0)
-    rotateX(var(--auth-tilt-x))
-    rotateY(var(--auth-tilt-y));
-  transform-style: preserve-3d;
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
+  transform: translate(-50%, -50%);
   transition:
     background 260ms ease,
     border-color 260ms ease,
-    box-shadow 260ms ease,
-    transform 120ms ease-out;
-  animation: apm-auth-window-in 700ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+    box-shadow 260ms ease;
+  animation: apm-auth-window-in 500ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .apm-auth-product-header {
@@ -485,7 +460,7 @@
   border: 1px solid rgba(255, 255, 255, 0.74);
   background: transparent;
   box-shadow:
-    0 22px 50px rgba(49, 46, 129, 0.16),
+    0 10px 24px rgba(49, 46, 129, 0.08),
     0 1px 0 rgba(255, 255, 255, 0.84) inset;
 }
 
@@ -504,27 +479,17 @@
 
 .apm-auth-context-card {
   top: 48px;
-  right: -20px;
+  right: 8px;
   width: 214px;
-  border-radius: 15px;
+  border-radius: 12px;
   padding: 13px 14px 12px;
-  transform:
-    translate3d(var(--auth-context-x), var(--auth-context-y), 76px)
-    rotateX(var(--auth-context-rotate-x))
-    rotateY(var(--auth-context-rotate-y));
-  transform-style: preserve-3d;
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  will-change: transform;
-  transition: transform 135ms ease-out;
-  animation: apm-auth-float-card-in 780ms 120ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: apm-auth-float-card-in 500ms 80ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .apm-auth-context-card header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  transform: translateZ(24px);
 }
 
 .apm-auth-context-card header span {
@@ -546,7 +511,6 @@
   width: 100%;
   height: 68px;
   overflow: visible;
-  transform: translateZ(17px);
 }
 
 .apm-auth-context-links path {
@@ -570,14 +534,13 @@
   fill: #4338ca;
   stroke: #ffffff;
   stroke-width: 2.5;
-  filter: drop-shadow(0 3px 5px rgba(67, 56, 202, 0.36));
+  filter: none;
 }
 
 .apm-auth-context-card > div {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  transform: translateZ(28px);
 }
 
 .apm-auth-context-card > div strong {
@@ -602,26 +565,17 @@
 
 .apm-auth-fix-card {
   bottom: 52px;
-  left: -22px;
+  left: 8px;
   display: grid;
   gap: 8px;
   width: 226px;
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 13px 14px;
-  transform:
-    translate3d(var(--auth-fix-x), var(--auth-fix-y), 92px)
-    rotateX(var(--auth-fix-rotate-x))
-    rotateY(var(--auth-fix-rotate-y));
-  transform-style: preserve-3d;
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  will-change: transform;
-  transition: transform 135ms ease-out;
-  animation: apm-auth-float-card-in 780ms 220ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: apm-auth-float-card-in 500ms 140ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .apm-auth-fix-card > * {
-  transform: translateZ(24px);
+  transform: none;
 }
 
 .apm-auth-fix-card > div {
@@ -758,14 +712,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  min-height: 44px;
+  min-height: 36px;
   border: none;
-  border-radius: 9px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-secondary, #64748b);
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -812,15 +765,15 @@
 
 .apm-auth-peek {
   position: absolute;
-  right: 6px;
+  right: 4px;
   top: 50%;
   transform: translateY(-50%);
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-tertiary, #94a3b8);
   cursor: pointer;
@@ -828,6 +781,12 @@
 
 .apm-auth-peek:hover {
   color: var(--text-primary, #0f172a);
+  background: transparent;
+}
+
+.apm-auth-peek:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent-indigo) 45%, transparent);
+  outline-offset: 0;
 }
 
 .apm-auth-form input[type='text'],
@@ -843,10 +802,7 @@
   font: inherit;
   font-size: 14px;
   outline: none;
-  transition:
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    background 160ms ease;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .apm-auth-form input[type='text']:hover,
@@ -864,35 +820,12 @@
 
 .apm-auth-form input:focus {
   border-color: var(--accent-indigo);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-indigo) 22%, transparent);
+  box-shadow: 0 0 0 1px var(--accent-indigo);
 }
 
-.apm-auth-password-slot {
-  display: grid;
-  grid-template-rows: 0fr;
-  opacity: 0;
-  margin: 0;
-  transform: translateY(-6px);
-  transition:
-    grid-template-rows 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 280ms ease,
-    transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
-  pointer-events: none;
-}
-
-.apm-auth-password-slot.is-open {
-  grid-template-rows: 1fr;
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
+.apm-auth-password-slot,
 .apm-auth-password-inner {
-  overflow: hidden;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: contents;
 }
 
 .apm-auth-remember {
@@ -1028,7 +961,7 @@
 @keyframes apm-auth-window-in {
   from {
     opacity: 0;
-    transform: translate3d(-50%, calc(-50% + 18px), 0) rotateX(1deg) rotateY(-1deg) scale(0.98);
+    transform: translate(-50%, calc(-50% + 12px));
   }
 }
 
@@ -1137,7 +1070,7 @@
   }
 
   .apm-auth-product-window {
-    transform: translate3d(-50%, -50%, 0);
+    transform: translate(-50%, -50%);
   }
 }
 
@@ -1173,9 +1106,9 @@ body.dark-theme .apm-auth-remember:hover input:not(:checked) + .apm-auth-checkbo
 
 body.dark-theme .apm-auth-product-stage::before {
   background: radial-gradient(
-    circle at var(--auth-glow-x) var(--auth-glow-y),
-    rgba(99, 102, 241, 0.28),
-    rgba(67, 56, 202, 0.1) 28%,
+    circle at 50% 50%,
+    rgba(99, 102, 241, 0.2),
+    rgba(67, 56, 202, 0.08) 28%,
     transparent 60%
   );
 }

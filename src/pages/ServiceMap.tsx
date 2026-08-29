@@ -39,6 +39,8 @@ const ZOOM_MAX = 3;
 const ZOOM_STEP = 0.15;
 const NODE_W = 168;
 const NODE_H = 64;
+const MAP_SANS = '"Plus Jakarta Sans Variable", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif';
+const MAP_MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 
 // Helper to check if a service is an infrastructure component
 const isInfraNode = (node: ServiceStats) => {
@@ -149,7 +151,7 @@ const trimCanvasText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: n
 
 const getMapNodeTone = (node: ServiceStats, isInternet: boolean, isInfra: boolean) => {
   if (isInternet) {
-    return { color: '#38bdf8', label: 'EXT' };
+    return { color: '#64748b', label: 'Ext' };
   }
 
   const requestCount = node.requestCount || 0;
@@ -161,15 +163,15 @@ const getMapNodeTone = (node: ServiceStats, isInternet: boolean, isInfra: boolea
   const status = (node.status || '').toLowerCase();
 
   if (requestCount <= 0) {
-    return { color: '#94a3b8', label: 'IDLE' };
+    return { color: '#94a3b8', label: 'Idle' };
   }
   if (node.errorCount > 0 || errorRate >= 2 || status === 'critical') {
-    return { color: '#f43f5e', label: 'ERR' };
+    return { color: '#e11d48', label: 'Error' };
   }
   if (node.p95Ms >= 1000 || status === 'degraded') {
-    return { color: '#f59e0b', label: 'SLOW' };
+    return { color: '#d97706', label: 'Slow' };
   }
-  return { color: isInfra ? '#f59e0b' : '#10b981', label: 'LIVE' };
+  return { color: isInfra ? '#d97706' : '#4f46e5', label: 'Ok' };
 };
 
 const formatMapLatency = (ms: number) => {
@@ -646,70 +648,24 @@ const drawInfraIcon = (
 
 
 // Colors for column namespace zones (DrawSQL-style)
-const getColumnTheme = (name: string, index: number, isDark: boolean) => {
-  const themes = [
-    // Indigo
-    {
-      bg: isDark ? 'rgba(99, 102, 241, 0.04)' : 'rgba(99, 102, 241, 0.02)',
-      border: isDark ? 'rgba(99, 102, 241, 0.3)' : 'rgba(99, 102, 241, 0.15)',
-      headerBg: isDark ? 'rgba(99, 102, 241, 0.12)' : 'rgba(99, 102, 241, 0.05)',
-      text: isDark ? '#a5b4fc' : '#4f46e5',
-    },
-    // Purple
-    {
-      bg: isDark ? 'rgba(168, 85, 247, 0.04)' : 'rgba(168, 85, 247, 0.02)',
-      border: isDark ? 'rgba(168, 85, 247, 0.3)' : 'rgba(168, 85, 247, 0.15)',
-      headerBg: isDark ? 'rgba(168, 85, 247, 0.12)' : 'rgba(168, 85, 247, 0.05)',
-      text: isDark ? '#d8b4fe' : '#9333ea',
-    },
-    // Emerald
-    {
-      bg: isDark ? 'rgba(16, 185, 129, 0.04)' : 'rgba(16, 185, 129, 0.02)',
-      border: isDark ? 'rgba(16, 185, 129, 0.3)' : 'rgba(16, 185, 129, 0.15)',
-      headerBg: isDark ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.05)',
-      text: isDark ? '#6ee7b7' : '#059669',
-    },
-    // Rose
-    {
-      bg: isDark ? 'rgba(244, 63, 94, 0.04)' : 'rgba(244, 63, 94, 0.02)',
-      border: isDark ? 'rgba(244, 63, 94, 0.3)' : 'rgba(244, 63, 94, 0.15)',
-      headerBg: isDark ? 'rgba(244, 63, 94, 0.12)' : 'rgba(244, 63, 94, 0.05)',
-      text: isDark ? '#fda4af' : '#e11d48',
-    },
-    // Amber
-    {
-      bg: isDark ? 'rgba(217, 119, 6, 0.06)' : 'rgba(217, 119, 6, 0.04)',
-      border: isDark ? 'rgba(251, 191, 36, 0.3)' : 'rgba(217, 119, 6, 0.16)',
-      headerBg: isDark ? 'rgba(217, 119, 6, 0.14)' : 'rgba(217, 119, 6, 0.06)',
-      text: isDark ? '#fbbf24' : '#c2410c',
-    }
-  ];
+const getColumnTheme = (name: string, _index: number, isDark: boolean) => {
+  const slate = {
+    bg: isDark ? 'rgba(148, 163, 184, 0.04)' : 'rgba(15, 23, 42, 0.025)',
+    border: isDark ? 'rgba(148, 163, 184, 0.16)' : 'rgba(15, 23, 42, 0.1)',
+    headerBg: isDark ? 'rgba(148, 163, 184, 0.07)' : 'rgba(15, 23, 42, 0.04)',
+    text: isDark ? '#94a3b8' : '#475569',
+  };
 
-  if (name === 'Internet') {
-    return {
-      bg: isDark ? 'rgba(148, 163, 184, 0.03)' : 'rgba(148, 163, 184, 0.015)',
-      border: isDark ? 'rgba(148, 163, 184, 0.25)' : 'rgba(148, 163, 184, 0.12)',
-      headerBg: isDark ? 'rgba(148, 163, 184, 0.1)' : 'rgba(148, 163, 184, 0.04)',
-      text: isDark ? '#cbd5e1' : '#475569',
-    };
-  }
   if (name === 'Infrastructure') {
-    // Amber / orange styling for database/infrastructure
     return {
-      bg: isDark ? 'rgba(245, 158, 11, 0.04)' : 'rgba(245, 158, 11, 0.02)',
-      border: isDark ? 'rgba(245, 158, 11, 0.3)' : 'rgba(245, 158, 11, 0.15)',
-      headerBg: isDark ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.05)',
-      text: isDark ? '#fde047' : '#d97706',
+      bg: isDark ? 'rgba(217, 119, 6, 0.05)' : 'rgba(217, 119, 6, 0.04)',
+      border: isDark ? 'rgba(217, 119, 6, 0.22)' : 'rgba(217, 119, 6, 0.14)',
+      headerBg: isDark ? 'rgba(217, 119, 6, 0.1)' : 'rgba(217, 119, 6, 0.06)',
+      text: isDark ? '#fbbf24' : '#b45309',
     };
   }
 
-  // Stable color choice based on namespace name hash
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const idx = Math.abs(hash) % themes.length;
-  return themes[idx];
+  return slate;
 };
 
 export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
@@ -1682,10 +1638,10 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         // Draw zone bounding box background
         ctx.fillStyle = theme.bg;
         ctx.strokeStyle = theme.border;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1;
         ctx.beginPath();
         if (ctx.roundRect) {
-          ctx.roundRect(zx, zy, zw, zh, 10);
+          ctx.roundRect(zx, zy, zw, zh, 8);
         } else {
           ctx.rect(zx, zy, zw, zh);
         }
@@ -1696,7 +1652,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         ctx.fillStyle = theme.headerBg;
         ctx.beginPath();
         if (ctx.roundRect) {
-          ctx.roundRect(zx, zy, zw, headerHeight + 4, [10, 10, 0, 0]);
+          ctx.roundRect(zx, zy, zw, headerHeight + 4, [8, 8, 0, 0]);
         } else {
           ctx.rect(zx, zy, zw, headerHeight + 4);
         }
@@ -1712,9 +1668,9 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
 
         // Label
         ctx.fillStyle = theme.text;
-        ctx.font = 'bold 9px Inter';
+        ctx.font = `600 10px ${MAP_SANS}`;
         ctx.textAlign = 'left';
-        ctx.fillText(col.label.toUpperCase(), zx + 12, zy + 16);
+        ctx.fillText(col.label, zx + 12, zy + 16);
       });
 
       // Compute total outgoing call duration per node for contribution percentage
@@ -1803,10 +1759,12 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         ctx.globalAlpha = shouldDim ? 0.05 : 1.0;
 
         ctx.strokeStyle = isError
-          ? 'rgba(244, 63, 94, 0.45)'
-          : isCritical ? 'rgba(245, 158, 11, 0.6)' : 'rgba(99, 102, 241, 0.35)';
+          ? (isDark ? 'rgba(244, 63, 94, 0.55)' : 'rgba(225, 29, 72, 0.45)')
+          : isCritical
+            ? (isDark ? 'rgba(245, 158, 11, 0.5)' : 'rgba(217, 119, 6, 0.4)')
+            : (isDark ? 'rgba(148, 163, 184, 0.32)' : 'rgba(100, 116, 139, 0.28)');
 
-        ctx.lineWidth = Math.min(8, 1.5 + (contributionPercent / 100) * 4 + (isCritical ? 2 : 0));
+        ctx.lineWidth = Math.min(2.25, 1 + (contributionPercent / 100) * 1.25);
 
         ctx.beginPath();
         ctx.moveTo(x1, y1);
@@ -1814,52 +1772,43 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         ctx.stroke();
 
         const midPoint = getBezierPoint(0.5, x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2);
-        const arrowLen = 9;
+        const arrowLen = 7;
 
         ctx.beginPath();
         ctx.moveTo(midPoint.x + arrowLen * Math.cos(midPoint.angle - Math.PI / 6), midPoint.y + arrowLen * Math.sin(midPoint.angle - Math.PI / 6));
         ctx.lineTo(midPoint.x, midPoint.y);
         ctx.lineTo(midPoint.x + arrowLen * Math.cos(midPoint.angle + Math.PI / 6), midPoint.y + arrowLen * Math.sin(midPoint.angle + Math.PI / 6));
-        ctx.strokeStyle = isError ? 'rgba(244, 63, 94, 0.75)' : isCritical ? 'rgba(245, 158, 11, 0.85)' : 'rgba(99, 102, 241, 0.65)';
-        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = isError
+          ? (isDark ? 'rgba(244, 63, 94, 0.8)' : 'rgba(225, 29, 72, 0.7)')
+          : isCritical
+            ? (isDark ? 'rgba(245, 158, 11, 0.75)' : 'rgba(217, 119, 6, 0.7)')
+            : (isDark ? 'rgba(148, 163, 184, 0.55)' : 'rgba(71, 85, 105, 0.45)');
+        ctx.lineWidth = 1.25;
         ctx.stroke();
 
         const avgDuration = edge.avgDurationMs >= 100
           ? edge.avgDurationMs.toFixed(0)
           : edge.avgDurationMs.toFixed(1);
-        const badgeText = `${formatMapNumber(edge.callCount)} calls / ${avgDuration}ms`;
+        const badgeText = `${formatMapNumber(edge.callCount)} calls · ${avgDuration}ms`;
 
-        ctx.font = '800 8.5px Inter';
-        const badgeWidth = ctx.measureText(badgeText).width + 18;
-        const badgeHeight = 20;
+        ctx.font = `500 9px ${MAP_SANS}`;
+        const badgeWidth = ctx.measureText(badgeText).width + 16;
+        const badgeHeight = 18;
         const bx = midPoint.x - badgeWidth / 2;
-        const by = midPoint.y - badgeHeight / 2 - 14;
+        const by = midPoint.y - badgeHeight / 2 - 12;
 
-        const badgeBg = ctx.createLinearGradient(bx, by, bx, by + badgeHeight);
-        if (isDark) {
-          badgeBg.addColorStop(0, 'rgba(15, 23, 42, 0.96)');
-          badgeBg.addColorStop(1, 'rgba(30, 41, 59, 0.96)');
-        } else {
-          badgeBg.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
-          badgeBg.addColorStop(1, 'rgba(248, 250, 252, 0.98)');
-        }
-        ctx.fillStyle = badgeBg;
-        ctx.strokeStyle = isError ? 'rgba(244, 63, 94, 0.65)' : isCritical ? 'rgba(245, 158, 11, 0.65)' : 'rgba(99, 102, 241, 0.45)';
+        ctx.fillStyle = isDark ? 'rgba(15, 20, 28, 0.94)' : 'rgba(255, 255, 255, 0.96)';
+        ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.22)' : 'rgba(15, 23, 42, 0.1)';
         ctx.lineWidth = 1;
 
-        drawRoundedRect(ctx, bx, by, badgeWidth, badgeHeight, 10);
+        drawRoundedRect(ctx, bx, by, badgeWidth, badgeHeight, 4);
         ctx.fill();
         ctx.stroke();
 
-        ctx.beginPath();
-        ctx.arc(bx + 9, by + badgeHeight / 2, 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = isError ? '#f43f5e' : isCritical ? '#f59e0b' : '#6366f1';
-        ctx.fill();
-
-        ctx.fillStyle = isError ? '#fb7185' : isCritical ? '#d97706' : (isDark ? '#e2e8f0' : '#334155');
+        ctx.fillStyle = isError ? (isDark ? '#fb7185' : '#e11d48') : isCritical ? (isDark ? '#fbbf24' : '#b45309') : (isDark ? '#cbd5e1' : '#334155');
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(badgeText, midPoint.x + 4, by + badgeHeight / 2 + 0.5);
+        ctx.fillText(badgeText, midPoint.x, by + badgeHeight / 2);
         ctx.globalAlpha = 1.0; // Reset global alpha
       });
 
@@ -1889,13 +1838,9 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
 
         // Glowing dot
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, particle.isError ? 6.5 : 5, 0, Math.PI * 2);
-        const color = particle.isError ? '#f43f5e' : '#10b981';
-        ctx.fillStyle = color;
-        ctx.shadowColor = color;
-        ctx.shadowBlur = particle.isError ? 12 : 8;
+        ctx.arc(pos.x, pos.y, particle.isError ? 3.25 : 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = particle.isError ? '#f43f5e' : (isDark ? '#818cf8' : '#4338ca');
         ctx.fill();
-        ctx.shadowBlur = 0;
 
         // Floating operation label
         if (particle.operationName) {
@@ -1903,7 +1848,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             ? particle.operationName.slice(0, 22) + '…'
             : particle.operationName;
 
-          ctx.font = '600 8px Inter';
+          ctx.font = `500 8px ${MAP_SANS}`;
           const tw = ctx.measureText(labelText).width;
           const lx = pos.x - tw / 2 - 4;
           const ly = pos.y - 16;
@@ -1929,14 +1874,14 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
 
           // Label text
           ctx.fillStyle = particle.isError
-            ? '#fb7185'
-            : (isDark ? '#6ee7b7' : '#059669');
+            ? (isDark ? '#fb7185' : '#e11d48')
+            : (isDark ? '#cbd5e1' : '#334155');
           ctx.textAlign = 'center';
           ctx.fillText(labelText, pos.x, ly + 10);
 
           // Trace ID micro-label
           if (particle.traceIdShort) {
-            ctx.font = '500 6px JetBrains Mono';
+            ctx.font = `500 7px ${MAP_MONO}`;
             ctx.fillStyle = isDark ? 'rgba(148, 163, 184, 0.6)' : 'rgba(100, 116, 139, 0.6)';
             ctx.fillText(particle.traceIdShort, pos.x, ly + lh + 8);
           }
@@ -1974,78 +1919,49 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         const ry = pos.y - h / 2;
 
         ctx.save();
-        const pulse = 1 + 0.05 * Math.sin(Date.now() * 0.005);
-        const glowRadius = Math.max(w, h) * 0.8 * pulse;
 
-        // Skip glow/halo if the node is dimmed
-        if (!shouldDim) {
-          const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, glowRadius);
-          if (isInternet) {
-            gradient.addColorStop(0, 'rgba(56, 189, 248, 0.15)');
-          } else if (isInfra) {
-            gradient.addColorStop(0, 'rgba(245, 158, 11, 0.15)');
-          } else {
-            gradient.addColorStop(0, hasErrors ? 'rgba(244, 63, 94, 0.15)' : 'rgba(99, 102, 241, 0.12)');
-          }
-          gradient.addColorStop(1, 'transparent');
-          ctx.fillStyle = gradient;
-          ctx.beginPath();
-          ctx.arc(pos.x, pos.y, glowRadius, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        // Disable shadows on dimmed nodes to prevent glowing artifacts
-        ctx.shadowBlur = shouldDim ? 0 : (hasErrors ? 16 : isInfra ? 10 : 8);
-        ctx.shadowColor = shouldDim ? 'transparent' : `${nodeTone.color}55`;
-
-        const cardGradient = ctx.createLinearGradient(rx, ry, rx, ry + h);
-        if (isDark) {
-          cardGradient.addColorStop(0, isInfra ? 'rgba(30, 41, 59, 0.98)' : 'rgba(15, 23, 42, 0.98)');
-          cardGradient.addColorStop(1, isInfra ? 'rgba(15, 23, 42, 0.96)' : 'rgba(2, 6, 23, 0.96)');
-        } else {
-          cardGradient.addColorStop(0, '#ffffff');
-          cardGradient.addColorStop(1, isInfra ? '#fffaf0' : '#f8fafc');
-        }
-
-        ctx.fillStyle = cardGradient;
+        ctx.fillStyle = isDark
+          ? (isInfra ? '#1a2330' : '#151c28')
+          : '#ffffff';
         ctx.strokeStyle = shouldDim
-          ? (isDark ? '#334155' : '#e2e8f0')
-          : `${nodeTone.color}${hasErrors ? 'dd' : '99'}`;
-        ctx.lineWidth = shouldDim ? 1 : (hasErrors ? 2.2 : 1.3);
+          ? (isDark ? '#334155' : '#d0d7de')
+          : hasErrors
+            ? nodeTone.color
+            : (isDark ? '#2a3544' : '#d0d7de');
+        ctx.lineWidth = 1;
         ctx.setLineDash([]);
 
-        drawRoundedRect(ctx, rx, ry, w, h, 10);
+        drawRoundedRect(ctx, rx, ry, w, h, 6);
         ctx.fill();
         ctx.stroke();
 
-        ctx.shadowBlur = 0;
         ctx.fillStyle = nodeTone.color;
-        drawRoundedRect(ctx, rx, ry, 4, h, 4);
+        drawRoundedRect(ctx, rx, ry, 3, h, 2);
         ctx.fill();
 
-        ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.10)' : 'rgba(15, 23, 42, 0.06)';
+        ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(15, 23, 42, 0.08)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(rx + 10, ry + h - 22);
         ctx.lineTo(rx + w - 10, ry + h - 22);
         ctx.stroke();
 
-        ctx.font = '800 7.5px Inter';
+        ctx.font = `600 8px ${MAP_SANS}`;
         ctx.textBaseline = 'middle';
-        const pillWidth = ctx.measureText(nodeTone.label).width + 13;
-        const pillX = rx + w - pillWidth - 9;
+        const pillWidth = ctx.measureText(nodeTone.label).width + 12;
+        const pillX = rx + w - pillWidth - 8;
         const pillY = ry + 8;
-        ctx.fillStyle = isDark ? `${nodeTone.color}20` : `${nodeTone.color}18`;
-        ctx.strokeStyle = `${nodeTone.color}55`;
+        ctx.fillStyle = isDark ? `${nodeTone.color}22` : `${nodeTone.color}14`;
+        ctx.strokeStyle = `${nodeTone.color}40`;
         ctx.lineWidth = 1;
-        drawRoundedRect(ctx, pillX, pillY, pillWidth, 17, 8.5);
+        drawRoundedRect(ctx, pillX, pillY, pillWidth, 16, 4);
         ctx.fill();
         ctx.stroke();
         ctx.fillStyle = nodeTone.color;
         ctx.textAlign = 'center';
-        ctx.fillText(nodeTone.label, pillX + pillWidth / 2, pillY + 8.5);
+        ctx.fillText(nodeTone.label, pillX + pillWidth / 2, pillY + 8);
 
-        ctx.setLineDash([]); // Reset line dash
+        ctx.setLineDash([]);
         ctx.restore();
 
         if (isInfra) {
@@ -2067,7 +1983,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             ctx.restore();
 
             // "MYGOV" label starts just after the logo ends
-            ctx.font = '800 11px Inter';
+            ctx.font = `600 11px ${MAP_SANS}`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = isDark ? '#fbbf24' : '#d97706';
@@ -2078,7 +1994,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             drawInfraIcon(ctx, node.serviceName, iconX, iconY, iconSize, isDark, iconImagesRef.current);
 
             // Draw System Name in bold uppercase
-            ctx.font = '800 11px Inter';
+            ctx.font = `600 11px ${MAP_SANS}`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = isDark ? '#fbbf24' : '#d97706'; // Amber accent for infra system name
@@ -2096,7 +2012,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           }
 
           // Draw body lines (Host/Detail)
-          ctx.font = '500 10px JetBrains Mono';
+          ctx.font = `500 10px ${MAP_MONO}`;
           ctx.fillStyle = isDark ? '#cbd5e1' : '#334155';
           bodyLines.forEach((line, index) => {
             const lineY = ry + 42 + index * 12;
@@ -2105,7 +2021,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           });
 
           // Draw Metrics
-          ctx.font = '600 9px Inter';
+          ctx.font = `500 9px ${MAP_SANS}`;
           let statsText = `${formatMapNumber(reqCount)} reqs`;
           if (errRate > 0) {
             statsText += ` / ${errRate.toFixed(1)}% err`;
@@ -2142,7 +2058,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
             ctx.restore();
           } else {
             const fallbackLabel = isInternet ? 'EX' : node.serviceName.slice(0, 1).toUpperCase();
-            ctx.font = '800 10px Inter';
+            ctx.font = `600 10px ${MAP_SANS}`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = nodeTone.color;
@@ -2154,7 +2070,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           const metricMaxWidth = Math.max(46, w - (textX - rx) - 68);
 
           // Draw Service Name Text
-          ctx.font = '800 11px Inter';
+          ctx.font = `600 11px ${MAP_SANS}`;
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
           ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
@@ -2162,7 +2078,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           ctx.fillText(displayName, textX, ry + 21);
 
           // Draw Stats Text
-          ctx.font = '600 9.5px JetBrains Mono';
+          ctx.font = `500 9.5px ${MAP_MONO}`;
           let statsText = `${formatMapNumber(reqCount)} reqs`;
           if (errRate > 0) {
             statsText += ` / ${errRate.toFixed(1)}% err`;
@@ -2171,7 +2087,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           ctx.fillStyle = errRate > 5 ? '#f43f5e' : (isDark ? '#94a3b8' : '#64748b');
           ctx.fillText(trimCanvasText(ctx, statsText, metricMaxWidth), textX, ry + 39);
 
-          ctx.font = '700 9px Inter';
+          ctx.font = `500 9px ${MAP_SANS}`;
           ctx.fillStyle = isDark ? '#e2e8f0' : '#1e293b';
           ctx.textAlign = 'right';
           ctx.fillText(`p95 ${formatMapLatency(node.p95Ms)}`, rx + w - 12, ry + h - 10);
@@ -2198,7 +2114,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
 
       // Zoom level indicator (screen space)
       const zoomPercent = Math.round(currentZoom * 100);
-      ctx.font = '500 10px JetBrains Mono';
+      ctx.font = `500 10px ${MAP_MONO}`;
       ctx.fillStyle = isDark ? 'rgba(148, 163, 184, 0.5)' : 'rgba(100, 116, 139, 0.5)';
       ctx.textAlign = 'left';
       ctx.fillText(`${zoomPercent}%`, 12, height - 10);

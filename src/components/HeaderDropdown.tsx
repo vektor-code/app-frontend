@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { IconCheck, IconChevronDown, IconSearch } from '@tabler/icons-react';
+import { IconCheck, IconChevronDown } from '@tabler/icons-react';
 
 export type HeaderDropdownOption = {
   value: string;
@@ -22,26 +22,17 @@ export default function HeaderDropdown({
 }) {
   const menuId = useId();
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number; width: number } | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const searchRef = useRef<HTMLInputElement | null>(null);
   const selected = options.find(option => option.value === value) || options[0];
-  const showSearch = options.length > 2;
-
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return options;
-    return options.filter(option => option.label.toLowerCase().includes(needle));
-  }, [options, query]);
 
   const updateMenuPosition = useCallback(() => {
     const rect = rootRef.current?.getBoundingClientRect();
     if (!rect) return;
     const viewportPadding = 8;
-    const width = Math.round(rect.width);
+    const width = Math.max(220, Math.round(rect.width));
     const left = Math.min(
       Math.max(viewportPadding, rect.left),
       Math.max(viewportPadding, window.innerWidth - width - viewportPadding)
@@ -55,7 +46,6 @@ export default function HeaderDropdown({
 
   const close = useCallback(() => {
     setOpen(false);
-    setQuery('');
     rootRef.current?.querySelector<HTMLButtonElement>('.header-dropdown-trigger')?.focus();
   }, []);
 
@@ -65,7 +55,6 @@ export default function HeaderDropdown({
       const target = event.target as Node;
       if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) {
         setOpen(false);
-        setQuery('');
       }
     };
     const reposition = () => updateMenuPosition();
@@ -84,8 +73,7 @@ export default function HeaderDropdown({
     if (!open) return;
     setActiveIndex(Math.max(0, options.findIndex(option => option.value === value)));
     const frame = requestAnimationFrame(() => {
-      if (searchRef.current) searchRef.current.focus();
-      else menuRef.current?.focus();
+      menuRef.current?.focus();
     });
     return () => cancelAnimationFrame(frame);
     // Focus only when the menu opens — options is a new array each render.
@@ -98,8 +86,8 @@ export default function HeaderDropdown({
   };
 
   const moveActive = (delta: number) => {
-    if (filtered.length === 0) return;
-    setActiveIndex(current => (current + delta + filtered.length) % filtered.length);
+    if (options.length === 0) return;
+    setActiveIndex(current => (current + delta + options.length) % options.length);
   };
 
   const onMenuKeyDown = (event: React.KeyboardEvent) => {
@@ -118,9 +106,9 @@ export default function HeaderDropdown({
       moveActive(-1);
       return;
     }
-    if (event.key === 'Enter' && filtered[activeIndex]) {
+    if (event.key === 'Enter' && options[activeIndex]) {
       event.preventDefault();
-      selectOption(filtered[activeIndex]);
+      selectOption(options[activeIndex]);
     }
   };
 
@@ -135,28 +123,8 @@ export default function HeaderDropdown({
       style={menuPosition ? { top: menuPosition.top, left: menuPosition.left, width: menuPosition.width } : undefined}
       onKeyDown={onMenuKeyDown}
     >
-      {showSearch && (
-        <div className="header-dropdown-search">
-          <IconSearch size={15} stroke={1.8} aria-hidden />
-          <input
-            ref={searchRef}
-            type="text"
-            autoComplete="off"
-            value={query}
-            placeholder={`Filter ${label.toLowerCase()}…`}
-            aria-label={`Filter ${label}`}
-            onChange={event => {
-              setQuery(event.target.value);
-              setActiveIndex(0);
-            }}
-          />
-        </div>
-      )}
       <div className="header-dropdown-list">
-        {filtered.length === 0 && (
-          <div className="header-dropdown-empty">No matches</div>
-        )}
-        {filtered.map((option, index) => {
+        {options.map((option, index) => {
           const isSelected = option.value === value;
           const isActive = index === activeIndex;
           return (

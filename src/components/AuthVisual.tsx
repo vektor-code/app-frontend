@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Activity, Network, Percent } from 'lucide-react';
 import { CloudraftMark } from './CloudraftMark';
 
@@ -108,92 +108,13 @@ function ThroughputSpark() {
 }
 
 export function AuthVisual() {
-  const visualRef = useRef<HTMLElement>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const visualEl = visualRef.current;
-    const stageEl = stageRef.current;
-    if (!visualEl || !stageEl) return undefined;
-
-    const visual: HTMLElement = visualEl;
-    const stage: HTMLDivElement = stageEl;
-    let animationFrame = 0;
-    let pointer: { x: number; y: number } | null = null;
-
-    function resetScene() {
-      stage.style.setProperty('--auth-tilt-x', '-1deg');
-      stage.style.setProperty('--auth-tilt-y', '2deg');
-      stage.style.setProperty('--auth-shift-x', '0px');
-      stage.style.setProperty('--auth-shift-y', '0px');
-      stage.style.setProperty('--auth-context-x', '0px');
-      stage.style.setProperty('--auth-context-y', '0px');
-      stage.style.setProperty('--auth-context-rotate-x', '-6deg');
-      stage.style.setProperty('--auth-context-rotate-y', '-14deg');
-      stage.style.setProperty('--auth-fix-x', '0px');
-      stage.style.setProperty('--auth-fix-y', '0px');
-      stage.style.setProperty('--auth-fix-rotate-x', '6deg');
-      stage.style.setProperty('--auth-fix-rotate-y', '11deg');
-    }
-
-    function renderPointer() {
-      animationFrame = 0;
-      if (!pointer) return;
-
-      const rect = visual.getBoundingClientRect();
-      const isInside = pointer.x >= rect.left
-        && pointer.x <= rect.right
-        && pointer.y >= rect.top
-        && pointer.y <= rect.bottom;
-
-      if (!isInside) {
-        resetScene();
-        return;
-      }
-
-      const x = Math.max(-1, Math.min(1, ((pointer.x - rect.left) / rect.width - 0.5) * 2));
-      const y = Math.max(-1, Math.min(1, ((pointer.y - rect.top) / rect.height - 0.5) * 2));
-      stage.style.setProperty('--auth-tilt-x', `${y * -3.5}deg`);
-      stage.style.setProperty('--auth-tilt-y', `${x * 4.5}deg`);
-      stage.style.setProperty('--auth-shift-x', `${x * 6}px`);
-      stage.style.setProperty('--auth-shift-y', `${y * 4}px`);
-      stage.style.setProperty('--auth-context-x', `${x * -14}px`);
-      stage.style.setProperty('--auth-context-y', `${y * -10}px`);
-      stage.style.setProperty('--auth-context-rotate-x', `${-6 + y * 20}deg`);
-      stage.style.setProperty('--auth-context-rotate-y', `${-14 - x * 28}deg`);
-      stage.style.setProperty('--auth-fix-x', `${x * 16}px`);
-      stage.style.setProperty('--auth-fix-y', `${y * 10}px`);
-      stage.style.setProperty('--auth-fix-rotate-x', `${6 - y * 18}deg`);
-      stage.style.setProperty('--auth-fix-rotate-y', `${11 + x * 24}deg`);
-    }
-
-    function handleMouseMove(event: MouseEvent) {
-      pointer = { x: event.clientX, y: event.clientY };
-      if (!animationFrame) animationFrame = requestAnimationFrame(renderPointer);
-    }
-
-    function handleWindowBlur() {
-      pointer = null;
-      resetScene();
-    }
-
-    window.addEventListener('mousemove', handleMouseMove, { passive: true });
-    window.addEventListener('blur', handleWindowBlur);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('blur', handleWindowBlur);
-      if (animationFrame) cancelAnimationFrame(animationFrame);
-    };
-  }, []);
-
   return (
-    <aside className="apm-auth-visual" aria-hidden="true" ref={visualRef}>
+    <aside className="apm-auth-visual" aria-hidden="true">
       <div className="apm-auth-visual-brand">
         <CloudraftMark className="apm-auth-visual-brand__mark" title="Cloudraft" />
       </div>
       <div className="apm-auth-visual-grid" />
-      <div className="apm-auth-product-stage" ref={stageRef}>
+      <div className="apm-auth-product-stage">
         <section className="apm-auth-product-window">
           <header className="apm-auth-product-header">
             <div className="apm-auth-product-heading">
@@ -294,7 +215,7 @@ export function AuthVisual() {
           <header>
             <span>
               <Network size={11} strokeWidth={1.7} />
-              SERVICE MAP
+              Service map
             </span>
             <i />
           </header>

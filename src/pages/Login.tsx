@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, KeyRound, LoaderCircle, User, Users } from 'lucide-react';
+import React, { useState } from 'react';
+import { Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import { api } from '../api/client';
 import { isLocalMockAuth } from '../api/mockAuth';
 import { useTranslation } from '../utils/i18n';
@@ -36,18 +36,10 @@ export default function Login({ onLogin }: LoginProps) {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(remembered.remember);
   const [mode, setMode] = useState<'local' | 'ldap'>('local');
-  const [passwordVisible, setPasswordVisible] = useState(false);
   const [peekPassword, setPeekPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(() => document.body.classList.contains('dark-theme'));
-  const passwordRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!passwordVisible) return;
-    const frame = requestAnimationFrame(() => passwordRef.current?.focus());
-    return () => cancelAnimationFrame(frame);
-  }, [passwordVisible]);
 
   const applyTheme = (dark: boolean) => {
     document.body.classList.toggle('dark-theme', dark);
@@ -55,60 +47,30 @@ export default function Login({ onLogin }: LoginProps) {
     setIsDark(dark);
   };
 
-  const resetPasswordStep = () => {
-    setPasswordVisible(false);
-    setPassword('');
-    setPeekPassword(false);
-  };
-
-  const onUsernameChange = (value: string) => {
-    setUsername(value);
-    if (passwordVisible) {
-      resetPasswordStep();
-      setError(null);
-    }
-  };
-
   const switchMode = (next: 'local' | 'ldap') => {
     if (next === mode) return;
     setMode(next);
     setError(null);
-    resetPasswordStep();
   };
 
-  const revealPassword = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
     const trimmed = username.trim();
     if (!trimmed) {
       setError(t('Enter your username to continue.'));
       return;
     }
-
-    setLoading(true);
-    try {
-      const result = await api.lookupAccount({ username: trimmed, mode });
-      if (!result?.exists) {
-        setError(t('No account found for this username.'));
-        resetPasswordStep();
-        return;
-      }
-      setUsername(trimmed);
-      setPasswordVisible(true);
-    } catch (err: any) {
-      setError(err.message || t('Unable to verify account'));
-      resetPasswordStep();
-    } finally {
-      setLoading(false);
+    if (!password && !localMock) {
+      setError(t('Enter your password to continue.'));
+      return;
     }
-  };
 
-  const signIn = async () => {
-    setError(null);
     setLoading(true);
     try {
-      const data = await api.login({ username: username.trim(), password, mode });
+      const data = await api.login({ username: trimmed, password, mode });
       if (remember) {
-        localStorage.setItem(REMEMBER_KEY, JSON.stringify({ username: username.trim(), remember: true }));
+        localStorage.setItem(REMEMBER_KEY, JSON.stringify({ username: trimmed, remember: true }));
       } else {
         localStorage.removeItem(REMEMBER_KEY);
       }
@@ -118,16 +80,6 @@ export default function Login({ onLogin }: LoginProps) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!passwordVisible) {
-      await revealPassword();
-      return;
-    }
-    if (!password && !localMock) return;
-    await signIn();
   };
 
   return (
@@ -145,23 +97,25 @@ export default function Login({ onLogin }: LoginProps) {
           </div>
           <h1>{t('Sign in')}</h1>
 
-          <div className="apm-auth-tabs" data-mode={mode}>
+          <div className="apm-auth-tabs" data-mode={mode} role="tablist" aria-label={t('Sign-in method')}>
             <span className="apm-auth-tab-pill" aria-hidden="true" />
             <button
               type="button"
+              role="tab"
+              aria-selected={mode === 'local'}
               className={`apm-auth-tab ${mode === 'local' ? 'active' : ''}`}
               onClick={() => switchMode('local')}
             >
-              <KeyRound size={15} strokeWidth={2.2} aria-hidden />
-              <span>{t('Local')}</span>
+              {t('Local')}
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={mode === 'ldap'}
               className={`apm-auth-tab ${mode === 'ldap' ? 'active' : ''}`}
               onClick={() => switchMode('ldap')}
             >
-              <Users size={15} strokeWidth={2.2} aria-hidden />
-              <span>{t('LDAP')}</span>
+              {t('LDAP')}
             </button>
           </div>
 
@@ -170,7 +124,6 @@ export default function Login({ onLogin }: LoginProps) {
           <label className="apm-auth-field" htmlFor="username">
             {t('Username')}
             <span className="apm-auth-field-control">
-              <User className="apm-auth-field-icon" size={16} strokeWidth={1.8} />
               <input
                 id="username"
                 name="username"
@@ -178,43 +131,39 @@ export default function Login({ onLogin }: LoginProps) {
                 autoComplete="username"
                 autoFocus
                 value={username}
-                onChange={(e) => onUsernameChange(e.target.value)}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  if (error) setError(null);
+                }}
                 disabled={loading}
                 required
               />
             </span>
           </label>
 
-          <div className={`apm-auth-password-slot${passwordVisible ? ' is-open' : ''}`}>
-            <div className="apm-auth-password-inner">
-              <label className="apm-auth-field" htmlFor="password">
-                {t('Password')}
-                <span className="apm-auth-field-control">
-                  <input
-                    id="password"
-                    name="password"
-                    type={peekPassword ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    ref={passwordRef}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={loading}
-                    required={passwordVisible && !localMock}
-                    tabIndex={passwordVisible ? 0 : -1}
-                  />
-                  <button
-                    aria-label={peekPassword ? t('Hide password') : t('Show password')}
-                    className="apm-auth-peek"
-                    onClick={() => setPeekPassword((open) => !open)}
-                    tabIndex={passwordVisible ? 0 : -1}
-                    type="button"
-                  >
-                    {peekPassword ? <EyeOff size={16} strokeWidth={1.8} /> : <Eye size={16} strokeWidth={1.8} />}
-                  </button>
-                </span>
-              </label>
-            </div>
-          </div>
+          <label className="apm-auth-field" htmlFor="password">
+            {t('Password')}
+            <span className="apm-auth-field-control">
+              <input
+                id="password"
+                name="password"
+                type={peekPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+                required={!localMock}
+              />
+              <button
+                aria-label={peekPassword ? t('Hide password') : t('Show password')}
+                className="apm-auth-peek"
+                onClick={() => setPeekPassword((open) => !open)}
+                type="button"
+              >
+                {peekPassword ? <EyeOff size={15} strokeWidth={1.75} /> : <Eye size={15} strokeWidth={1.75} />}
+              </button>
+            </span>
+          </label>
 
           <div className="apm-auth-actions">
             <label className="apm-auth-remember">
@@ -236,15 +185,7 @@ export default function Login({ onLogin }: LoginProps) {
               {loading ? (
                 <LoaderCircle aria-hidden className="apm-auth-submit-spinner" size={16} strokeWidth={2.4} />
               ) : null}
-              <span>
-                {loading
-                  ? passwordVisible
-                    ? t('Signing in')
-                    : t('Checking')
-                  : passwordVisible
-                    ? t('Sign in')
-                    : t('Continue')}
-              </span>
+              <span>{loading ? t('Signing in') : t('Sign in')}</span>
             </button>
           </div>
           {localMock ? (

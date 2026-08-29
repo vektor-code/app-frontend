@@ -1328,8 +1328,8 @@ thead th:last-child .resize-handle {
   padding: 4px;
   pointer-events: auto;
   outline: none;
-  transform-origin: top center;
-  animation: headerDropdownIn 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top left;
+  animation: headerDropdownIn 160ms ease-out;
 }
 
 .header-dropdown-search {
@@ -1424,11 +1424,11 @@ thead th:last-child .resize-handle {
 @keyframes headerDropdownIn {
   from {
     opacity: 0;
-    transform: translateY(-4px) scale(0.96);
+    transform: translateY(-6px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
 }
 
