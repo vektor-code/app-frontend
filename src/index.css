@@ -16583,9 +16583,7 @@ body.dark-theme .row-status.is-error:hover {
   min-width: 0;
   padding: 16px 18px;
   border-left: 1px solid var(--border-primary);
-  background:
-    linear-gradient(180deg, rgba(99, 102, 241, 0.04), transparent),
-    var(--bg-tertiary);
+  background: transparent;
 }
 
 .trace-detail-status {

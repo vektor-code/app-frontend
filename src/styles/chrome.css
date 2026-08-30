@@ -5,9 +5,7 @@
 }
 
 .app-content {
-  background:
-    radial-gradient(1100px 420px at 100% -10%, color-mix(in srgb, var(--accent-indigo) 8%, transparent), transparent 55%),
-    var(--bg-primary);
+  background: var(--bg-primary);
 }
 
 .card,

@@ -7,19 +7,7 @@
   --trace-label-size: 0.6875rem;
   --trace-label-tracking: 0.14em;
   --trace-panel-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 55%, transparent),
     0 18px 50px -30px color-mix(in srgb, #0f172a 28%, transparent);
-  --trace-glow:
-    0 0 0 1px color-mix(in srgb, var(--accent-indigo) 32%, transparent),
-    0 14px 40px -18px color-mix(in srgb, var(--accent-indigo) 28%, transparent);
-  --trace-error-glow:
-    0 0 0 1px color-mix(in srgb, var(--accent-rose) 38%, transparent),
-    0 14px 44px -20px color-mix(in srgb, var(--accent-rose) 28%, transparent);
-  --trace-panel-gradient: linear-gradient(
-    160deg,
-    color-mix(in srgb, #fff 55%, transparent) 0%,
-    transparent 55%
-  );
   --trace-violet-bar: linear-gradient(90deg, var(--accent-indigo), var(--accent-violet));
   --trace-error-bar: linear-gradient(
     90deg,
@@ -48,26 +36,7 @@
 
 body.dark-theme .traces-page,
 body.dark-theme .trace-detail-page {
-  --trace-panel-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent),
-    0 18px 50px -30px rgba(0, 0, 0, 0.8);
-  --trace-panel-gradient: linear-gradient(
-    160deg,
-    color-mix(in srgb, #fff 5%, transparent) 0%,
-    transparent 55%
-  );
-}
-
-.trace-detail-glow {
-  pointer-events: none;
-  position: absolute;
-  inset: -28px 0 auto;
-  height: 280px;
-  background: radial-gradient(
-    60% 100% at 20% 0%,
-    color-mix(in srgb, var(--accent-indigo) 16%, transparent),
-    transparent 70%
-  );
+  --trace-panel-shadow: 0 18px 50px -30px rgba(0, 0, 0, 0.8);
 }
 
 .trace-detail-page {
@@ -184,8 +153,7 @@ body.dark-theme .trace-detail-page {
 .traces-page .trace-metric-box,
 .traces-page .traces-filter-panel,
 .traces-page .trace-results-panel {
-  background-color: var(--bg-secondary);
-  background-image: var(--trace-panel-gradient);
+  background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
   border-radius: var(--trace-radius);
   box-shadow: var(--trace-panel-shadow);
@@ -269,25 +237,11 @@ body.dark-theme .trace-detail-page {
 }
 
 .trace-detail-hero.critical::before {
-  background-image: var(--trace-error-bar);
+  background: var(--accent-rose);
 }
 
 .trace-detail-hero.warning::before {
   background: var(--accent-amber);
-}
-
-.trace-detail-hero.critical {
-  background:
-    radial-gradient(720px 180px at 100% 0%, color-mix(in srgb, var(--accent-rose) 14%, transparent), transparent 62%),
-    var(--trace-panel-gradient),
-    var(--bg-secondary);
-}
-
-.trace-detail-hero.warning {
-  background:
-    radial-gradient(720px 180px at 100% 0%, color-mix(in srgb, var(--accent-amber) 14%, transparent), transparent 62%),
-    var(--trace-panel-gradient),
-    var(--bg-secondary);
 }
 
 .trace-detail-back-button {
@@ -396,8 +350,9 @@ html[lang="tr"] .traces-page .trace-results-header p {
   align-items: flex-end;
   justify-content: center;
   gap: 8px;
-  padding-left: 24px;
+  padding: 8px 8px 8px 24px;
   border-left: 1px solid var(--border-primary);
+  background: transparent;
 }
 
 .trace-detail-status {
@@ -622,7 +577,7 @@ html[lang="tr"] .traces-page .trace-results-header p {
   flex-direction: column;
   overflow: hidden;
   border-color: color-mix(in srgb, var(--accent-rose) 35%, var(--border-primary));
-  box-shadow: var(--trace-error-glow);
+  box-shadow: var(--trace-panel-shadow);
 }
 
 .trace-detail-problems-panel.anomaly {
@@ -1027,7 +982,6 @@ html[lang="tr"] .traces-page .trace-results-header p {
 .trace-detail-view-button.active {
   background: color-mix(in srgb, var(--accent-indigo) 18%, transparent);
   color: var(--accent-indigo);
-  box-shadow: var(--trace-glow);
 }
 
 .trace-detail-visualization-body {
@@ -1301,8 +1255,7 @@ html[lang="tr"] .traces-page .trace-results-header p {
 .trace-detail-alert,
 .trace-detail-problems-panel,
 .trace-detail-insight-panel {
-  background-color: var(--bg-secondary);
-  background-image: var(--trace-panel-gradient);
+  background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
   border-radius: var(--trace-radius);
   box-shadow: var(--trace-panel-shadow);
@@ -1340,7 +1293,7 @@ html[lang="tr"] .traces-page .trace-results-header p {
   flex-direction: column;
   overflow: hidden;
   border-color: color-mix(in srgb, var(--accent-rose) 35%, var(--border-primary));
-  box-shadow: var(--trace-error-glow);
+  box-shadow: var(--trace-panel-shadow);
 }
 
 .trace-detail-problems-panel.anomaly {

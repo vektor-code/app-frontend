@@ -407,7 +407,6 @@ export default function TraceDetail() {
 
   return (
     <div className="trace-detail-page animate-fade-in">
-      <div className="trace-detail-glow" aria-hidden="true" />
       <nav className="trace-detail-breadcrumb" aria-label={t('Breadcrumb')}>
         <button type="button" onClick={() => navigate('/traces')}>{t('Traces')}</button>
         <ChevronRight size={14} aria-hidden="true" />
@@ -814,7 +813,6 @@ function TraceDetailSkeleton({
 }) {
   return (
     <div className="trace-detail-page animate-fade-in" aria-busy="true" aria-label={t('Loading trace...')}>
-      <div className="trace-detail-glow" aria-hidden="true" />
       <nav className="trace-detail-breadcrumb" aria-label={t('Breadcrumb')}>
         <button type="button" onClick={onBack}>{t('Traces')}</button>
         <ChevronRight size={14} aria-hidden="true" />
