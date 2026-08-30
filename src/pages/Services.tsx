@@ -13,6 +13,7 @@ import { LoadingState, NoDataState } from '../components/DataState';
 import LanguageIcon from '../components/LanguageIcon';
 import { MiniTrend, type MiniTrendTone } from '../components/MiniTrend';
 import { KpiCard } from '../components/KpiCard';
+import { HealthFilterBar } from '../components/HealthFilterBar';
 import { useTranslation } from '../utils/i18n';
 import { useColumnResize } from '../utils/useColumnResize';
 
@@ -381,15 +382,20 @@ export default function Services({ namespace }: ServicesProps) {
             </button>
           )}
         </div>
-        <div className="services-filter-group" aria-label={t('Filter by health')}>
-          <FilterButton label={t('All')} count={summary.totalServices} active={healthFilter === 'all'} onClick={() => setHealthFilter('all')} />
-          <FilterButton label={t('Healthy')} count={summary.healthy} active={healthFilter === 'healthy'} tone="healthy" onClick={() => setHealthFilter('healthy')} />
-          <FilterButton label={t('Degraded')} count={summary.degraded} active={healthFilter === 'degraded'} tone="warning" onClick={() => setHealthFilter('degraded')} />
-          <FilterButton label={t('Critical')} count={summary.critical} active={healthFilter === 'critical'} tone="critical" onClick={() => setHealthFilter('critical')} />
-          {summary.unknown > 0 && (
-            <FilterButton label={t('No traffic')} count={summary.unknown} active={healthFilter === 'unknown'} onClick={() => setHealthFilter('unknown')} />
-          )}
-        </div>
+        <HealthFilterBar
+          label={t('Filter by health')}
+          value={healthFilter}
+          onChange={setHealthFilter}
+          options={[
+            { value: 'all', label: t('All'), count: summary.totalServices },
+            { value: 'healthy', label: t('Healthy'), count: summary.healthy, tone: 'healthy' },
+            { value: 'degraded', label: t('Degraded'), count: summary.degraded, tone: 'warning' },
+            { value: 'critical', label: t('Critical'), count: summary.critical, tone: 'critical' },
+            ...(summary.unknown > 0
+              ? [{ value: 'unknown' as const, label: t('No traffic'), count: summary.unknown }]
+              : []),
+          ]}
+        />
       </section>
 
       {loadError && servicesList.length === 0 ? (
@@ -563,28 +569,6 @@ function MetricCell({
       </div>
       <MiniTrend data={trend} tone={tone} compact />
     </div>
-  );
-}
-
-function FilterButton({
-  label,
-  count,
-  active,
-  tone = 'neutral',
-  onClick,
-}: {
-  label: string;
-  count: number;
-  active: boolean;
-  tone?: 'neutral' | 'healthy' | 'warning' | 'critical';
-  onClick: () => void;
-}) {
-  return (
-    <button type="button" className={`${active ? 'active' : ''} ${tone}`} onClick={onClick} aria-pressed={active}>
-      <i />
-      {label}
-      <span>{count}</span>
-    </button>
   );
 }
 

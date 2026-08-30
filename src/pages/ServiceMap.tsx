@@ -11,6 +11,8 @@ import CustomSelect from '../components/CustomSelect';
 import { LANG_ICONS, stackIconKey } from '../components/LanguageIcon';
 import { TECH_LOGOS } from '../components/TechIcon';
 import IconPack from '../components/IconPack';
+import { KpiCard } from '../components/KpiCard';
+import { HealthFilterBar } from '../components/HealthFilterBar';
 import { useTranslation } from '../utils/i18n';
 import { traceListDisplayName } from '../utils/operationName';
 
@@ -19,7 +21,7 @@ interface ServiceMapProps {
   collapsed?: boolean;
 }
 
-type MapHealthFilter = 'all' | 'healthy' | 'warning' | 'critical';
+type MapHealthFilter = 'all' | 'healthy' | 'warning' | 'critical' | 'neutral';
 type MapEntityFilter = 'all' | 'services' | 'infrastructure';
 
 interface Particle {
@@ -167,12 +169,12 @@ const getMapNodeTone = (node: ServiceStats, isInternet: boolean, isInfra: boolea
     return { color: '#94a3b8', label: 'Idle' };
   }
   if (node.errorCount > 0 || errorRate >= 2 || status === 'critical') {
-    return { color: '#e11d48', label: 'Error' };
+    return { color: '#e11d48', label: 'Critical' };
   }
   if (node.p95Ms >= 1000 || status === 'degraded') {
-    return { color: '#d97706', label: 'Slow' };
+    return { color: '#d97706', label: 'Degraded' };
   }
-  return { color: isInfra ? '#d97706' : '#4f46e5', label: 'Ok' };
+  return { color: isInfra ? '#d97706' : '#4f46e5', label: 'Healthy' };
 };
 
 const formatMapLatency = (ms: number) => {
@@ -2349,7 +2351,6 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
 
   const isDarkTheme = document.body.classList.contains('dark-theme');
   const applicationNodes = activeNodes.filter(node => node.serviceName !== 'Internet' && !isInfraNode(node));
-  const infrastructureNodes = activeNodes.filter(node => isInfraNode(node));
   const totalRequests = activeNodes.reduce((sum, node) => sum + node.requestCount, 0);
   const totalErrors = activeNodes.reduce((sum, node) => sum + node.errorCount, 0);
   const mapErrorRate = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
@@ -2382,10 +2383,14 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
     : activeNodes.length === 0
       ? t('No data')
       : criticalNodes.length > 0
-        ? t('Action needed')
+        ? t('Critical')
         : degradedNodes.length > 0
-          ? t('Watch')
+          ? t('Degraded')
           : t('Healthy');
+  const fleetNodes = applicationNodes.length > 0 ? applicationNodes : activeNodes;
+  const avgHealth = fleetNodes.length > 0
+    ? fleetNodes.reduce((sum, node) => sum + getMapNodeHealth(node).score, 0) / fleetNodes.length
+    : 100;
   const hasActiveNodeFilters = Boolean(
     normalizedNodeSearch ||
     healthFilter !== 'all' ||
@@ -2400,41 +2405,48 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           <h1>{t('Service Map')}</h1>
         </div>
         <div className="apm-header-meta">
-          <div className={`service-map-live-state ${mapStatusTone}`}>
-            <i />
-            {mapStatusLabel}
+          <div className="apm-health-chips" aria-label={t('Service health')}>
+            <span className="healthy">{healthCounts.healthy} {t('healthy')}</span>
+            <span className="warning">{healthCounts.warning} {t('degraded')}</span>
+            <span className="critical">{healthCounts.critical} {t('critical')}</span>
+          </div>
+          <div className="apm-live-pill">
+            <span />
+            {t('Live')}
           </div>
         </div>
       </section>
 
-      <section className="service-map-kpi-grid">
-        <ServiceMapStatCard
-          icon="services"
-          label={t('Applications')}
+      <section className="apm-kpi-strip" aria-label={t('Service map metrics')}>
+        <KpiCard
+          label={t('Monitored services')}
           value={formatMapNumber(applicationNodes.length)}
-          detail={`${formatMapNumber(activeNodes.length)} ${t('visible nodes')}`}
-          tone={applicationNodes.length > 0 ? 'info' : 'neutral'}
-        />
-        <ServiceMapStatCard
-          icon="flow"
-          label={t('Dependencies')}
-          value={formatMapNumber(activeEdges.length)}
-          detail={`${formatMapNumber(infrastructureNodes.length)} ${t('infra nodes')}`}
+          detail={`${formatMapNumber(applicationNodes.filter(node => node.requestCount > 0).length)} ${t('with traffic')}`}
           tone="info"
         />
-        <ServiceMapStatCard
-          icon="activity"
-          label={t('Traffic')}
-          value={formatMapNumber(totalRequests)}
-          detail={`${formatMapNumber(totalErrors)} ${t('errors')}`}
-          tone={totalErrors > 0 ? 'warning' : totalRequests > 0 ? 'healthy' : 'neutral'}
+        <KpiCard
+          label={t('Fleet health')}
+          value={`${avgHealth.toFixed(0)}%`}
+          detail={
+            criticalNodes.length > 0
+              ? `${formatMapNumber(criticalNodes.length)} ${t('critical')}`
+              : degradedNodes.length > 0
+                ? `${formatMapNumber(degradedNodes.length)} ${t('degraded')}`
+                : t('All systems healthy')
+          }
+          tone={mapStatusTone}
         />
-        <ServiceMapStatCard
-          icon="latency"
-          label={t('Weighted P95')}
+        <KpiCard
+          label={t('Request volume')}
+          value={formatMapCompact(totalRequests)}
+          detail={`${formatMapThroughput(totalRequests)} · ${t('current window')}`}
+          tone="info"
+        />
+        <KpiCard
+          label={t('P95 latency')}
           value={formatMapMs(weightedP95)}
           detail={`${formatMapPercent(mapErrorRate)} ${t('error rate')}`}
-          tone={mapErrorRate > 5 ? 'critical' : weightedP95 > 1000 ? 'warning' : totalRequests > 0 ? 'healthy' : 'neutral'}
+          tone={mapErrorRate > 5 ? 'critical' : mapErrorRate > 0 || weightedP95 > 500 ? 'warning' : totalRequests > 0 ? 'healthy' : 'neutral'}
         />
       </section>
 
@@ -2447,44 +2459,40 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
         </div>
       )}
 
+      <section className="services-controls service-map-controls">
+        <div className="services-search">
+          <Search size={16} aria-hidden="true" />
+          <input
+            type="search"
+            value={nodeSearch}
+            onChange={event => setNodeSearch(event.target.value)}
+            placeholder={t('Find a service or namespace')}
+            aria-label={t('Search map')}
+          />
+          {nodeSearch && (
+            <button type="button" className="services-search-clear" onClick={() => setNodeSearch('')} aria-label={t('Clear search')}>
+              ×
+            </button>
+          )}
+        </div>
+        <HealthFilterBar
+          label={t('Filter by health')}
+          value={healthFilter}
+          onChange={setHealthFilter}
+          options={[
+            { value: 'all', label: t('All'), count: healthCounts.all },
+            { value: 'healthy', label: t('Healthy'), count: healthCounts.healthy, tone: 'healthy' },
+            { value: 'warning', label: t('Degraded'), count: healthCounts.warning, tone: 'warning' },
+            { value: 'critical', label: t('Critical'), count: healthCounts.critical, tone: 'critical' },
+            ...(healthCounts.neutral > 0
+              ? [{ value: 'neutral' as const, label: t('No traffic'), count: healthCounts.neutral }]
+              : []),
+          ]}
+        />
+      </section>
+
       <section className="service-map-toolbar">
         <div className="service-map-toolbar-primary">
-          <label className="service-map-search-field">
-            <Search size={16} aria-hidden="true" />
-            <input
-              type="search"
-              value={nodeSearch}
-              onChange={event => setNodeSearch(event.target.value)}
-              placeholder={t('Find a service or namespace')}
-              aria-label={t('Search map')}
-            />
-            {nodeSearch && (
-              <button type="button" onClick={() => setNodeSearch('')} aria-label={t('Clear search')}>
-                <X size={14} />
-              </button>
-            )}
-          </label>
-
-          <div className="service-map-filter-tabs" aria-label={t('Filter by health')}>
-            {([
-              ['all', t('All'), healthCounts.all],
-              ['healthy', t('Healthy'), healthCounts.healthy],
-              ['warning', t('Watch'), healthCounts.warning],
-              ['critical', t('Critical'), healthCounts.critical],
-            ] as Array<[MapHealthFilter, string, number]>).map(([value, label, count]) => (
-              <button
-                type="button"
-                key={value}
-                className={`${healthFilter === value ? 'active' : ''} ${value}`}
-                onClick={() => setHealthFilter(value)}
-              >
-                <i />
-                {label}
-                <span>{count}</span>
-              </button>
-            ))}
-          </div>
-
           <div className="service-map-entity-tabs" aria-label={t('Filter by component type')}>
             {([
               ['all', t('All types')],
@@ -2577,11 +2585,8 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
                 <ServiceMapIcon name="flow" />
               </span>
               <div>
-                <h2>{t('Service Topology')}</h2>
-                <span className={`service-map-status-pill ${mapStatusTone}`}>
-                  <i />
-                  {mapStatusLabel}
-                </span>
+                <h2>{t('Service topology')}</h2>
+                <span className={`apm-health-badge ${mapStatusTone}`}>{mapStatusLabel}</span>
               </div>
             </div>
           <div className="service-map-shell-meta">
@@ -2632,8 +2637,8 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           {activeNodes.length > 0 && (
             <div className="service-map-legend">
               <ServiceMapLegendItem tone="healthy" label={t('Healthy')} />
-              <ServiceMapLegendItem tone="warning" label={t('Latency')} />
-              <ServiceMapLegendItem tone="critical" label={t('Errors')} />
+              <ServiceMapLegendItem tone="warning" label={t('Degraded')} />
+              <ServiceMapLegendItem tone="critical" label={t('Critical')} />
               <ServiceMapLegendItem tone="infra" label={t('Infrastructure')} />
             </div>
           )}
@@ -2671,8 +2676,8 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
           <div className="service-map-panel">
             <div className="service-map-panel-header">
               <div>
-                <span>{t('Service Health')}</span>
-                <h3>{t('Highest risk nodes')}</h3>
+                <span>{t('Service inventory')}</span>
+                <h3>{t('Highest risk')}</h3>
               </div>
               <strong>{formatMapNumber(topServices.length)}</strong>
             </div>
@@ -2705,17 +2710,20 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
                 topPaths.map(edge => (
                   <button
                     key={`${edge.sourceNamespace || 'default'}:${edge.source}->${edge.targetNamespace || 'default'}:${edge.target}`}
-                    className={`service-map-path-card ${edge.errorCount > 0 ? 'critical' : edge.avgDurationMs > 1000 ? 'warning' : ''}`}
+                    className={`service-map-path-card ${edge.errorCount > 0 ? 'critical' : edge.avgDurationMs > 1000 ? 'warning' : 'healthy'}`}
                     onClick={() => setHighlightedService(edge.source)}
                   >
                     <div className="service-map-path-main">
                       <strong>{edge.source}</strong>
                       <ServiceMapIcon name="arrow" />
                       <strong>{edge.target}</strong>
+                      <span className={`apm-health-badge ${edge.errorCount > 0 ? 'critical' : edge.avgDurationMs > 1000 ? 'warning' : 'healthy'}`}>
+                        {edge.errorCount > 0 ? t('Critical') : edge.avgDurationMs > 1000 ? t('Degraded') : t('Healthy')}
+                      </span>
                     </div>
                     <div className="service-map-path-metrics">
-                      <span>{formatMapNumber(edge.callCount)} {t('calls')}</span>
-                      <span>{formatMapMs(edge.avgDurationMs)} {t('avg')}</span>
+                      <span>{formatMapThroughput(edge.callCount)}</span>
+                      <span>{formatMapMs(edge.avgDurationMs)} p95</span>
                       <span>{formatMapNumber(edge.errorCount)} {t('errors')}</span>
                     </div>
                   </button>
@@ -2938,33 +2946,6 @@ const SERVICE_MAP_ICONS: Record<ServiceMapIconName, string> = {
   trace: '/observability-icons/route.svg'
 };
 
-function ServiceMapStatCard({
-  icon,
-  label,
-  value,
-  detail,
-  tone = 'neutral',
-}: {
-  icon: ServiceMapIconName;
-  label: string;
-  value: string;
-  detail: string;
-  tone?: ServiceMapTone;
-}) {
-  return (
-    <div className={`service-map-stat-card ${tone}`}>
-      <div className="service-map-stat-icon">
-        <ServiceMapIcon name={icon} />
-      </div>
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-        <em>{detail}</em>
-      </div>
-    </div>
-  );
-}
-
 function ServiceMapLegendItem({ tone, label }: { tone: ServiceMapTone | 'infra'; label: string }) {
   return (
     <span className={`service-map-legend-item ${tone}`}>
@@ -2980,20 +2961,19 @@ function ServiceMapNodeCard({ node, onClick }: { node: ServiceStats; onClick: ()
   return (
     <button className={`service-map-node-card ${health.tone}`} onClick={onClick}>
       <div className="service-map-node-card-top">
-        <span className="service-map-node-kind">
-          <ServiceMapIcon name={isInfra ? 'network' : 'services'} />
-        </span>
         <div>
           <strong title={node.serviceName}>{node.serviceName}</strong>
-          <em>{isInfra ? 'Infrastructure' : (node.namespace || 'default')}</em>
+          <em>
+            {isInfra ? 'Infrastructure' : (node.namespace || 'default')}
+            {node.lastSeen ? ` · ${formatRelativeTime(node.lastSeen)}` : ''}
+          </em>
         </div>
-        <i className={`service-map-node-state ${health.tone}`} />
+        <span className={`apm-health-badge ${health.tone}`}>{health.label}</span>
       </div>
       <div className="service-map-node-card-metrics">
-        <span>{formatMapNumber(node.requestCount)} calls</span>
-        <span>{formatMapPercent(node.errorRate)} err</span>
-        <span>{formatMapMs(node.p95Ms)} p95</span>
-        <strong className={health.tone}>{health.label}</strong>
+        <span>{formatMapMs(node.p95Ms)}</span>
+        <span>{formatMapThroughput(node.requestCount)}</span>
+        <span>{formatMapPercent(node.errorRate)}</span>
       </div>
     </button>
   );
@@ -3047,15 +3027,18 @@ function ServiceMapConnectionList({
             return (
               <button
                 key={`${edge.sourceNamespace || 'default'}:${edge.source}->${edge.targetNamespace || 'default'}:${edge.target}`}
-                className={`service-map-connection-card ${edge.errorCount > 0 ? 'critical' : edge.avgDurationMs > 1000 ? 'warning' : ''}`}
+                className={`service-map-connection-card ${edge.errorCount > 0 ? 'critical' : edge.avgDurationMs > 1000 ? 'warning' : 'healthy'}`}
                 onClick={() => onSelect(serviceName)}
               >
                 <div>
                   <strong title={serviceName}>{serviceName}</strong>
                   <span>{direction === 'incoming' ? (edge.sourceNamespace || 'default') : (edge.targetNamespace || 'default')}</span>
                 </div>
-                <em>{formatMapNumber(edge.callCount)} calls</em>
+                <em>{formatMapThroughput(edge.callCount)}</em>
                 <em>{formatMapMs(edge.avgDurationMs)}</em>
+                <span className={`apm-health-badge ${edge.errorCount > 0 ? 'critical' : edge.avgDurationMs > 1000 ? 'warning' : 'healthy'}`}>
+                  {edge.errorCount > 0 ? 'Critical' : edge.avgDurationMs > 1000 ? 'Degraded' : 'Healthy'}
+                </span>
               </button>
             );
           })}
@@ -3085,7 +3068,7 @@ function getMapNodeHealth(node: ServiceStats): { tone: ServiceMapTone; score: nu
     return { tone: 'critical', score: healthScore, label: 'Critical' };
   }
   if (node.status === 'degraded' || errorRate > 2 || node.p95Ms > 1000 || healthScore < 85) {
-    return { tone: 'warning', score: healthScore, label: 'Watch' };
+    return { tone: 'warning', score: healthScore, label: 'Degraded' };
   }
   return { tone: 'healthy', score: healthScore, label: 'Healthy' };
 }
@@ -3135,6 +3118,21 @@ function formatMapNumber(value: number) {
   return new Intl.NumberFormat(undefined, { notation: value >= 10000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value);
 }
 
+function formatMapCompact(value: number) {
+  if (!Number.isFinite(value)) return '0';
+  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+function formatMapThroughput(count: number) {
+  const tpm = count / 5;
+  if (tpm <= 0) return '0 tpm';
+  if (tpm < 1) return `${(tpm * 60).toFixed(1)} tph`;
+  if (tpm >= 1000) return `${(tpm / 1000).toFixed(1)}k tpm`;
+  return `${tpm.toFixed(1)} tpm`;
+}
+
 function formatMapMs(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0ms';
   if (value < 1) return `${(value * 1000).toFixed(0)}us`;
@@ -3149,10 +3147,13 @@ function formatMapPercent(value: number) {
 
 function formatRelativeTime(value: string) {
   const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) return 'No recent activity';
-  const diffMs = Date.now() - timestamp;
-  if (diffMs < 60_000) return 'just now';
-  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m ago`;
-  if (diffMs < 86_400_000) return `${Math.floor(diffMs / 3_600_000)}h ago`;
-  return `${Math.floor(diffMs / 86_400_000)}d ago`;
+  if (!Number.isFinite(timestamp)) return 'recently';
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (seconds < 10) return 'seen now';
+  if (seconds < 60) return `seen ${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `seen ${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `seen ${hours}h ago`;
+  return `seen ${Math.round(hours / 24)}d ago`;
 }
