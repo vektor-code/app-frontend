@@ -100,12 +100,14 @@ interface PayloadDetails {
     body?: any;
     statement?: string;
     parameters?: any;
+    bodyOmitted?: string;
   };
   response: {
     status?: number | string;
     headers?: Record<string, string>;
     body?: any;
     result?: string;
+    bodyOmitted?: string;
   };
   contextPropagation?: {
     carrier: 'headers' | 'metadata' | 'none';
@@ -203,11 +205,13 @@ function getSpanPayloadDetails(span: Span, _traceDuration: number): PayloadDetai
       method: httpMethod || 'HTTP',
       headers: reqHeaders,
       body: reqBody,
+      bodyOmitted: attrs['http.request.body.omitted'] || attrs['request.body.omitted'] || '',
     },
     response: {
       status: respStatus,
       body: respBody,
       result: respSize ? `${respSize} bytes` : undefined,
+      bodyOmitted: attrs['http.response.body.omitted'] || attrs['response.body.omitted'] || '',
     },
     contextPropagation: {
       carrier: 'headers',
@@ -648,7 +652,13 @@ export function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerCo
                         <code>{typeof details.request.body === 'string' ? details.request.body : JSON.stringify(details.request.body, null, 2)}</code>
                       </pre>
                     ) : (
-                      <NotCaptured label={t('Body not captured — instrumentation records metadata only (URL, headers, size, timing).')} />
+                      <NotCaptured
+                        label={
+                          details.request.bodyOmitted
+                            ? `${t('Body omitted')} — ${details.request.bodyOmitted}`
+                            : t('Body not captured — binary content, over the size cap, or this pod has not been restarted with HTTP capture.')
+                        }
+                      />
                     )}
                   </div>
                 )}
@@ -670,13 +680,19 @@ export function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerCo
                       <DrawerCopyButton copied={copiedKey === 'respBody'} onCopy={() => handleCopy('respBody', JSON.stringify(details.response.body, null, 2))} />
                     )}
                   </div>
-                  {details.response.body != null ? (
-                    <pre className="payload-code-block">
-                      <code>{typeof details.response.body === 'string' ? details.response.body : JSON.stringify(details.response.body, null, 2)}</code>
-                    </pre>
-                  ) : (
-                    <NotCaptured label={t('Body not captured — the status, size and timing above are real.')} />
-                  )}
+                    {details.response.body != null ? (
+                      <pre className="payload-code-block">
+                        <code>{typeof details.response.body === 'string' ? details.response.body : JSON.stringify(details.response.body, null, 2)}</code>
+                      </pre>
+                    ) : (
+                      <NotCaptured
+                        label={
+                          details.response.bodyOmitted
+                            ? `${t('Body omitted')} — ${details.response.bodyOmitted}`
+                            : t('Body not captured — binary content, over the size cap, or this pod has not been restarted with HTTP capture.')
+                        }
+                      />
+                    )}
                 </div>
               </section>
             </div>
