@@ -18,7 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { EndpointStat, TraceListItem } from '../entities';
+import type { EndpointStat, TimeseriesData, TraceListItem } from '../entities';
 import { LoadingState, NoDataState } from '../components/DataState';
 import CustomSelect from '../components/CustomSelect';
 import LanguageIcon from '../components/LanguageIcon';
@@ -98,6 +98,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
   const [services, setServices] = useState<string[]>([]);
   const [serviceLanguages, setServiceLanguages] = useState<Record<string, string>>({});
   const [selectedTrace, setSelectedTrace] = useState<TraceListItem | null>(null);
+  const [timeseries, setTimeseries] = useState<TimeseriesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const endpointColumns = useColumnResize(endpointColumnWidths, {
@@ -234,6 +235,26 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
     }, 5000);
     return () => clearInterval(interval);
   }, [loadTraces]);
+
+  const loadTimeseries = useCallback(async () => {
+    const minutes = Math.min(getWindowMinutes(timeRangeFilter), 24 * 60);
+    try {
+      const data = await api.getTimeseries(namespace || undefined, minutes);
+      setTimeseries(data);
+    } catch (err) {
+      console.error('load timeseries:', err);
+      setTimeseries({ buckets: [], serviceErrors: null, windowMinutes: minutes });
+    }
+  }, [namespace, timeRangeFilter]);
+
+  useEffect(() => {
+    setTimeseries(null);
+    void loadTimeseries();
+    const interval = setInterval(() => {
+      void loadTimeseries();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [loadTimeseries]);
 
   useEffect(() => {
     api.getServices(namespace || undefined).then(data => {
@@ -419,6 +440,18 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
   const windowLabel = timeRangeFilter === 'all' ? t('All time') : timeRangeFilter;
   const errorTone = summary.errorRate > 5 ? 'critical' : summary.errorRate > 0 ? 'warning' : 'healthy';
   const latencyKpiTone = summary.avgLatency > 1000 ? 'warning' : summary.avgLatency > 300 ? 'info' : 'healthy';
+  const kpiTrends = useMemo(() => {
+    const buckets = timeseries?.buckets || [];
+    const volume = buckets.map(bucket => Math.max(0, bucket.spans));
+    const success = buckets.map(bucket => Math.max(0, bucket.spans - bucket.errors));
+    const errorRate = buckets.map(bucket => (bucket.spans > 0 ? (bucket.errors / bucket.spans) * 100 : 0));
+    const latency = buckets.map(bucket => Math.max(0, bucket.avgMs));
+    const hasShape = buckets.length >= 2 && buckets.some(bucket => bucket.spans > 0 || bucket.errors > 0 || bucket.avgMs > 0);
+    if (!hasShape) {
+      return { volume: undefined, success: undefined, errorRate: undefined, latency: undefined };
+    }
+    return { volume, success, errorRate, latency };
+  }, [timeseries]);
 
   return (
     <div className="traces-page apm-dashboard animate-fade-in">
@@ -444,26 +477,31 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
           value={formatCompact(summary.primaryCount)}
           detail={activeTab === 'top' ? t('Grouped by operation') : t('Matching this query')}
           tone="info"
+          trend={kpiTrends.success}
+          positiveIsGood
         />
         <KpiCard
           label={t('Volume')}
           value={formatCompact(summary.count)}
           detail={`${windowLabel} ${t('window')}`}
           tone="info"
+          trend={kpiTrends.volume}
+          positiveIsGood
         />
         <KpiCard
           label={t('Error rate')}
           value={formatPercent(summary.errorRate)}
           detail={`${formatCompact(summary.errors)} ${t('failed')}`}
           tone={errorTone}
+          trend={kpiTrends.errorRate}
           positiveIsGood={false}
-          progress={Math.min(100, summary.errorRate)}
         />
         <KpiCard
           label={t('Avg latency')}
           value={formatDuration(summary.avgLatency)}
           detail={t('Request duration')}
           tone={latencyKpiTone}
+          trend={kpiTrends.latency}
           positiveIsGood={false}
         />
       </section>

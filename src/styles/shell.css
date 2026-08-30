@@ -671,10 +671,12 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 12px 14px 14px;
-  border: 1px solid var(--border-primary);
-  border-radius: 12px;
-  background: var(--bg-secondary);
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .traces-page .traces-toolbar {
@@ -685,6 +687,10 @@
   gap: 10px;
   padding: 0;
   margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .traces-page .traces-tabs {
@@ -1252,6 +1258,17 @@
   flex-direction: column;
   gap: 16px;
   min-height: calc(100vh - 88px);
+}
+
+.traces-page.apm-dashboard .traces-workbench,
+.traces-page.apm-dashboard .traces-toolbar {
+  padding: 0;
+  margin: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
 }
 
 .traces-page.apm-dashboard .trace-results-panel {
