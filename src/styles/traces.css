@@ -240,6 +240,7 @@ body.dark-theme .trace-detail-page {
   font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.04em;
+  line-height: 1.45;
   text-transform: uppercase;
 }
 
@@ -311,14 +312,15 @@ body.dark-theme .trace-detail-page {
 }
 
 .trace-detail-eyebrow,
-.trace-detail-panel-title span,
-.trace-detail-visualization-header span,
-.traces-page .trace-metric-box span,
+.trace-detail-panel-title > span,
+.traces-page .trace-metric-box > span,
 .traces-page .trace-filter-field > span,
 .traces-page .trace-results-header p {
+  display: inline-block;
   font-family: var(--font-mono);
   font-size: var(--trace-label-size);
   letter-spacing: var(--trace-label-tracking);
+  line-height: 1.5;
   text-transform: uppercase;
   color: var(--text-tertiary);
   font-weight: 500;
@@ -328,6 +330,23 @@ body.dark-theme .trace-detail-page {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Azerbaijani/Turkish map CSS uppercase i → İ; the dot clips under overflow:hidden. */
+html[lang="az"] .trace-detail-stats dt,
+html[lang="tr"] .trace-detail-stats dt,
+html[lang="az"] .trace-detail-eyebrow,
+html[lang="tr"] .trace-detail-eyebrow,
+html[lang="az"] .trace-detail-panel-title > span,
+html[lang="tr"] .trace-detail-panel-title > span,
+html[lang="az"] .traces-page .trace-metric-box > span,
+html[lang="tr"] .traces-page .trace-metric-box > span,
+html[lang="az"] .traces-page .trace-filter-field > span,
+html[lang="tr"] .traces-page .trace-filter-field > span,
+html[lang="az"] .traces-page .trace-results-header p,
+html[lang="tr"] .traces-page .trace-results-header p {
+  text-transform: none;
+  letter-spacing: 0.04em;
 }
 
 .trace-detail-hero h1 {
@@ -957,7 +976,7 @@ body.dark-theme .trace-detail-page {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: center;
-  padding: 14px 16px;
+  padding: 16px 16px 14px;
   border-bottom: 1px solid var(--border-primary);
 }
 
@@ -988,7 +1007,16 @@ body.dark-theme .trace-detail-page {
   padding: 0 12px;
   font-size: 13px;
   font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   cursor: pointer;
+}
+
+.trace-detail-view-button span {
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: none;
+  color: inherit;
 }
 
 .trace-detail-view-button:hover {
@@ -1070,13 +1098,21 @@ body.dark-theme .trace-detail-page {
 .trace-detail-page .waterfall-board,
 .trace-detail-page .trace-flame-panel,
 .trace-detail-page .trace-topology-panel {
-  overflow: hidden;
   border: 1px solid var(--border-primary);
   border-radius: 12px;
   background:
     radial-gradient(color-mix(in srgb, var(--border-primary) 80%, transparent) 1px, transparent 1px);
   background-size: 22px 22px;
   background-color: color-mix(in srgb, var(--bg-tertiary) 35%, var(--bg-secondary));
+}
+
+.trace-detail-page .waterfall-board {
+  overflow: auto;
+}
+
+.trace-detail-page .trace-flame-panel,
+.trace-detail-page .trace-topology-panel {
+  overflow: hidden;
 }
 
 .waterfall-visualizer .waterfall-bar.is-error {

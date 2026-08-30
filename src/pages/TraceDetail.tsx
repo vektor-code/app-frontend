@@ -489,7 +489,7 @@ export default function TraceDetail() {
           <section className="trace-detail-visualization-panel">
             <div className="trace-detail-visualization-header">
               <div>
-                <span>{t('Trace Visualization')}</span>
+                <span className="trace-detail-eyebrow">{t('Trace Visualization')}</span>
                 <h2>
                   {viewMode === 'waterfall'
                     ? t('Waterfall View')
@@ -715,7 +715,7 @@ export default function TraceDetail() {
           <section className="trace-detail-insights-grid">
             <div className="trace-detail-insight-panel">
               <div className="trace-detail-panel-title">
-                <span>{t('Service Contribution')}</span>
+                <span className="trace-detail-eyebrow">{t('Service Contribution')}</span>
                 <strong>{formatTraceNumber(serviceSummary.length)}</strong>
               </div>
               <div className="trace-service-card-list">
@@ -727,7 +727,7 @@ export default function TraceDetail() {
 
             <div className="trace-detail-insight-panel">
               <div className="trace-detail-panel-title">
-                <span>{t('Critical Spans')}</span>
+                <span className="trace-detail-eyebrow">{t('Critical Spans')}</span>
                 <strong>{formatTraceNumber(criticalSpans.length)}</strong>
               </div>
               <div className="trace-span-chip-list">
@@ -745,7 +745,7 @@ export default function TraceDetail() {
               {uniqueDestinations.length > 0 && (
                 <div className="trace-detail-tag-panel">
                   <div className="trace-detail-panel-title">
-                    <span>{t('Connections & Destinations')}</span>
+                    <span className="trace-detail-eyebrow">{t('Connections & Destinations')}</span>
                     <strong>{formatTraceNumber(uniqueDestinations.length)}</strong>
                   </div>
                   <div className="trace-detail-chip-cloud">
@@ -763,7 +763,7 @@ export default function TraceDetail() {
               {uniqueTags.length > 0 && (
                 <div className="trace-detail-tag-panel">
                   <div className="trace-detail-panel-title">
-                    <span>{t('Trace Metadata Tags')}</span>
+                    <span className="trace-detail-eyebrow">{t('Trace Metadata Tags')}</span>
                     <strong>{formatTraceNumber(uniqueTags.length)}</strong>
                   </div>
                   <div className="trace-detail-tag-tiles">
