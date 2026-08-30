@@ -6,6 +6,7 @@ import { useTranslation } from '../utils/i18n';
 import { AuthVisual } from '../components/AuthVisual';
 import { CloudraftMark } from '../components/CloudraftMark';
 import { ThemeSwapper } from '../components/ThemeSwapper';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 import '../auth.css';
 
 interface LoginProps {
@@ -88,6 +89,7 @@ export default function Login({ onLogin }: LoginProps) {
 
       <main className="apm-auth-panel">
         <div className="apm-auth-panel-tools">
+          <LanguageSwitcher compact />
           <ThemeSwapper dark={isDark} onChange={applyTheme} />
         </div>
 

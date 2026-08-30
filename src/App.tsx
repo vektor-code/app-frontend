@@ -4,7 +4,10 @@ import { IconServer, IconStack2 } from '@tabler/icons-react';
 import { api } from './api/client';
 import type { NamespaceStats } from './entities';
 import HeaderDropdown, { type HeaderDropdownOption } from './components/HeaderDropdown';
+import HeaderAccountMenu from './components/HeaderAccountMenu';
+import LanguageSwitcher from './components/LanguageSwitcher';
 import Sidebar from './components/Sidebar';
+import { ThemeSwapper } from './components/ThemeSwapper';
 import { useTranslation } from './utils/i18n';
 
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
@@ -365,13 +368,10 @@ export default function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={handleToggleSidebar}
         user={user}
-        onLogout={handleLogout}
-        isDark={isDark}
-        onThemeChange={setTheme}
       />
       <div className="app-main">
         <header className="app-header">
-          <div className="header-actions">
+          <div className="header-actions header-scope">
             <HeaderDropdown
               label={t('Cluster')}
               value={selectedCluster}
@@ -401,7 +401,11 @@ export default function App() {
               ]}
               onChange={handleNamespaceChange}
             />
-
+          </div>
+          <div className="header-actions header-session">
+            <LanguageSwitcher compact />
+            <ThemeSwapper dark={isDark} onChange={setTheme} variant="icon" />
+            <HeaderAccountMenu user={user} onLogout={handleLogout} />
           </div>
         </header>
         <main className="app-content">

@@ -5,6 +5,7 @@ import { IconCheck, IconChevronDown } from '@tabler/icons-react';
 export type HeaderDropdownOption = {
   value: string;
   label: string;
+  shortLabel?: string;
 };
 
 export default function HeaderDropdown({
@@ -12,12 +13,16 @@ export default function HeaderDropdown({
   value,
   options,
   icon,
+  className,
+  align = 'start',
   onChange,
 }: {
   label: string;
   value: string;
   options: HeaderDropdownOption[];
   icon?: React.ReactNode;
+  className?: string;
+  align?: 'start' | 'end';
   onChange: (value: string) => void;
 }) {
   const menuId = useId();
@@ -33,8 +38,9 @@ export default function HeaderDropdown({
     if (!rect) return;
     const viewportPadding = 8;
     const width = Math.max(220, Math.round(rect.width));
+    const preferredLeft = align === 'end' ? rect.right - width : rect.left;
     const left = Math.min(
-      Math.max(viewportPadding, rect.left),
+      Math.max(viewportPadding, preferredLeft),
       Math.max(viewportPadding, window.innerWidth - width - viewportPadding)
     );
     setMenuPosition({
@@ -42,7 +48,7 @@ export default function HeaderDropdown({
       left,
       width,
     });
-  }, []);
+  }, [align]);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -148,7 +154,7 @@ export default function HeaderDropdown({
 
   return (
     <div
-      className={`header-filter header-dropdown ${open ? 'open' : ''}`}
+      className={['header-filter', 'header-dropdown', open ? 'open' : '', className].filter(Boolean).join(' ')}
       ref={rootRef}
       onKeyDown={event => {
         if (event.key === 'Escape' && open) {
@@ -172,7 +178,7 @@ export default function HeaderDropdown({
         {icon && <span className="header-filter-icon" aria-hidden="true">{icon}</span>}
         <span className="header-dropdown-copy">
           <span className="header-filter-label">{label}</span>
-          <span className="header-dropdown-value" title={selected?.label}>{selected?.label}</span>
+          <span className="header-dropdown-value" title={selected?.label}>{selected?.shortLabel || selected?.label}</span>
         </span>
         <IconChevronDown className="header-dropdown-chevron" size={15} stroke={2} aria-hidden />
       </button>

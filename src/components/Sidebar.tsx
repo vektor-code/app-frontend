@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   IconActivity,
@@ -9,7 +9,6 @@ import {
   IconLayoutDashboard,
   IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarLeftExpand,
-  IconLogout,
   IconNetwork,
   IconServer,
   IconSettings,
@@ -17,16 +16,12 @@ import {
   type Icon,
 } from '@tabler/icons-react';
 import CrnetApmMark from './CrnetApmMark';
-import { ThemeSwapper } from './ThemeSwapper';
 import { useTranslation } from '../utils/i18n';
 
 interface SidebarProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
-  user: any;
-  onLogout: () => void;
-  isDark: boolean;
-  onThemeChange: (dark: boolean) => void;
+  user: { role?: string } | null;
 }
 
 type NavigationItem = {
@@ -54,29 +49,13 @@ export default function Sidebar({
   collapsed,
   onToggleCollapse,
   user,
-  onLogout,
-  isDark,
-  onThemeChange,
 }: SidebarProps) {
   const { t } = useTranslation();
 
-  const visibleItems = useMemo(() => {
-    return navigationItems.filter(item => {
-      if (item.adminOnly && user?.role !== 'admin') return false;
-      return true;
-    });
-  }, [user?.role]);
-
-  const displayName = user?.name || user?.username || t('User');
-  const secondaryIdentity = user?.email || (
-    user?.role === 'admin' ? t('Administrator') : t('Viewer')
-  );
-  const initials = String(displayName)
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map(word => word[0]?.toUpperCase() || '')
-    .join('') || 'U';
+  const visibleItems = navigationItems.filter(item => {
+    if (item.adminOnly && user?.role !== 'admin') return false;
+    return true;
+  });
 
   return (
     <aside className="app-sidebar" aria-label={t('Primary navigation')}>
@@ -123,40 +102,6 @@ export default function Sidebar({
             );
           })}
         </nav>
-
-        <div className="primary-sidebar-footer">
-          <div
-            className="sidebar-profile"
-            title={`${displayName}${secondaryIdentity ? ` · ${secondaryIdentity}` : ''}`}
-          >
-            <span className="sidebar-profile-avatar" aria-hidden="true">{initials}</span>
-            <span className="sidebar-profile-copy">
-              <strong>{displayName}</strong>
-              <small>{secondaryIdentity}</small>
-            </span>
-            <span className="sidebar-profile-status" aria-hidden="true" />
-          </div>
-
-          <div className="sidebar-theme-row">
-            <ThemeSwapper
-              dark={isDark}
-              onChange={onThemeChange}
-              variant={collapsed ? 'icon' : 'segmented'}
-            />
-          </div>
-
-          <button
-            type="button"
-            className="sidebar-utility-item logout"
-            onClick={onLogout}
-            title={t('Sign out')}
-          >
-            <span className="sidebar-utility-icon">
-              <IconLogout size={18} stroke={1.8} />
-            </span>
-            <span className="sidebar-utility-label">{t('Sign out')}</span>
-          </button>
-        </div>
       </div>
     </aside>
   );

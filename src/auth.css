@@ -628,9 +628,18 @@
 
 .apm-auth-panel-tools {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 8px;
   flex: 0 0 auto;
   z-index: 5;
+}
+
+.apm-auth-panel-tools .header-dropdown,
+.apm-auth-panel-tools .header-dropdown-compact {
+  min-width: 112px;
+  max-width: 148px;
+  height: 40px;
 }
 
 .apm-auth-panel-tools .apm-theme-swap {
