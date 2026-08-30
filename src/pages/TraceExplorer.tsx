@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import type { EndpointStat, TimeseriesData, TraceListItem } from '../entities';
-import { LoadingState, NoDataState } from '../components/DataState';
+import { NoDataState } from '../components/DataState';
 import CustomSelect from '../components/CustomSelect';
 import LanguageIcon from '../components/LanguageIcon';
 import IconPack from '../components/IconPack';
@@ -437,6 +437,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
     traceColumns.resizeBy(column, event.key === 'ArrowRight' ? 16 : -16);
   };
 
+  const awaitingResults = loading && (activeTab === 'top' ? endpoints.length === 0 : traces.length === 0);
   const windowLabel = timeRangeFilter === 'all' ? t('All time') : timeRangeFilter;
   const errorTone = summary.errorRate > 5 ? 'critical' : summary.errorRate > 0 ? 'warning' : 'healthy';
   const latencyKpiTone = summary.avgLatency > 1000 ? 'warning' : summary.avgLatency > 300 ? 'info' : 'healthy';
@@ -479,6 +480,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
           tone="info"
           trend={kpiTrends.success}
           positiveIsGood
+          loading={awaitingResults}
         />
         <KpiCard
           label={t('Volume')}
@@ -487,6 +489,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
           tone="info"
           trend={kpiTrends.volume}
           positiveIsGood
+          loading={awaitingResults}
         />
         <KpiCard
           label={t('Error rate')}
@@ -495,6 +498,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
           tone={errorTone}
           trend={kpiTrends.errorRate}
           positiveIsGood={false}
+          loading={awaitingResults}
         />
         <KpiCard
           label={t('Avg latency')}
@@ -503,6 +507,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
           tone={latencyKpiTone}
           trend={kpiTrends.latency}
           positiveIsGood={false}
+          loading={awaitingResults}
         />
       </section>
 
@@ -589,13 +594,13 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
         <section className="trace-results-panel">
           <ResultsHeader
             title={t('Top transactions')}
-            count={topTraces.length}
+            count={awaitingResults ? null : topTraces.length}
             pageSize={pageSize}
             setPageSize={setPageSize}
             onResetColumns={endpointColumns.resetWidths}
           />
-          {loading && topTraces.length === 0 ? (
-            <LoadingState height={320} label={t('Loading top transactions...')} />
+          {awaitingResults ? (
+            <TraceTableSkeleton rows={8} />
           ) : loadError ? (
             <NoDataState height={320} title={t('Could not load traces')} hint={t('Retry when the API is reachable.')} />
           ) : pagedTopTraces.length === 0 ? (
@@ -641,13 +646,13 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
         <section className="trace-results-panel">
           <ResultsHeader
             title={t('Trace explorer')}
-            count={traces.length}
+            count={awaitingResults ? null : traces.length}
             pageSize={pageSize}
             setPageSize={setPageSize}
             onResetColumns={traceColumns.resetWidths}
           />
-          {loading && sortedTraces.length === 0 ? (
-            <LoadingState height={320} label={t('Searching traces...')} />
+          {awaitingResults ? (
+            <TraceTableSkeleton rows={8} />
           ) : loadError ? (
             <NoDataState height={320} title={t('Could not load traces')} hint={t('Retry when the API is reachable.')} />
           ) : sortedTraces.length === 0 ? (
@@ -1036,6 +1041,22 @@ function TraceDrawerMetric({
   );
 }
 
+function TraceTableSkeleton({ rows = 8 }: { rows?: number }) {
+  return (
+    <div className="apm-skeleton-table" aria-busy="true" aria-label="Loading">
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="apm-skeleton-row">
+          <span className="apm-skeleton" style={{ width: `${58 + (index % 4) * 8}%` }} />
+          <span className="apm-skeleton" style={{ width: 72 }} />
+          <span className="apm-skeleton" style={{ width: 96 }} />
+          <span className="apm-skeleton" style={{ width: 64 }} />
+          <span className="apm-skeleton" style={{ width: 48 }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ResultsHeader({
   title,
   count,
@@ -1044,7 +1065,7 @@ function ResultsHeader({
   onResetColumns,
 }: {
   title: string;
-  count: number;
+  count: number | null;
   pageSize: number;
   setPageSize: (size: number) => void;
   onResetColumns: () => void;
@@ -1054,7 +1075,7 @@ function ResultsHeader({
     <div className="trace-results-header">
       <div>
         <h2>{title}</h2>
-        <p>{formatCompact(count)} {t('results')}</p>
+        <p>{count == null ? <span className="apm-skeleton" style={{ width: 88, height: 12 }} /> : `${formatCompact(count)} ${t('results')}`}</p>
       </div>
       <div className="trace-results-tools">
         <button type="button" className="trace-reset-columns" onClick={onResetColumns}>

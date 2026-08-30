@@ -10,6 +10,7 @@ export function KpiCard({
   delta,
   positiveIsGood = true,
   progress,
+  loading = false,
 }: {
   label: string;
   value: string;
@@ -19,14 +20,15 @@ export function KpiCard({
   delta?: number;
   positiveIsGood?: boolean;
   progress?: number;
+  loading?: boolean;
 }) {
   const resolvedDelta = delta ?? seriesDelta(trend);
-  const showDelta = resolvedDelta != null && Number.isFinite(resolvedDelta);
+  const showDelta = !loading && resolvedDelta != null && Number.isFinite(resolvedDelta);
   const deltaGood = positiveIsGood ? (resolvedDelta ?? 0) >= 0 : (resolvedDelta ?? 0) <= 0;
   const bar = Math.max(0, Math.min(100, progress ?? 0));
 
   return (
-    <div className={`apm-signal-card ${tone}`}>
+    <div className={`apm-signal-card ${tone}${loading ? ' is-loading' : ''}`} aria-busy={loading || undefined}>
       <div className="apm-signal-topline">
         <span className="apm-signal-label">{label}</span>
         {showDelta && (
@@ -36,10 +38,10 @@ export function KpiCard({
         )}
       </div>
       <div className="apm-signal-value-row">
-        <strong>{value}</strong>
+        {loading ? <span className="apm-skeleton apm-skeleton-value" /> : <strong>{value}</strong>}
       </div>
-      <p>{detail}</p>
-      {progress !== undefined && (
+      {loading ? <span className="apm-skeleton apm-skeleton-detail" /> : <p>{detail}</p>}
+      {!loading && progress !== undefined && (
         <span
           className="apm-kpi-progress"
           role="progressbar"
@@ -50,7 +52,7 @@ export function KpiCard({
           <i style={{ width: `${bar}%` }} />
         </span>
       )}
-      {trend && trend.length > 0 && <MiniTrend data={trend} tone={tone} />}
+      {!loading && trend && trend.length > 0 && <MiniTrend data={trend} tone={tone} />}
     </div>
   );
 }

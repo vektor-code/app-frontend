@@ -23,6 +23,7 @@ export interface ClusterApplication {
   replicas: number;
   ready: number;
   language: string;
+  detectedLanguage?: string;
   instrumented: boolean;
   manualOverride: boolean;
   details: string;

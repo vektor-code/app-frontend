@@ -311,6 +311,7 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
             delta={metric.delta}
             positiveIsGood={metric.positiveIsGood}
             progress={metric.progress}
+            loading={tsLoading}
           />
         ))}
       </section>

@@ -4998,6 +4998,135 @@ body.dark-theme .flowing-line {
   white-space: nowrap;
 }
 
+.admin-workload-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  background: var(--bg-primary);
+}
+
+.admin-workload-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-workload-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-workload-title > span:first-child {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.admin-workload-kind {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.admin-detect-badge {
+  font-size: 11px;
+  font-weight: 650;
+  border-radius: 999px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+}
+
+.admin-detect-badge.detected {
+  color: var(--accent-indigo);
+  border-color: color-mix(in srgb, var(--accent-indigo) 28%, var(--border-primary));
+  background: color-mix(in srgb, var(--accent-indigo) 8%, var(--bg-secondary));
+}
+
+.admin-detect-badge.overridden {
+  color: var(--accent-amber);
+  border-color: color-mix(in srgb, var(--accent-amber) 28%, var(--border-primary));
+  background: color-mix(in srgb, var(--accent-amber) 8%, var(--bg-secondary));
+}
+
+.admin-detect-badge.unknown {
+  color: var(--text-tertiary);
+}
+
+.admin-workload-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.admin-workload-meta strong {
+  color: var(--text-primary);
+}
+
+.admin-detect-note {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+}
+
+.admin-detect-reset {
+  border: 0;
+  background: transparent;
+  color: var(--accent-indigo);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.admin-detect-reset:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.admin-workload-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.admin-workload-actions .is-on {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-emerald);
+}
+
+.admin-workload-actions .is-off {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.admin-workload-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top-color: var(--accent-indigo);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 .admin-cluster-table-card {
   overflow: hidden;
   border: 1px solid var(--border-primary);
@@ -18235,6 +18364,58 @@ body:not(.dark-theme) .sidebar-collapsed .primary-nav-item.active {
   display: block;
   border: 0;
   background: linear-gradient(90deg, var(--signal-card-color), color-mix(in srgb, var(--signal-card-color) 20%, transparent));
+}
+
+.apm-skeleton {
+  display: block;
+  height: 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text-primary) 8%, var(--bg-tertiary));
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--bg-secondary) 78%, transparent) 45%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  animation: apm-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.apm-skeleton-value {
+  width: 88px;
+  height: 28px;
+  border-radius: 10px;
+}
+
+.apm-skeleton-detail {
+  width: 62%;
+  height: 10px;
+  margin-top: 10px;
+}
+
+.apm-skeleton-title {
+  width: min(420px, 70%);
+  height: 34px;
+  border-radius: 10px;
+}
+
+.apm-skeleton-id {
+  width: min(280px, 52%);
+  height: 18px;
+  margin-top: 10px;
+}
+
+.apm-signal-card.is-loading {
+  pointer-events: none;
+}
+
+.apm-signal-card.is-loading:hover {
+  transform: none;
+}
+
+@keyframes apm-skeleton-shimmer {
+  0% { background-position: 120% 0; }
+  100% { background-position: -40% 0; }
 }
 
 .apm-dashboard .apm-kpi-strip .apm-signal-card::after {

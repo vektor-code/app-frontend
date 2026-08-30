@@ -1354,3 +1354,29 @@ body.dark-theme .trace-detail-page {
 .trace-detail-tag-tile.wide {
   grid-column: 1 / -1;
 }
+
+.apm-skeleton-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 280px;
+  padding: 4px 8px 12px;
+}
+
+.apm-skeleton-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) 88px 110px 80px 56px;
+  gap: 16px;
+  align-items: center;
+  min-height: 52px;
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.apm-skeleton-row .apm-skeleton:first-child {
+  height: 14px;
+}
+
+.trace-detail-metric-card .apm-skeleton + .apm-skeleton {
+  display: block;
+}

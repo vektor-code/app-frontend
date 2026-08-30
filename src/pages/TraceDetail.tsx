@@ -417,7 +417,9 @@ export default function TraceDetail() {
   const dominantService = serviceSummary[0];
   const traceTone = trace ? getTraceHealthTone(trace) : 'neutral';
 
-  if (loading) return <div className="empty-state"><div className="empty-state-title">{t('Loading trace...')}</div></div>;
+  if (loading) {
+    return <TraceDetailSkeleton onBack={() => navigate('/traces')} t={t} />;
+  }
   if (!trace) return <div className="empty-state"><div className="empty-state-title">{t('Trace not found')}</div></div>;
 
   const startMs = new Date(trace.startTime).getTime();
@@ -882,6 +884,61 @@ export default function TraceDetail() {
             />
           )}
         </SideDrawer>
+      </div>
+    </div>
+  );
+}
+
+function TraceDetailSkeleton({
+  onBack,
+  t,
+}: {
+  onBack: () => void;
+  t: (key: string) => string;
+}) {
+  return (
+    <div className="trace-detail-page animate-fade-in" aria-busy="true" aria-label={t('Loading trace...')}>
+      <div className="trace-detail-glow" aria-hidden="true" />
+      <nav className="trace-detail-breadcrumb" aria-label={t('Breadcrumb')}>
+        <button type="button" onClick={onBack}>{t('Traces')}</button>
+        <ChevronRight size={14} aria-hidden="true" />
+        <em>{t('Trace')}</em>
+      </nav>
+      <section className="trace-detail-hero">
+        <div className="trace-detail-hero-main">
+          <button type="button" className="trace-detail-back-button" onClick={onBack}>
+            <ArrowLeft size={16} />
+            {t('Back to Explorer')}
+          </button>
+          <span className="apm-skeleton apm-skeleton-title" />
+          <span className="apm-skeleton apm-skeleton-id" />
+        </div>
+        <div className="trace-detail-hero-side">
+          <span className="apm-skeleton" style={{ width: 56, height: 22, borderRadius: 999 }} />
+          <span className="apm-skeleton" style={{ width: 120, height: 36, borderRadius: 10 }} />
+          <span className="apm-skeleton" style={{ width: 148, height: 12 }} />
+        </div>
+      </section>
+      <section className="trace-detail-metric-grid">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div key={index} className="trace-detail-metric-card">
+            <span className="apm-skeleton" style={{ width: 36, height: 36, borderRadius: 10 }} />
+            <div>
+              <span className="apm-skeleton" style={{ width: 88, height: 10 }} />
+              <span className="apm-skeleton" style={{ width: 140, height: 22, marginTop: 10 }} />
+              <span className="apm-skeleton" style={{ width: 110, height: 10, marginTop: 8 }} />
+            </div>
+          </div>
+        ))}
+      </section>
+      <div className="apm-skeleton-table" style={{ marginTop: 16 }}>
+        {Array.from({ length: 5 }, (_, index) => (
+          <div key={index} className="apm-skeleton-row">
+            <span className="apm-skeleton" style={{ width: `${48 + (index % 3) * 14}%` }} />
+            <span className="apm-skeleton" style={{ width: 80 }} />
+            <span className="apm-skeleton" style={{ width: 64 }} />
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -27,6 +27,37 @@ const STACK_OPTIONS = [
   { value: 'php', label: 'PHP', logo: '/logos/php.svg' },
 ] as const;
 
+function stackLabel(value?: string) {
+  const key = (value || 'unknown').toLowerCase();
+  return STACK_OPTIONS.find(option => option.value === key)?.label
+    || (key === 'nginx' ? 'nginx' : key === 'apache-httpd' ? 'Apache' : value || 'Unknown');
+}
+
+function isUnknownStack(value?: string) {
+  const key = (value || '').toLowerCase();
+  return !key || key === 'unknown' || key === 'auto';
+}
+
+function alreadyInstrumented(details?: string) {
+  if (!details) return false;
+  return /annotation:|otel_|java_tool_options|node_options|pythonpath/i.test(details)
+    && !/no otel injection/i.test(details);
+}
+
+function detectionCopy(app: ClusterApplication) {
+  const detected = app.detectedLanguage || (!app.manualOverride ? app.language : '');
+  const overridden = app.manualOverride && !isUnknownStack(app.language) && app.language !== detected;
+  if (overridden) {
+    return isUnknownStack(detected)
+      ? 'Overridden — cluster could not detect a stack'
+      : `Overridden — cluster looks like ${stackLabel(detected)}`;
+  }
+  if (!isUnknownStack(detected)) {
+    return `Auto-detected: ${stackLabel(detected)}`;
+  }
+  return 'Not detected — pick a stack before enabling';
+}
+
 function AdminIcon({ name }: { name: AdminIconName }) {
   const common = {
     width: 18,
@@ -386,7 +417,7 @@ export default function Admin() {
         namespace: app.namespace,
         workloadName: app.name,
         workloadKind: app.kind || 'Deployment',
-        language: app.language || 'unknown',
+        language: app.manualOverride ? (app.language || 'unknown') : 'unknown',
         enabled: targetState
       });
       
@@ -997,37 +1028,51 @@ export default function Admin() {
                       );
                     }
                     return filtered.map(app => (
-                      <div key={app.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', border: '1px solid var(--border-primary)', borderRadius: '10px', background: 'var(--bg-primary)' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>{app.name}</span>
-                            <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>
-                              {app.kind || 'Deployment'}
+                      <div key={app.name} className="admin-workload-row">
+                        <div className="admin-workload-copy">
+                          <div className="admin-workload-title">
+                            <span>{app.name}</span>
+                            <span className="admin-workload-kind">{app.kind || 'Deployment'}</span>
+                            <span className={`admin-detect-badge ${app.manualOverride ? 'overridden' : isUnknownStack(app.detectedLanguage) ? 'unknown' : 'detected'}`}>
+                              {detectionCopy(app)}
                             </span>
-                            <div className="admin-stack-field">
-                              <span>Stack</span>
-                              <StackPicker
-                                value={app.language || 'unknown'}
-                                disabled={togglingApp === app.name}
-                                onChange={(nextStack) => handleLanguageChange(app, nextStack)}
-                              />
-                            </div>
                           </div>
-                          <div style={{ display: 'flex', gap: '12px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                            <span>Pods: <strong style={{ color: 'var(--text-primary)' }}>{app.ready}/{app.replicas} Ready</strong></span>
+                          <div className="admin-workload-meta">
+                            <span>Pods: <strong>{app.ready}/{app.replicas} Ready</strong></span>
+                            {alreadyInstrumented(app.details) && (
+                              <span className="admin-detect-note" title={app.details}>{app.details}</span>
+                            )}
+                          </div>
+                          <div className="admin-stack-field">
+                            <span>Stack</span>
+                            <StackPicker
+                              value={app.language || 'unknown'}
+                              disabled={togglingApp === app.name}
+                              onChange={(nextStack) => handleLanguageChange(app, nextStack)}
+                            />
+                            {app.manualOverride && (
+                              <button
+                                type="button"
+                                className="admin-detect-reset"
+                                disabled={togglingApp === app.name}
+                                onClick={() => handleLanguageChange(app, 'unknown')}
+                              >
+                                Use auto-detect
+                              </button>
+                            )}
                           </div>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <span style={{ fontSize: '12px', color: app.instrumented ? 'var(--accent-emerald)' : 'var(--text-muted)', fontWeight: 600 }}>
+                        <div className="admin-workload-actions">
+                          <span className={app.instrumented ? 'is-on' : 'is-off'}>
                             {app.instrumented ? 'Active' : 'Disabled'}
                           </span>
                           {togglingApp === app.name ? (
-                            <div style={{ width: '16px', height: '16px', border: '2px solid transparent', borderTopColor: 'var(--accent-indigo)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                            <div className="admin-workload-spinner" />
                           ) : null}
                           <AdminSwitch
                             checked={app.instrumented}
-                            disabled={togglingApp === app.name}
+                            disabled={togglingApp === app.name || (!app.instrumented && isUnknownStack(app.language) && isUnknownStack(app.detectedLanguage))}
                             onChange={() => handleToggleApp(app)}
                           />
                         </div>
