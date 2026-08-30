@@ -12,6 +12,7 @@ import { LANG_ICONS, stackIconKey } from '../components/LanguageIcon';
 import { TECH_LOGOS } from '../components/TechIcon';
 import IconPack from '../components/IconPack';
 import { useTranslation } from '../utils/i18n';
+import { traceListDisplayName } from '../utils/operationName';
 
 interface ServiceMapProps {
   namespace: string;
@@ -2835,7 +2836,7 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
                               onClick={() => navigate(`/traces/${item.traceId}`)}
                             >
                               <div className="service-map-trace-title">
-                                <strong title={item.rootName || 'Transaction'}>{item.rootName || 'Transaction'}</strong>
+                                <strong title={traceListDisplayName(item)}>{traceListDisplayName(item)}</strong>
                                 <span className={item.hasError ? 'critical' : 'healthy'}>{item.hasError ? 'ERROR' : 'OK'}</span>
                               </div>
                               <div className="service-map-trace-meta">

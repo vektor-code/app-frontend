@@ -53,3 +53,15 @@ export function displayOperationName(name: string, fallback = 'Unnamed operation
   if (!cleaned || isGarbageOperationName(cleaned)) return fallback;
   return cleaned;
 }
+
+/** List/drawer title: use the grouped endpoint name, not the raw SDK span name. */
+export function traceListDisplayName(trace: {
+  transactionName?: string;
+  rootName?: string;
+  serviceName?: string;
+}): string {
+  return displayOperationName(
+    trace.transactionName || trace.rootName || '',
+    trace.serviceName || 'Unnamed operation',
+  );
+}

@@ -239,6 +239,7 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
     return Array.from(grouped.entries())
       .map(([traceId, list]) => {
         const sorted = [...list].sort((a, b) => b._receivedAt - a._receivedAt);
+        const root = sorted.find(span => String(span.kind || '').toUpperCase() === 'SERVER') || sorted[sorted.length - 1] || sorted[0];
         return {
           traceId,
           spans: sorted,
@@ -247,7 +248,7 @@ export default function LiveStream({ namespace }: LiveStreamProps) {
           hasError: sorted.some(span => isSpanError(span)),
           maxDuration: Math.max(...sorted.map(span => span.durationMs || 0)),
           lastSeen: Math.max(...sorted.map(span => span._receivedAt || 0)),
-          rootName: sorted[sorted.length - 1]?.name || sorted[0]?.name || traceId
+          rootName: root ? routeLabel(root) : traceId
         };
       })
       .sort((a, b) => b.lastSeen - a.lastSeen);

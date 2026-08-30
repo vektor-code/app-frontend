@@ -25,7 +25,7 @@ import LanguageIcon from '../components/LanguageIcon';
 import IconPack from '../components/IconPack';
 import { KpiCard } from '../components/KpiCard';
 import { useTranslation } from '../utils/i18n';
-import { displayOperationName } from '../utils/operationName';
+import { displayOperationName, traceListDisplayName } from '../utils/operationName';
 import { useColumnResize } from '../utils/useColumnResize';
 import SideDrawer from '../components/SideDrawer';
 import { formatDuration, getServiceColor as getServiceColor } from '../utils/traceDisplay';
@@ -840,7 +840,7 @@ function TraceRow({
       <div className="trace-main" data-col="Trace">
         <div className="trace-title-line">
           <LanguageIcon language={language} size={18} />
-          <strong>{displayOperationName(trace.rootName || '', trace.serviceName)}</strong>
+          <strong>{traceListDisplayName(trace)}</strong>
         </div>
         <div className="trace-subline">
           <span>{trace.serviceName}</span>
@@ -908,7 +908,7 @@ function TraceQuickLook({
 }) {
   const { t } = useTranslation();
   const flow = trace.serviceFlow && trace.serviceFlow.length > 0 ? trace.serviceFlow : (trace.services || []);
-  const title = trace.rootName || trace.serviceName;
+  const title = traceListDisplayName(trace);
   const statusTone: Tone = trace.hasError ? 'critical' : 'healthy';
   const statusText = trace.hasError ? t('Error') : t('Operational');
   const serviceCount = new Set([trace.serviceName, ...flow].filter(Boolean)).size;

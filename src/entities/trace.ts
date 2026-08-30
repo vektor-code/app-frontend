@@ -131,6 +131,8 @@ export interface TraceListItem {
   namespace: string;
   namespaces?: string[];
   rootName: string;
+  /** Stable endpoint identity (method + route). Prefer this over rootName in lists. */
+  transactionName?: string;
   startTime: string;
   durationMs: number;
   spanCount: number;
