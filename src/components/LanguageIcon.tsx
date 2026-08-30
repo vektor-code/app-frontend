@@ -35,6 +35,7 @@ export function languageLogoFor(language?: string): string | null {
 export function stackIconKey(language?: string): string | undefined {
   if (!language) return undefined;
   const l = language.toLowerCase().trim();
+  if (!l || l === 'unknown' || l === 'auto' || l === 'unk') return undefined;
   if (l === 'nginx' || l === 'openresty' || l === 'caddy' || l === 'apache' || l === 'httpd' || l === 'apache-httpd') {
     return 'nginx';
   }
@@ -51,7 +52,10 @@ interface LanguageIconProps {
 }
 
 export default function LanguageIcon({ language, size = 20 }: LanguageIconProps) {
-  if (!language) return null;
+  const key = (language || '').toLowerCase().trim();
+  if (!key || key === 'unknown' || key === 'auto' || key === 'unk') {
+    return null;
+  }
   const src = languageLogoFor(language);
   
   if (!src) {
