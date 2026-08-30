@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   IconActivity,
@@ -36,12 +36,53 @@ interface SignalMetric {
 
 type IconName = 'apdex' | 'database' | 'errors' | 'histogram' | 'latency' | 'traffic';
 
-const chartWidth = 720;
-const chartHeight = 250;
-const chartLeft = 54;
-const chartRight = 22;
-const chartTop = 22;
-const chartBottom = 38;
+interface ChartLayout {
+  width: number;
+  height: number;
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+const CHART_PAD = { left: 58, right: 14, top: 16, bottom: 34 };
+const FALLBACK_CHART_SIZE = { width: 480, height: 216 };
+
+function useChartLayout() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState(FALLBACK_CHART_SIZE);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const apply = (width: number, height: number) => {
+      if (width < 32 || height < 32) return;
+      setSize(prev => (
+        Math.abs(prev.width - width) < 0.5 && Math.abs(prev.height - height) < 0.5
+          ? prev
+          : { width, height }
+      ));
+    };
+
+    apply(el.clientWidth, el.clientHeight);
+    const observer = new ResizeObserver(entries => {
+      const box = entries[0]?.contentRect;
+      if (box) apply(box.width, box.height);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const layout = useMemo<ChartLayout>(() => ({
+    width: size.width,
+    height: size.height,
+    ...CHART_PAD,
+  }), [size.height, size.width]);
+
+  return [ref, layout] as const;
+}
+
 const trafficColor = 'var(--chart-blue)';
 const errorColor = 'var(--chart-rose)';
 const latencyColor = 'var(--chart-cyan)';
@@ -682,28 +723,29 @@ function TrafficChart({
   empty: boolean;
   t: (key: string) => string;
 }) {
+  const [stageRef, layout] = useChartLayout();
   const totalData = successData.map((value, idx) => value + (errorData[idx] || 0));
   const maxValue = Math.max(...totalData, 1) * 1.08;
-  const usableWidth = chartWidth - chartLeft - chartRight;
+  const usableWidth = plotWidth(layout);
   const barStep = usableWidth / Math.max(totalData.length, 1);
   const barWidth = Math.max(3, barStep * 0.62);
-  const plotBottom = chartHeight - chartBottom;
+  const plotBottom = layout.height - layout.bottom;
 
   return (
-    <div className="apm-chart-stage">
+    <div className="apm-chart-stage" ref={stageRef}>
       <ChartOverlay loading={loading} empty={empty} t={t} />
       <svg
-        viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+        viewBox={`0 0 ${layout.width} ${layout.height}`}
         className="apm-svg-chart"
         onMouseLeave={() => setHoverIndex(null)}
-        onMouseMove={event => setHoverIndex(indexFromMouse(event, totalData.length))}
+        onMouseMove={event => setHoverIndex(indexFromMouse(event, totalData.length, layout))}
       >
-        <ChartGrid maxValue={maxValue} unit="count" />
+        <ChartGrid layout={layout} maxValue={maxValue} unit="count" />
         <g className="apm-request-bars">
           {totalData.map((_, idx) => {
-            const successHeight = scaleY(successData[idx] || 0, maxValue);
-            const errorHeight = scaleY(errorData[idx] || 0, maxValue);
-            const x = chartLeft + idx * barStep + (barStep - barWidth) / 2;
+            const successHeight = scaleY(successData[idx] || 0, maxValue, layout);
+            const errorHeight = scaleY(errorData[idx] || 0, maxValue, layout);
+            const x = layout.left + idx * barStep + (barStep - barWidth) / 2;
             const dimmed = hoverIndex !== null && hoverIndex !== idx;
             return (
               <g key={idx} opacity={dimmed ? 0.35 : 1}>
@@ -731,14 +773,14 @@ function TrafficChart({
         </g>
         {hoverIndex !== null && (
           <line
-            x1={chartLeft + hoverIndex * barStep + barStep / 2}
-            y1={chartTop}
-            x2={chartLeft + hoverIndex * barStep + barStep / 2}
+            x1={layout.left + hoverIndex * barStep + barStep / 2}
+            y1={layout.top}
+            x2={layout.left + hoverIndex * barStep + barStep / 2}
             y2={plotBottom}
             className="apm-crosshair"
           />
         )}
-        <XAxis labels={labels} />
+        <XAxis layout={layout} labels={labels} />
       </svg>
       {hoverIndex !== null && (
         <ChartTooltip leftPercent={tooltipPercent(hoverIndex, successData.length)}>
@@ -781,23 +823,24 @@ function LineChart({
   empty: boolean;
   t: (key: string) => string;
 }) {
+  const [stageRef, layout] = useChartLayout();
   const fillId = React.useId().replace(/:/g, '');
   const hasSecondary = secondary.length > 0;
   const maxValue = Math.max(...primary, ...secondary, 1) * 1.08;
-  const primaryPoints = getPoints(primary, maxValue);
-  const secondaryPoints = hasSecondary ? getPoints(secondary, maxValue) : [];
+  const primaryPoints = getPoints(primary, maxValue, layout);
+  const secondaryPoints = hasSecondary ? getPoints(secondary, maxValue, layout) : [];
   const hoverPoint = hoverIndex !== null ? primaryPoints[hoverIndex] : null;
   const secondaryHoverPoint = hoverIndex !== null && hasSecondary ? secondaryPoints[hoverIndex] : null;
   const formatValue = (value: number) => (unit === 'percent' ? formatPercent(value) : formatMetric(value, unit));
 
   return (
-    <div className="apm-chart-stage">
+    <div className="apm-chart-stage" ref={stageRef}>
       <ChartOverlay loading={loading} empty={empty} t={t} />
       <svg
-        viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+        viewBox={`0 0 ${layout.width} ${layout.height}`}
         className="apm-svg-chart"
         onMouseLeave={() => setHoverIndex(null)}
-        onMouseMove={event => setHoverIndex(indexFromMouse(event, primary.length))}
+        onMouseMove={event => setHoverIndex(indexFromMouse(event, primary.length, layout))}
       >
         <defs>
           <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
@@ -805,20 +848,20 @@ function LineChart({
             <stop offset="100%" stopColor={primaryColor} stopOpacity="0.02" />
           </linearGradient>
         </defs>
-        <ChartGrid maxValue={maxValue} unit={unit} />
-        <path d={areaPath(primaryPoints)} fill={`url(#${fillId})`} />
+        <ChartGrid layout={layout} maxValue={maxValue} unit={unit} />
+        <path d={areaPath(primaryPoints, layout)} fill={`url(#${fillId})`} />
         <path d={smoothLinePath(primaryPoints)} fill="none" stroke={primaryColor} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
         {hasSecondary && (
           <path d={smoothLinePath(secondaryPoints)} fill="none" stroke={secondaryColor} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
         )}
         {hoverPoint && (
           <g>
-            <line x1={hoverPoint.x} y1={chartTop} x2={hoverPoint.x} y2={chartHeight - chartBottom} className="apm-crosshair" />
+            <line x1={hoverPoint.x} y1={layout.top} x2={hoverPoint.x} y2={layout.height - layout.bottom} className="apm-crosshair" />
             <circle cx={hoverPoint.x} cy={hoverPoint.y} r="3.25" fill={primaryColor} className="apm-point-ring" />
             {secondaryHoverPoint && <circle cx={secondaryHoverPoint.x} cy={secondaryHoverPoint.y} r="3.25" fill={secondaryColor} className="apm-point-ring" />}
           </g>
         )}
-        <XAxis labels={labels} />
+        <XAxis layout={layout} labels={labels} />
       </svg>
       {hoverIndex !== null && (
         <ChartTooltip leftPercent={tooltipPercent(hoverIndex, primary.length)}>
@@ -850,22 +893,23 @@ function DatabaseChart({
   empty: boolean;
   t: (key: string) => string;
 }) {
+  const [stageRef, layout] = useChartLayout();
   const fillId = React.useId().replace(/:/g, '');
   const maxCalls = Math.max(...calls, 1) * 1.08;
   const maxLatency = Math.max(...latency, 1) * 1.08;
-  const usableWidth = chartWidth - chartLeft - chartRight;
+  const usableWidth = plotWidth(layout);
   const barStep = usableWidth / Math.max(calls.length, 1);
   const barWidth = Math.max(3, barStep * 0.42);
-  const latencyPoints = getPoints(latency, maxLatency);
+  const latencyPoints = getPoints(latency, maxLatency, layout);
 
   return (
-    <div className="apm-chart-stage">
+    <div className="apm-chart-stage" ref={stageRef}>
       <ChartOverlay loading={loading} empty={empty} t={t} />
       <svg
-        viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+        viewBox={`0 0 ${layout.width} ${layout.height}`}
         className="apm-svg-chart"
         onMouseLeave={() => setHoverIndex(null)}
-        onMouseMove={event => setHoverIndex(indexFromMouse(event, calls.length))}
+        onMouseMove={event => setHoverIndex(indexFromMouse(event, calls.length, layout))}
       >
         <defs>
           <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
@@ -873,12 +917,12 @@ function DatabaseChart({
             <stop offset="100%" stopColor={dbLatencyColor} stopOpacity="0.02" />
           </linearGradient>
         </defs>
-        <ChartGrid maxValue={maxCalls} unit="count" />
-        <path d={areaPath(latencyPoints)} fill={`url(#${fillId})`} />
+        <ChartGrid layout={layout} maxValue={maxCalls} unit="count" />
+        <path d={areaPath(latencyPoints, layout)} fill={`url(#${fillId})`} />
         {calls.map((value, idx) => {
-          const height = scaleY(value, maxCalls);
-          const x = chartLeft + idx * barStep + (barStep - barWidth) / 2;
-          const y = chartHeight - chartBottom - height;
+          const height = scaleY(value, maxCalls, layout);
+          const x = layout.left + idx * barStep + (barStep - barWidth) / 2;
+          const y = layout.height - layout.bottom - height;
           return (
             <rect
               key={idx}
@@ -896,11 +940,11 @@ function DatabaseChart({
         <path d={smoothLinePath(latencyPoints)} fill="none" stroke={dbLatencyColor} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
         {hoverIndex !== null && latencyPoints[hoverIndex] && (
           <g>
-            <line x1={latencyPoints[hoverIndex].x} y1={chartTop} x2={latencyPoints[hoverIndex].x} y2={chartHeight - chartBottom} className="apm-crosshair" />
+            <line x1={latencyPoints[hoverIndex].x} y1={layout.top} x2={latencyPoints[hoverIndex].x} y2={layout.height - layout.bottom} className="apm-crosshair" />
             <circle cx={latencyPoints[hoverIndex].x} cy={latencyPoints[hoverIndex].y} r="3.25" fill={dbLatencyColor} className="apm-point-ring" />
           </g>
         )}
-        <XAxis labels={labels} />
+        <XAxis layout={layout} labels={labels} />
       </svg>
       {hoverIndex !== null && (
         <ChartTooltip leftPercent={tooltipPercent(hoverIndex, calls.length)}>
@@ -988,9 +1032,14 @@ function ServiceErrorBoard({
                         const container = containerRef.current;
                         if (!container) return;
                         const rect = container.getBoundingClientRect();
+                        const tooltipWidth = 220;
+                        const tooltipHeight = 86;
                         let x = event.clientX - rect.left + 14;
                         let y = event.clientY - rect.top + container.scrollTop + 14;
-                        if (x + 220 > rect.width) x = event.clientX - rect.left - 230;
+                        if (x + tooltipWidth > rect.width - 8) x = event.clientX - rect.left - tooltipWidth - 12;
+                        if (x < 8) x = 8;
+                        if (y + tooltipHeight > rect.height - 8) y = event.clientY - rect.top + container.scrollTop - tooltipHeight - 12;
+                        if (y < 8) y = 8;
                         setTooltipPos({ x, y });
                       }}
                       onClick={() => navigate(`/traces?service=${encodeURIComponent(service.service)}&hasError=true`)}
@@ -1063,16 +1112,16 @@ function ChartOverlay({ loading, empty, t }: { loading: boolean; empty: boolean;
   );
 }
 
-function ChartGrid({ maxValue, unit }: { maxValue: number; unit: 'latency' | 'count' | 'percent' }) {
+function ChartGrid({ layout, maxValue, unit }: { layout: ChartLayout; maxValue: number; unit: 'latency' | 'count' | 'percent' }) {
   const rows = [1, 0.5, 0];
   return (
     <g>
       {rows.map(row => {
-        const y = chartTop + (1 - row) * (chartHeight - chartTop - chartBottom);
+        const y = layout.top + (1 - row) * (layout.height - layout.top - layout.bottom);
         return (
           <g key={row}>
-            <line x1={chartLeft} y1={y} x2={chartWidth - chartRight} y2={y} className="apm-grid-line" />
-            <text x={chartLeft - 10} y={y + 3.5} textAnchor="end" className="apm-axis-text">
+            <line x1={layout.left} y1={y} x2={layout.width - layout.right} y2={y} className="apm-grid-line" />
+            <text x={layout.left - 8} y={y + 4} textAnchor="end" className="apm-axis-text">
               {formatMetric(maxValue * row, unit)}
             </text>
           </g>
@@ -1082,16 +1131,24 @@ function ChartGrid({ maxValue, unit }: { maxValue: number; unit: 'latency' | 'co
   );
 }
 
-function XAxis({ labels }: { labels: string[] }) {
-  const usableWidth = chartWidth - chartLeft - chartRight;
+function XAxis({ layout, labels }: { layout: ChartLayout; labels: string[] }) {
+  const usableWidth = plotWidth(layout);
   const labelStep = Math.max(1, Math.ceil(labels.length / 5));
   return (
     <g>
       {labels.map((label, idx) => {
         if (idx % labelStep !== 0 && idx !== labels.length - 1) return null;
-        const x = chartLeft + ((idx + 0.5) * usableWidth) / Math.max(labels.length, 1);
+        const x = layout.left + ((idx + 0.5) * usableWidth) / Math.max(labels.length, 1);
+        const isFirst = idx === 0;
+        const isLast = idx === labels.length - 1;
         return (
-          <text key={`${label}:${idx}`} x={x} y={chartHeight - 12} textAnchor="middle" className="apm-axis-text">
+          <text
+            key={`${label}:${idx}`}
+            x={x}
+            y={layout.height - 10}
+            textAnchor={isFirst ? 'start' : isLast ? 'end' : 'middle'}
+            className="apm-axis-text"
+          >
             {label}
           </text>
         );
@@ -1114,8 +1171,15 @@ function DashboardIcon({ name }: { name: IconName }) {
 }
 
 function ChartTooltip({ leftPercent, children }: { leftPercent: number; children: React.ReactNode }) {
+  const align = leftPercent < 22 ? 'start' : leftPercent > 78 ? 'end' : 'center';
+  const left = align === 'start' ? 10 : align === 'end' ? undefined : `${leftPercent}%`;
+  const right = align === 'end' ? 10 : undefined;
+  const transform = align === 'center' ? 'translateX(-50%)' : 'none';
   return (
-    <div className="apm-floating-tooltip" style={{ left: `${leftPercent}%`, top: 10 }}>
+    <div
+      className={`apm-floating-tooltip apm-chart-tooltip is-${align}`}
+      style={{ left, right, top: 10, transform }}
+    >
       {children}
     </div>
   );
@@ -1198,15 +1262,23 @@ function getHealthTone(score: number, totalRequests: number): ToneName {
   return 'critical';
 }
 
-function scaleY(value: number, maxValue: number) {
-  return (value / Math.max(maxValue, 1)) * (chartHeight - chartTop - chartBottom);
+function plotWidth(layout: ChartLayout) {
+  return layout.width - layout.left - layout.right;
 }
 
-function getPoints(data: number[], maxValue: number) {
-  const usableWidth = chartWidth - chartLeft - chartRight;
+function plotHeight(layout: ChartLayout) {
+  return layout.height - layout.top - layout.bottom;
+}
+
+function scaleY(value: number, maxValue: number, layout: ChartLayout) {
+  return (value / Math.max(maxValue, 1)) * plotHeight(layout);
+}
+
+function getPoints(data: number[], maxValue: number, layout: ChartLayout) {
+  const usableWidth = plotWidth(layout);
   return data.map((value, idx) => {
-    const x = chartLeft + ((idx + 0.5) * usableWidth) / Math.max(data.length, 1);
-    const y = chartHeight - chartBottom - (value / Math.max(maxValue, 1)) * (chartHeight - chartTop - chartBottom);
+    const x = layout.left + ((idx + 0.5) * usableWidth) / Math.max(data.length, 1);
+    const y = layout.height - layout.bottom - (value / Math.max(maxValue, 1)) * plotHeight(layout);
     return { x, y };
   });
 }
@@ -1233,9 +1305,9 @@ function smoothLinePath(points: { x: number; y: number }[]) {
   return path;
 }
 
-function areaPath(points: { x: number; y: number }[]) {
+function areaPath(points: { x: number; y: number }[], layout: ChartLayout) {
   if (points.length === 0) return '';
-  const baseY = chartHeight - chartBottom;
+  const baseY = layout.height - layout.bottom;
   const first = points[0];
   const last = points[points.length - 1];
   return `M ${first.x.toFixed(2)} ${baseY} ${points.map(point => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ')} L ${last.x.toFixed(2)} ${baseY} Z`;
@@ -1251,12 +1323,13 @@ function rangeBandPath(
   return `M ${upper[0].x.toFixed(2)} ${upper[0].y.toFixed(2)} ${upperPath} ${lowerPath} Z`;
 }
 
-function indexFromMouse(event: React.MouseEvent<SVGSVGElement>, length: number) {
+function indexFromMouse(event: React.MouseEvent<SVGSVGElement>, length: number, layout: ChartLayout) {
   if (length <= 0) return null;
   const rect = event.currentTarget.getBoundingClientRect();
   const x = event.clientX - rect.left;
-  const usableWidth = rect.width - (chartLeft / chartWidth) * rect.width - (chartRight / chartWidth) * rect.width;
-  const left = (chartLeft / chartWidth) * rect.width;
+  const scaleX = rect.width / Math.max(layout.width, 1);
+  const left = layout.left * scaleX;
+  const usableWidth = plotWidth(layout) * scaleX;
   const percent = clamp((x - left) / Math.max(usableWidth, 1), 0, 1);
   return clamp(Math.floor(percent * length), 0, length - 1);
 }

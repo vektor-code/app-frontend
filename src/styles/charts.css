@@ -11,6 +11,7 @@
 .apm-chart-stage {
   position: relative;
   isolation: isolate;
+  overflow: visible;
 }
 
 .apm-chart-stage::after {

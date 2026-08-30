@@ -179,12 +179,20 @@
 
 .dashboard-page .apm-chart-panel,
 .dashboard-page .apm-list-panel {
+  position: relative;
+  z-index: 1;
   padding: 14px 16px 12px;
+  overflow: visible;
   border: 1px solid var(--border-primary) !important;
   border-top: 1px solid var(--border-primary) !important;
   border-radius: 10px;
   background: var(--bg-secondary);
   box-shadow: none;
+}
+
+.dashboard-page .apm-chart-panel:hover,
+.dashboard-page .apm-chart-panel:focus-within {
+  z-index: 5;
 }
 
 .dashboard-page .apm-chart-header,
@@ -226,6 +234,7 @@
 
 .dashboard-page .apm-chart-stage {
   height: 216px;
+  overflow: visible;
   background-image: none;
 }
 
@@ -239,9 +248,9 @@
 }
 
 .dashboard-page .apm-axis-text {
-  fill: var(--text-muted);
-  font-size: 10px;
-  font-weight: 500;
+  fill: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .dashboard-page .apm-point-ring {
@@ -263,6 +272,7 @@
   gap: 10px;
   min-height: 238px;
   padding: 2px 0 0;
+  overflow: visible;
 }
 
 .dashboard-page .apm-error-board-row {
@@ -376,9 +386,9 @@
 
 .dashboard-page .apm-error-board-axis em {
   overflow: hidden;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 500;
   text-overflow: clip;
@@ -389,6 +399,30 @@
   border-radius: 2px 2px 0 0;
   background: var(--hist-color);
   box-shadow: none !important;
+}
+
+.dashboard-page .apm-hist-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.dashboard-page .apm-hist-value {
+  font-size: 12px;
+}
+
+.dashboard-page .apm-hist-col:first-child .apm-hist-value {
+  left: 0;
+  transform: none;
+}
+
+.dashboard-page .apm-hist-col:last-child .apm-hist-value {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.dashboard-page .apm-hist-marker-tag {
+  font-size: 11px;
 }
 
 .dashboard-page .apm-hist-col:hover .apm-hist-bar {
