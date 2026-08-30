@@ -468,43 +468,41 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
         />
       </section>
 
-      <section className="traces-toolbar">
-        <div className="traces-tabs" role="tablist" aria-label={t('Trace views')}>
-          <button role="tab" aria-selected={activeTab === 'top'} className={activeTab === 'top' ? 'active' : ''} onClick={() => setActiveTab('top')} type="button">{t('Top transactions')}</button>
-          <button role="tab" aria-selected={activeTab === 'explorer'} className={activeTab === 'explorer' ? 'active' : ''} onClick={() => setActiveTab('explorer')} type="button">{t('Explorer')}</button>
+      <section className="traces-workbench">
+        <div className="traces-toolbar">
+          <div className="traces-tabs" role="tablist" aria-label={t('Trace views')}>
+            <button role="tab" aria-selected={activeTab === 'top'} className={activeTab === 'top' ? 'active' : ''} onClick={() => setActiveTab('top')} type="button">{t('Top transactions')}</button>
+            <button role="tab" aria-selected={activeTab === 'explorer'} className={activeTab === 'explorer' ? 'active' : ''} onClick={() => setActiveTab('explorer')} type="button">{t('Explorer')}</button>
+          </div>
+          <div className="traces-toolbar-actions">
+            <FilterSelect label={t('Window')} value={timeRangeFilter} onChange={value => setFilterVal('timeRange', value)} options={[
+              { value: '15m', label: t('15m') },
+              { value: '1h', label: t('1h') },
+              { value: '24h', label: t('24h') },
+              { value: '7d', label: t('7d') },
+              { value: '30d', label: t('30d') },
+              { value: '90d', label: t('90d') },
+              { value: 'all', label: t('All') },
+            ]} />
+            <FilterSelect
+              label={t('Sort')}
+              value={sortBy}
+              onChange={value => {
+                setSortBy(value as EndpointSort | TraceSort);
+                setSortDir(value === 'name' || value === 'service' ? 'asc' : 'desc');
+              }}
+              options={sortOptions}
+            />
+            <button type="button" className="traces-refresh-btn" onClick={() => { void loadTraces(); }}>
+              <RefreshCw size={14} />
+              {t('Refresh')}
+            </button>
+          </div>
         </div>
-        <div className="traces-toolbar-actions">
-          <FilterSelect label={t('Window')} value={timeRangeFilter} onChange={value => setFilterVal('timeRange', value)} options={[
-            { value: '15m', label: t('15m') },
-            { value: '1h', label: t('1h') },
-            { value: '24h', label: t('24h') },
-            { value: '7d', label: t('7d') },
-            { value: '30d', label: t('30d') },
-            { value: '90d', label: t('90d') },
-            { value: 'all', label: t('All') },
-          ]} />
-          <FilterSelect
-            label={t('Sort')}
-            value={sortBy}
-            onChange={value => {
-              setSortBy(value as EndpointSort | TraceSort);
-              setSortDir(value === 'name' || value === 'service' ? 'asc' : 'desc');
-            }}
-            options={sortOptions}
-          />
-          <button type="button" className="traces-refresh-btn" onClick={() => { void loadTraces(); }}>
-            <RefreshCw size={14} />
-            {t('Refresh')}
-          </button>
-        </div>
-      </section>
 
-      <section className="traces-filter-panel">
-        <div className="traces-filter-primary">
+        <div className="traces-filter-grid">
           <FilterInput icon="search" label={t('Operation')} value={operationFilter} onChange={value => setFilterVal('operation', value)} placeholder={t('Search operations, routes…')} />
           <FilterInput icon="id" label={t('Trace ID')} value={traceIdFilter} onChange={value => setFilterVal('traceId', value)} placeholder={t('Paste a trace ID')} />
-        </div>
-        <div className="traces-filter-facets">
           <FilterSelect label={t('Service')} value={serviceFilter} onChange={value => setFilterVal('service', value)} options={[
             { value: '', label: t('All services') },
             ...services.map(service => ({ value: service, label: service })),
@@ -514,15 +512,13 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
             { value: 'true', label: t('Errors') },
             { value: 'false', label: t('OK') },
           ]} />
-          {activeTab === 'explorer' && (
-            <FilterSelect label={t('Min spans')} value={minSpans} onChange={value => setFilterVal('minSpans', value)} options={[
-              { value: '0', label: t('All') },
-              { value: '2', label: t('2+') },
-              { value: '3', label: t('3+') },
-              { value: '5', label: t('5+') },
-              { value: '10', label: t('10+') },
-            ]} />
-          )}
+          <FilterSelect label={t('Min spans')} value={minSpans} onChange={value => setFilterVal('minSpans', value)} options={[
+            { value: '0', label: t('All') },
+            { value: '2', label: t('2+') },
+            { value: '3', label: t('3+') },
+            { value: '5', label: t('5+') },
+            { value: '10', label: t('10+') },
+          ]} />
           <FilterRange
             label={t('Latency (ms)')}
             min={minDuration}
