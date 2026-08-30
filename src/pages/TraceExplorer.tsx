@@ -14,6 +14,8 @@ import {
   GripVertical,
   RefreshCw,
   RotateCcw,
+  Search,
+  X,
 } from 'lucide-react';
 import { api } from '../api/client';
 import type { EndpointStat, TraceListItem } from '../entities';
@@ -21,6 +23,7 @@ import { LoadingState, NoDataState } from '../components/DataState';
 import CustomSelect from '../components/CustomSelect';
 import LanguageIcon from '../components/LanguageIcon';
 import IconPack from '../components/IconPack';
+import { KpiCard } from '../components/KpiCard';
 import { useTranslation } from '../utils/i18n';
 import { displayOperationName } from '../utils/operationName';
 import { useColumnResize } from '../utils/useColumnResize';
@@ -335,6 +338,8 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
   const pagedTopTraces = topTraces.slice((topPage - 1) * pageSize, topPage * pageSize);
   const totalImpact = topTraces.reduce((sum, item) => sum + item.impact, 0);
   const maxTraceDuration = Math.max(...sortedTraces.map(trace => trace.durationMs), 1);
+  const maxAvgLatency = Math.max(...topTraces.map(item => item.avgDurationMs), 1);
+  const maxTpm = Math.max(...topTraces.map(item => item.tpm), 1);
 
   const summary = useMemo(() => {
     if (activeTab === 'top') {
@@ -362,16 +367,17 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
     };
   }, [activeTab, topTraces, sortedTraces]);
 
-  const filterCount = [
-    serviceFilter,
-    errorFilter,
-    operationFilter,
-    traceIdFilter,
-    minDuration,
-    maxDuration,
-    minSpans !== '0' ? minSpans : '',
-    timeRangeFilter !== '24h' ? timeRangeFilter : '',
-  ].filter(Boolean).length;
+  const activeFilters = [
+    serviceFilter ? { key: 'service', label: `${t('Service')}: ${serviceFilter}` } : null,
+    errorFilter ? { key: 'hasError', label: `${t('Status')}: ${errorFilter === 'true' ? t('Errors') : t('OK')}` } : null,
+    operationFilter ? { key: 'operation', label: `${t('Operation')}: ${operationFilter}` } : null,
+    traceIdFilter ? { key: 'traceId', label: `${t('Trace ID')}: ${shortTraceId(traceIdFilter)}` } : null,
+    minSpans !== '0' ? { key: 'minSpans', label: `${t('Min spans')}: ${minSpans}+` } : null,
+    minDuration ? { key: 'minDuration', label: `${t('Min')}: ${minDuration}ms` } : null,
+    maxDuration ? { key: 'maxDuration', label: `${t('Max')}: ${maxDuration}ms` } : null,
+    timeRangeFilter !== '24h' ? { key: 'timeRange', label: `${t('Window')}: ${timeRangeFilter}` } : null,
+  ].filter((chip): chip is { key: string; label: string } => Boolean(chip));
+  const filterCount = activeFilters.length;
 
   const sortOptions = activeTab === 'top'
     ? [
@@ -410,91 +416,139 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
     traceColumns.resizeBy(column, event.key === 'ArrowRight' ? 16 : -16);
   };
 
+  const windowLabel = timeRangeFilter === 'all' ? t('All time') : timeRangeFilter;
+  const errorTone = summary.errorRate > 5 ? 'critical' : summary.errorRate > 0 ? 'warning' : 'healthy';
+  const latencyKpiTone = summary.avgLatency > 1000 ? 'warning' : summary.avgLatency > 300 ? 'info' : 'healthy';
+
   return (
     <div className="traces-page apm-dashboard animate-fade-in">
       <section className="apm-dashboard-header traces-dashboard-header">
         <div className="apm-title-block">
           <h1>{t('Traces')}</h1>
         </div>
-        <div className="apm-header-meta traces-header-actions">
-          <div className="apm-meta-item">
-            <span>{activeTab === 'top' ? t('Endpoints') : t('Traces')}</span>
-            <strong>{formatCompact(summary.primaryCount)}</strong>
+        <div className="apm-header-meta">
+          <div className="apm-live-pill">
+            <span />
+            {t('Live')}
           </div>
           <div className="apm-meta-item">
-            <span>{t('Volume')}</span>
-            <strong>{formatCompact(summary.count)}</strong>
-          </div>
-          <div className="apm-meta-item">
-            <span>{t('Errors')}</span>
-            <strong>{formatPercent(summary.errorRate)}</strong>
-          </div>
-          <div className="apm-meta-item">
-            <span>{t('Avg latency')}</span>
-            <strong>{formatDuration(summary.avgLatency)}</strong>
+            <span>{t('Window')}</span>
+            <strong>{windowLabel}</strong>
           </div>
         </div>
       </section>
 
+      <section className="apm-kpi-strip" aria-label={t('Trace health')}>
+        <KpiCard
+          label={activeTab === 'top' ? t('Transactions') : t('Traces')}
+          value={formatCompact(summary.primaryCount)}
+          detail={activeTab === 'top' ? t('Grouped by operation') : t('Matching this query')}
+          tone="info"
+        />
+        <KpiCard
+          label={t('Volume')}
+          value={formatCompact(summary.count)}
+          detail={`${windowLabel} ${t('window')}`}
+          tone="info"
+        />
+        <KpiCard
+          label={t('Error rate')}
+          value={formatPercent(summary.errorRate)}
+          detail={`${formatCompact(summary.errors)} ${t('failed')}`}
+          tone={errorTone}
+          positiveIsGood={false}
+          progress={Math.min(100, summary.errorRate)}
+        />
+        <KpiCard
+          label={t('Avg latency')}
+          value={formatDuration(summary.avgLatency)}
+          detail={t('Request duration')}
+          tone={latencyKpiTone}
+          positiveIsGood={false}
+        />
+      </section>
+
       <section className="traces-toolbar">
-        <div className="traces-tabs">
-          <button className={activeTab === 'top' ? 'active' : ''} onClick={() => setActiveTab('top')} type="button">{t('Top transactions')}</button>
-          <button className={activeTab === 'explorer' ? 'active' : ''} onClick={() => setActiveTab('explorer')} type="button">{t('Explorer')}</button>
+        <div className="traces-tabs" role="tablist" aria-label={t('Trace views')}>
+          <button role="tab" aria-selected={activeTab === 'top'} className={activeTab === 'top' ? 'active' : ''} onClick={() => setActiveTab('top')} type="button">{t('Top transactions')}</button>
+          <button role="tab" aria-selected={activeTab === 'explorer'} className={activeTab === 'explorer' ? 'active' : ''} onClick={() => setActiveTab('explorer')} type="button">{t('Explorer')}</button>
         </div>
         <div className="traces-toolbar-actions">
-          <label>
-            <span>{t('Sort')}</span>
-            <CustomSelect
-              className="trace-sort-select"
-              ariaLabel={t('Sort')}
-              value={sortBy}
-              onChange={value => {
-                setSortBy(value as EndpointSort | TraceSort);
-                setSortDir(value === 'name' ? 'asc' : 'desc');
-              }}
-              options={sortOptions}
-            />
-          </label>
+          <FilterSelect label={t('Window')} value={timeRangeFilter} onChange={value => setFilterVal('timeRange', value)} options={[
+            { value: '15m', label: t('15m') },
+            { value: '1h', label: t('1h') },
+            { value: '24h', label: t('24h') },
+            { value: '7d', label: t('7d') },
+            { value: '30d', label: t('30d') },
+            { value: '90d', label: t('90d') },
+            { value: 'all', label: t('All') },
+          ]} />
+          <FilterSelect
+            label={t('Sort')}
+            value={sortBy}
+            onChange={value => {
+              setSortBy(value as EndpointSort | TraceSort);
+              setSortDir(value === 'name' || value === 'service' ? 'asc' : 'desc');
+            }}
+            options={sortOptions}
+          />
           <button type="button" className="traces-refresh-btn" onClick={() => { void loadTraces(); }}>
-            <RefreshCw size={13} />
+            <RefreshCw size={14} />
             {t('Refresh')}
           </button>
         </div>
       </section>
 
       <section className="traces-filter-panel">
-        <FilterSelect label={t('Window')} value={timeRangeFilter} onChange={value => setFilterVal('timeRange', value)} options={[
-          { value: '15m', label: t('15m') },
-          { value: '1h', label: t('1h') },
-          { value: '24h', label: t('24h') },
-          { value: '7d', label: t('7d') },
-          { value: '30d', label: t('30d') },
-          { value: '90d', label: t('90d') },
-          { value: 'all', label: t('All') },
-        ]} />
-        <FilterSelect label={t('Service')} value={serviceFilter} onChange={value => setFilterVal('service', value)} options={[
-          { value: '', label: t('All services') },
-          ...services.map(service => ({ value: service, label: service })),
-        ]} />
-        <FilterSelect label={t('Status')} value={errorFilter} onChange={value => setFilterVal('hasError', value)} options={[
-          { value: '', label: t('All status') },
-          { value: 'true', label: t('Errors') },
-          { value: 'false', label: t('OK') },
-        ]} />
-        <FilterSelect label={t('Min spans')} value={minSpans} onChange={value => setFilterVal('minSpans', value)} options={[
-          { value: '0', label: t('All') },
-          { value: '2', label: t('2+') },
-          { value: '3', label: t('3+') },
-          { value: '5', label: t('5+') },
-          { value: '10', label: t('10+') },
-        ]} />
-        <FilterInput label={t('Operation')} value={operationFilter} onChange={value => setFilterVal('operation', value)} placeholder="GET /orders" />
-        <FilterInput label={t('Trace ID')} value={traceIdFilter} onChange={value => setFilterVal('traceId', value)} placeholder="trace id" />
-        <FilterInput label={t('Min ms')} type="number" value={minDuration} onChange={value => setFilterVal('minDuration', value)} placeholder="0" />
-        <FilterInput label={t('Max ms')} type="number" value={maxDuration} onChange={value => setFilterVal('maxDuration', value)} placeholder="0" />
-        <button type="button" className="traces-clear-btn" onClick={clearFilters}>
-          {filterCount > 0 ? `${t('Clear')} (${filterCount})` : t('Clear')}
-        </button>
+        <div className="traces-filter-primary">
+          <FilterInput icon="search" label={t('Operation')} value={operationFilter} onChange={value => setFilterVal('operation', value)} placeholder={t('Search operations, routes…')} />
+          <FilterInput icon="id" label={t('Trace ID')} value={traceIdFilter} onChange={value => setFilterVal('traceId', value)} placeholder={t('Paste a trace ID')} />
+        </div>
+        <div className="traces-filter-facets">
+          <FilterSelect label={t('Service')} value={serviceFilter} onChange={value => setFilterVal('service', value)} options={[
+            { value: '', label: t('All services') },
+            ...services.map(service => ({ value: service, label: service })),
+          ]} />
+          <FilterSelect label={t('Status')} value={errorFilter} onChange={value => setFilterVal('hasError', value)} options={[
+            { value: '', label: t('All status') },
+            { value: 'true', label: t('Errors') },
+            { value: 'false', label: t('OK') },
+          ]} />
+          {activeTab === 'explorer' && (
+            <FilterSelect label={t('Min spans')} value={minSpans} onChange={value => setFilterVal('minSpans', value)} options={[
+              { value: '0', label: t('All') },
+              { value: '2', label: t('2+') },
+              { value: '3', label: t('3+') },
+              { value: '5', label: t('5+') },
+              { value: '10', label: t('10+') },
+            ]} />
+          )}
+          <FilterRange
+            label={t('Latency (ms)')}
+            min={minDuration}
+            max={maxDuration}
+            onMin={value => setFilterVal('minDuration', value)}
+            onMax={value => setFilterVal('maxDuration', value)}
+          />
+          <button type="button" className="traces-clear-btn" onClick={clearFilters} disabled={filterCount === 0}>
+            {filterCount > 0 ? `${t('Clear')} (${filterCount})` : t('Clear')}
+          </button>
+        </div>
+        {activeFilters.length > 0 && (
+          <div className="traces-filter-chips" aria-label={t('Active filters')}>
+            {activeFilters.map(chip => (
+              <button
+                key={chip.key}
+                type="button"
+                className="traces-filter-chip"
+                onClick={() => setFilterVal(chip.key, chip.key === 'minSpans' ? '0' : chip.key === 'timeRange' ? '24h' : '')}
+              >
+                <span>{chip.label}</span>
+                <X size={12} />
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       {activeTab === 'top' ? (
@@ -527,6 +581,8 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
                     key={`${item.namespace}:${item.serviceName}:${item.operationName}`}
                     item={item}
                     totalImpact={totalImpact}
+                    maxLatency={maxAvgLatency}
+                    maxTpm={maxTpm}
                     language={serviceLanguages[`${item.namespace}:${item.serviceName}`] || serviceLanguages[item.serviceName]}
                     gridStyle={endpointGridStyle}
                     onService={() => {
@@ -609,6 +665,8 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
 function EndpointRow({
   item,
   totalImpact,
+  maxLatency,
+  maxTpm,
   language,
   gridStyle,
   onService,
@@ -629,6 +687,8 @@ function EndpointRow({
     impact: number;
   };
   totalImpact: number;
+  maxLatency: number;
+  maxTpm: number;
   language?: string;
   gridStyle: CSSProperties;
   onService: () => void;
@@ -655,7 +715,7 @@ function EndpointRow({
         }
       }}
     >
-      <div className="endpoint-main">
+      <div className="endpoint-main" data-col="Transaction">
         <button
           type="button"
           className="endpoint-name"
@@ -674,12 +734,18 @@ function EndpointRow({
             onService();
           }}
         >
-          <LanguageIcon language={language} size={18} />
+          <LanguageIcon language={language} size={16} />
           <span>{item.serviceName}</span>
           {item.namespace && <em className="endpoint-namespace">{item.namespace}</em>}
         </button>
       </div>
-      <TraceMetric label="Avg latency" value={formatDuration(item.avgDurationMs)} detail={`P95 ${formatDuration(item.p95DurationMs)}`} tone={latencyTone} />
+      <TraceMetric
+        label="Avg latency"
+        value={formatDuration(item.avgDurationMs)}
+        detail={`P95 ${formatDuration(item.p95DurationMs)}`}
+        tone={latencyTone}
+        meter={(item.avgDurationMs / Math.max(maxLatency, 1)) * 100}
+      />
       <TraceMetric
         label="Throughput"
         value={`${item.estimated ? '~' : ''}${formatNumber(item.tpm)} tpm`}
@@ -687,18 +753,26 @@ function EndpointRow({
           ? `~${formatCompact(item.count)} traces (${formatCompact(item.sampledCount)} sampled)`
           : `${formatCompact(item.count)} traces`}
         tone="neutral"
+        meter={(item.tpm / Math.max(maxTpm, 1)) * 100}
       />
-      <TraceMetric label="Errors" value={formatPercent(item.errorRate)} detail={`${formatCompact(item.errorCount)} failed`} tone={errorTone} />
+      <TraceMetric
+        label="Errors"
+        value={formatPercent(item.errorRate)}
+        detail={`${formatCompact(item.errorCount)} failed`}
+        tone={errorTone}
+        meter={Math.min(100, item.errorRate)}
+      />
       <div
         className={`endpoint-impact ${impactTone}`}
+        data-col="Impact"
         style={{ '--endpoint-impact-share': `${Math.min(100, Math.max(0, impactShare))}%` } as React.CSSProperties}
       >
-        <span className="endpoint-impact-ring" aria-hidden="true" />
-        <div>
-          <span>Impact share</span>
-          <strong>{formatShare(impactShare)}</strong>
-          <em>{formatTotalDuration(item.impact)} total</em>
-        </div>
+        <span>Impact share</span>
+        <strong>{formatShare(impactShare)}</strong>
+        <em>{formatTotalDuration(item.impact)} total</em>
+        <span className="trace-meter" aria-hidden="true">
+          <i style={{ width: `${Math.min(100, Math.max(4, impactShare))}%` }} />
+        </span>
       </div>
     </div>
   );
@@ -729,14 +803,14 @@ function TraceRow({
 
   return (
     <button type="button" className={`trace-row row-status ${rowStatus} ${selected ? 'is-selected' : ''}`} style={gridStyle} onClick={onClick} aria-pressed={selected}>
-      <div className="trace-main">
+      <div className="trace-main" data-col="Trace">
         <div className="trace-title-line">
           <LanguageIcon language={language} size={18} />
           <strong>{displayOperationName(trace.rootName || '', trace.serviceName)}</strong>
         </div>
         <div className="trace-subline">
           <span>{trace.serviceName}</span>
-          <em>{formatTime(trace.startTime)}</em>
+          <em title={formatTime(trace.startTime)}>{formatRelativeTime(trace.startTime)}</em>
           <code>{shortTraceId(trace.traceId)}</code>
         </div>
         {trace.hasError && trace.errorSummary && (
@@ -747,7 +821,7 @@ function TraceRow({
         )}
       </div>
 
-      <div className="trace-status-cell">
+      <div className="trace-status-cell" data-col="Status">
         <span className={`trace-status ${trace.hasError ? 'critical' : 'healthy'}`}>
           <i />
           {trace.hasError ? 'Error' : 'Successful'}
@@ -755,7 +829,7 @@ function TraceRow({
         <em>{trace.partial ? 'Partial trace' : 'Complete trace'}</em>
       </div>
 
-      <div className="trace-flow">
+      <div className="trace-flow" data-col="Service flow">
         {flow.slice(0, 5).map((service, idx) => (
           <React.Fragment key={`${service}:${idx}`}>
             {idx > 0 && <span className="trace-flow-arrow">{'->'}</span>}
@@ -771,7 +845,7 @@ function TraceRow({
         ))}
       </div>
 
-      <div className="trace-duration">
+      <div className="trace-duration" data-col="Duration">
         <div>
           <span>Duration</span>
           <strong className={latencyTone}>{formatDuration(trace.durationMs)}</strong>
@@ -1043,12 +1117,17 @@ function Pagination({ page, totalPages, hasNext, onPage }: { page: number; total
   );
 }
 
-function TraceMetric({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: Tone }) {
+function TraceMetric({ label, value, detail, tone, meter }: { label: string; value: string; detail: string; tone: Tone; meter?: number }) {
   return (
-    <div className={`trace-metric ${tone}`}>
+    <div className={`trace-metric ${tone}`} data-col={label}>
       <span>{label}</span>
       <strong>{value}</strong>
       <em>{detail}</em>
+      {meter != null && (
+        <span className="trace-meter" aria-hidden="true">
+          <i style={{ width: `${Math.min(100, Math.max(4, meter))}%` }} />
+        </span>
+      )}
     </div>
   );
 }
@@ -1067,12 +1146,28 @@ function FilterSelect({ label, value, options, onChange }: { label: string; valu
   );
 }
 
-function FilterInput({ label, value, onChange, placeholder, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string }) {
+function FilterInput({ label, value, onChange, placeholder, type = 'text', icon }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string; icon?: 'search' | 'id' }) {
   return (
-    <label className="trace-filter-field">
+    <label className={`trace-filter-field ${icon ? `is-${icon}` : ''}`}>
       <span>{label}</span>
-      <input type={type} value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} />
+      <span className="traces-filter-input-wrap">
+        {icon === 'search' && <Search size={14} aria-hidden />}
+        <input type={type} value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} />
+      </span>
     </label>
+  );
+}
+
+function FilterRange({ label, min, max, onMin, onMax }: { label: string; min: string; max: string; onMin: (value: string) => void; onMax: (value: string) => void }) {
+  return (
+    <fieldset className="trace-filter-field traces-filter-range">
+      <legend>{label}</legend>
+      <div>
+        <input type="number" min="0" value={min} onChange={event => onMin(event.target.value)} placeholder="Min" aria-label="Minimum latency ms" />
+        <span aria-hidden="true">–</span>
+        <input type="number" min="0" value={max} onChange={event => onMax(event.target.value)} placeholder="Max" aria-label="Maximum latency ms" />
+      </div>
+    </fieldset>
   );
 }
 
@@ -1113,6 +1208,16 @@ function formatTotalDuration(ms: number) {
 function formatTime(iso: string) {
   const date = new Date(iso);
   return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function formatRelativeTime(iso: string) {
+  const delta = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(delta)) return formatTime(iso);
+  if (delta < 45_000) return 'just now';
+  if (delta < 90_000) return '1m ago';
+  if (delta < 3_600_000) return `${Math.round(delta / 60_000)}m ago`;
+  if (delta < 90_000_000) return `${Math.round(delta / 3_600_000)}h ago`;
+  return formatTime(iso);
 }
 
 function formatCompact(value: number) {
