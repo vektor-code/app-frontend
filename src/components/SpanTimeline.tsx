@@ -4,6 +4,7 @@ import { isSpanError } from '../utils/spanStatus';
 import { isValidHttpStatus, normalizeHttpMethod, readHttpStatus } from '../utils/httpTelemetry';
 import { getSpanDependency, isDatabaseSpan, getQueryText, getQuerySummary } from '../utils/dependency';
 import { buildSpanForest } from '../utils/spanTree';
+import { getSpanOperationLabel } from '../utils/spanLabels';
 import { formatDuration, getServiceColor as svcColor } from '../utils/traceDisplay';
 
 export interface DestinationInfo {
@@ -165,7 +166,10 @@ function calculateCriticalPath(spans: Span[]): Set<string> {
 
 function spanMatchesQuery(span: Span, term: string): boolean {
   if (!term) return true;
-  if (span.name.toLowerCase().includes(term) || span.serviceName.toLowerCase().includes(term)) return true;
+  const operation = getSpanOperationLabel(span).toLowerCase();
+  if (operation.includes(term) || span.name.toLowerCase().includes(term) || span.serviceName.toLowerCase().includes(term)) {
+    return true;
+  }
   return Object.values(span.attributes || {}).some(v => String(v).toLowerCase().includes(term));
 }
 
@@ -363,8 +367,9 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
     const kindInfo = KIND_LABELS[span.kind] || KIND_LABELS.INTERNAL;
     const color = svcColor(span.serviceName);
     const dest = getSpanDestination(span);
+    const operationLabel = getSpanOperationLabel(span);
     const inlineSummary = getSpanInlineSummary(span);
-    const showSummary = !!inlineSummary && !summaryDuplicatesName(span.name, inlineSummary);
+    const showSummary = !!inlineSummary && !summaryDuplicatesName(operationLabel, inlineSummary);
     const isSelected = selectedSpanId === span.spanId;
     const isDimmed = isFiltering && !isDirectMatch;
     const totalChildCount = childCounts.get(span.spanId) || 0;
@@ -373,7 +378,8 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
     const pctOfTrace = traceDuration > 0 ? (span.durationMs / traceDuration) * 100 : 0;
     const startOffset = Math.max(0, start - traceStartTime);
     const barTitle = [
-      span.name,
+      operationLabel,
+      span.serviceName,
       `${formatDuration(span.durationMs)} total · ${formatDuration(exclusiveMs)} self · ${pctOfTrace.toFixed(1)}% of trace`,
       `starts ${formatDuration(startOffset)} after trace start`,
     ].join('\n');
@@ -422,7 +428,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
 
             <div className="waterfall-copy">
               <div className="waterfall-copy-main">
-                <span className="waterfall-name" title={span.name}>{span.name}</span>
+                <span className="waterfall-name" title={operationLabel}>{operationLabel}</span>
                 <span className="span-kind-badge" style={{ color: kindInfo.color, background: `${kindInfo.color}18` }}>
                   {kindInfo.label}
                 </span>
@@ -608,8 +614,9 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
 
         .search-box-wrapper {
           position: relative;
-          flex: 1;
-          min-width: 200px;
+          flex: 0 1 240px;
+          min-width: 180px;
+          max-width: 280px;
         }
 
         .search-icon {
@@ -731,7 +738,7 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
         .breakdown-segment-bar {
           flex: 1;
           display: flex;
-          height: 6px;
+          height: 10px;
           min-width: 80px;
           background: var(--bg-tertiary);
           border-radius: 99px;
@@ -1079,8 +1086,11 @@ export default function SpanTimeline({ spans, traceStartTime, traceDuration, onS
 
         .waterfall-visualizer .waterfall-svc {
           font-size: 10px;
-          font-weight: 650;
+          font-weight: 600;
+          color: var(--text-tertiary) !important;
           white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .waterfall-dest-arrow {

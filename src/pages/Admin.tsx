@@ -44,18 +44,18 @@ function alreadyInstrumented(details?: string) {
     && !/no otel injection/i.test(details);
 }
 
-function detectionCopy(app: ClusterApplication) {
+function detectionCopy(app: ClusterApplication, t: (key: string) => string) {
   const detected = app.detectedLanguage || (!app.manualOverride ? app.language : '');
   const overridden = app.manualOverride && !isUnknownStack(app.language) && app.language !== detected;
   if (overridden) {
     return isUnknownStack(detected)
-      ? 'Overridden — cluster could not detect a stack'
-      : `Overridden — cluster looks like ${stackLabel(detected)}`;
+      ? t('Overridden — cluster could not detect a stack')
+      : `${t('Overridden — cluster looks like')} ${stackLabel(detected)}`;
   }
   if (!isUnknownStack(detected)) {
-    return `Auto-detected: ${stackLabel(detected)}`;
+    return `${t('Auto-detected:')} ${stackLabel(detected)}`;
   }
-  return 'Not detected — pick a stack before enabling';
+  return t('Not detected — pick a stack before enabling');
 }
 
 function AdminIcon({ name }: { name: AdminIconName }) {
@@ -995,9 +995,9 @@ export default function Admin() {
                 <div className="admin-modal-header">
                   <div>
                     <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
-                      Workload Instrumentation
+                      {t('Workload Instrumentation')}
                     </h3>
-                    <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Namespace: <strong style={{ color: 'var(--text-primary)' }}>{openAppsModal}</strong></span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{t('Namespace')}: <strong style={{ color: 'var(--text-primary)' }}>{openAppsModal}</strong></span>
                   </div>
                   <button type="button" className="btn btn-ghost" onClick={() => setOpenAppsModal(null)} style={{ fontSize: '20px', padding: '4px 8px', color: 'var(--text-secondary)' }}>✕</button>
                 </div>
@@ -1005,7 +1005,7 @@ export default function Admin() {
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
                     type="text"
-                    placeholder="Filter workloads by name..."
+                    placeholder={t('Filter workloads by name...')}
                     className="form-input"
                     value={appsSearch}
                     onChange={(e) => setAppsSearch(e.target.value)}
@@ -1016,14 +1016,14 @@ export default function Admin() {
                 <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '4px' }}>
                   {loadingApps ? (
                     <div style={{ display: 'flex', justifyContent: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
-                      Loading workloads…
+                      {t('Loading workloads…')}
                     </div>
                   ) : (() => {
                     const filtered = appsList.filter(app => app.name.toLowerCase().includes(appsSearch.toLowerCase()));
                     if (filtered.length === 0) {
                       return (
                         <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)', fontSize: '13px' }}>
-                          No matching workloads found in this namespace.
+                          {t('No matching workloads found in this namespace.')}
                         </div>
                       );
                     }
@@ -1034,17 +1034,17 @@ export default function Admin() {
                             <span>{app.name}</span>
                             <span className="admin-workload-kind">{app.kind || 'Deployment'}</span>
                             <span className={`admin-detect-badge ${app.manualOverride ? 'overridden' : isUnknownStack(app.detectedLanguage) ? 'unknown' : 'detected'}`}>
-                              {detectionCopy(app)}
+                              {detectionCopy(app, t)}
                             </span>
                           </div>
                           <div className="admin-workload-meta">
-                            <span>Pods: <strong>{app.ready}/{app.replicas} Ready</strong></span>
+                            <span>Pods: <strong>{app.ready}/{app.replicas} {t('Ready')}</strong></span>
                             {alreadyInstrumented(app.details) && (
                               <span className="admin-detect-note" title={app.details}>{app.details}</span>
                             )}
                           </div>
                           <div className="admin-stack-field">
-                            <span>Stack</span>
+                            <span>{t('Stack')}</span>
                             <StackPicker
                               value={app.language || 'unknown'}
                               disabled={togglingApp === app.name}
@@ -1057,7 +1057,7 @@ export default function Admin() {
                                 disabled={togglingApp === app.name}
                                 onClick={() => handleLanguageChange(app, 'unknown')}
                               >
-                                Use auto-detect
+                                {t('Use auto-detect')}
                               </button>
                             )}
                           </div>
@@ -1065,7 +1065,7 @@ export default function Admin() {
 
                         <div className="admin-workload-actions">
                           <span className={app.instrumented ? 'is-on' : 'is-off'}>
-                            {app.instrumented ? 'Active' : 'Disabled'}
+                            {app.instrumented ? t('Active') : t('Disabled')}
                           </span>
                           {togglingApp === app.name ? (
                             <div className="admin-workload-spinner" />
@@ -1083,7 +1083,7 @@ export default function Admin() {
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border-primary)', paddingTop: '16px' }}>
                   <button type="button" className="btn btn-primary" onClick={() => setOpenAppsModal(null)} style={{ fontSize: '13px', padding: '10px 24px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-violet) 100%)', border: 'none', color: '#ffffff', cursor: 'pointer', fontWeight: 600 }}>
-                    Done
+                    {t('Done')}
                   </button>
                 </div>
               </div>

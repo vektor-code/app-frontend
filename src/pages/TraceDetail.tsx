@@ -6,13 +6,9 @@ import {
   ArrowLeft,
   Check,
   ChevronRight,
-  Clock,
   Copy,
   Flame,
   GitFork,
-  Layers,
-  Network,
-  Share2,
 } from 'lucide-react';
 import { api } from '../api/client';
 import type { Span, Trace, TraceInvestigation } from '../entities';
@@ -140,31 +136,6 @@ function TraceChip({
   return <span className={`trace-chip ${tone}`}>{children}</span>;
 }
 
-function TraceMetricCard({
-  icon,
-  label,
-  value,
-  detail,
-  tone = 'neutral',
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  detail: string;
-  tone?: TraceTone;
-}) {
-  return (
-    <div className={`trace-detail-metric-card ${tone}`}>
-      <div className="trace-detail-metric-icon">{icon}</div>
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-        <em>{detail}</em>
-      </div>
-    </div>
-  );
-}
-
 function TraceViewButton({
   active,
   icon,
@@ -220,7 +191,7 @@ function TraceSpanChip({ span, onClick }: { span: Span; onClick: () => void }) {
   return (
     <button className={`trace-span-chip ${tone}`} onClick={onClick}>
       <div>
-        <strong title={span.name}>{span.name}</strong>
+        <strong title={getSpanOperationLabel(span)}>{getSpanOperationLabel(span)}</strong>
         <span>{span.serviceName}</span>
       </div>
       <em>{formatDuration(span.durationMs)}</em>
@@ -271,28 +242,40 @@ export default function TraceDetail() {
 
   const uniqueTags = useMemo(() => {
     if (!trace || !trace.spans) return [];
+    const aliases: Record<string, string> = {
+      'http.method': 'http.request.method',
+      'http.status_code': 'http.response.status_code',
+      'http.target': 'url.path',
+      'http.url': 'url.full',
+    };
     const map = new Map<string, string>();
     trace.spans.forEach(s => {
-      if (s.attributes) {
-        Object.entries(s.attributes).forEach(([k, v]) => {
-          if (
-            k.startsWith('http.') || 
-            k.startsWith('db.system') || 
-            k.startsWith('rpc.') || 
-            k.startsWith('messaging.') || 
+      if (!s.attributes) return;
+      Object.entries(s.attributes).forEach(([rawKey, v]) => {
+        const k = aliases[rawKey] || rawKey;
+        if (
+          !(
+            k.startsWith('http.') ||
+            k.startsWith('url.') ||
+            k.startsWith('db.system') ||
+            k.startsWith('rpc.') ||
+            k.startsWith('messaging.') ||
             k.startsWith('exception.type')
-          ) {
-            const next = isHttpMethodAttribute(k) ? normalizeHttpMethod(v) : String(v);
-            if (isHttpStatusAttribute(k)) {
-              map.set(k, preferHttpStatusTag(map.get(k), next));
-              return;
-            }
-            map.set(k, next);
-          }
-        });
-      }
+          )
+        ) {
+          return;
+        }
+        const next = isHttpMethodAttribute(rawKey) || isHttpMethodAttribute(k) ? normalizeHttpMethod(v) : String(v);
+        if (isHttpStatusAttribute(rawKey) || isHttpStatusAttribute(k)) {
+          map.set(k, preferHttpStatusTag(map.get(k), next));
+          return;
+        }
+        if (!map.has(k) || (next && next.length > String(map.get(k) || '').length)) {
+          map.set(k, next);
+        }
+      });
     });
-    return Array.from(map.entries());
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [trace]);
 
   // All namespaces this trace crosses, in first-seen (time) order
@@ -413,8 +396,6 @@ export default function TraceDetail() {
   const rootOperation = trace?.rootSpan
     ? getSpanOperationLabel(trace.rootSpan)
     : displayOperationName(trace?.spans?.[0]?.name || '', 'Trace');
-  const erroredServiceCount = serviceSummary.filter(item => item.errorCount > 0).length;
-  const dominantService = serviceSummary[0];
   const traceTone = trace ? getTraceHealthTone(trace) : 'neutral';
 
   if (loading) {
@@ -431,27 +412,33 @@ export default function TraceDetail() {
         <button type="button" onClick={() => navigate('/traces')}>{t('Traces')}</button>
         <ChevronRight size={14} aria-hidden="true" />
         <em>{t('Trace')}</em>
+        <button type="button" className="trace-detail-back-link" onClick={() => navigate('/traces')}>
+          <ArrowLeft size={14} />
+          {t('Back to Explorer')}
+        </button>
       </nav>
       <section className={`trace-detail-hero ${traceTone}`}>
         <div className="trace-detail-hero-main">
-          <button type="button" className="trace-detail-back-button" onClick={() => navigate('/traces')}>
-            <ArrowLeft size={16} />
-            {t('Back to Explorer')}
-          </button>
-          <span className="trace-detail-eyebrow">
-            <Share2 size={14} />
-            {t('Trace detail')}
-          </span>
           <h1 title={rootOperation}>{rootOperation}</h1>
-          <button
-            type="button"
-            className={`trace-detail-id-copy ${copiedTraceId ? 'copied' : ''}`}
-            onClick={handleCopyTraceId}
-            title={copiedTraceId ? t('Copied!') : t('Copy Full Trace ID')}
-          >
-            <code title={trace.traceId}>{trace.traceId}</code>
-            {copiedTraceId ? <Check size={16} /> : <Copy size={16} />}
-          </button>
+          <div className="trace-detail-hero-meta">
+            <button
+              type="button"
+              className={`trace-detail-id-copy ${copiedTraceId ? 'copied' : ''}`}
+              onClick={handleCopyTraceId}
+              title={copiedTraceId ? t('Copied!') : t('Copy Full Trace ID')}
+            >
+              <code title={trace.traceId}>{trace.traceId}</code>
+              {copiedTraceId ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+            {(traceNamespaces.length > 0 ? traceNamespaces : [trace.namespace]).map(ns => (
+              <TraceChip key={ns} tone="violet">{ns}</TraceChip>
+            ))}
+            {Object.entries(spanKindSummary).map(([kind, count]) => (
+              <TraceChip key={kind} tone={kind.toLowerCase() === 'server' ? 'violet' : kind.toLowerCase() === 'client' ? 'accent' : 'neutral'}>
+                {kind.toLowerCase()} <b>{count}</b>
+              </TraceChip>
+            ))}
+          </div>
         </div>
         <div className="trace-detail-hero-side">
           <span className={`trace-detail-status ${trace.hasError ? 'critical' : 'healthy'}`}>
@@ -463,81 +450,32 @@ export default function TraceDetail() {
         </div>
       </section>
 
+      <dl className="trace-detail-stats">
+        <div>
+          <dt>{t('Root Service')}</dt>
+          <dd title={trace.serviceName}>{trace.serviceName}</dd>
+        </div>
+        <div>
+          <dt>{t('Spans')}</dt>
+          <dd>{formatTraceNumber(trace.spanCount)}</dd>
+        </div>
+        <div>
+          <dt>{t('Services')}</dt>
+          <dd>{formatTraceNumber(serviceSummary.length)}</dd>
+        </div>
+        <div>
+          <dt>{t('Duration')}</dt>
+          <dd>{formatDuration(trace.durationMs)}</dd>
+        </div>
+        <div>
+          <dt>{t('Errors')}</dt>
+          <dd className={trace.hasError ? 'is-error' : ''}>{formatTraceNumber(errorSpans.length)}</dd>
+        </div>
+      </dl>
+
       <div className="trace-detail-layout">
         <div className="trace-detail-main-content">
-          <section className="trace-detail-metric-grid">
-            <TraceMetricCard
-              icon={<Layers size={20} />}
-              label={t('Root Service')}
-              value={trace.serviceName}
-              detail={dominantService ? `${dominantService.namespace} / ${formatTraceNumber(dominantService.spanCount)} spans` : (trace.namespace || 'default')}
-              tone="info"
-            />
-            <TraceMetricCard
-              icon={<Network size={20} />}
-              label={t('Spans')}
-              value={formatTraceNumber(trace.spanCount)}
-              detail={brokenLinkSpans.length > 0
-                ? `${formatTraceNumber(brokenLinkSpans.length)} ${t('broken parent links')}`
-                : t('Complete span tree')}
-              tone={brokenLinkSpans.length > 0 ? 'warning' : 'healthy'}
-            />
-            <TraceMetricCard
-              icon={<Clock size={20} />}
-              label={t('Duration')}
-              value={formatDuration(trace.durationMs)}
-              detail={criticalSpans.length > 0
-                ? `${formatTraceNumber(criticalSpans.length)} ${t('slow/error spans')}`
-                : t('No slow or error spans')}
-              tone={criticalSpans.length > 0 || trace.durationMs > 1500 ? 'warning' : 'healthy'}
-            />
-            <TraceMetricCard
-              icon={<AlertTriangle size={20} />}
-              label={t('Errors')}
-              value={formatTraceNumber(errorSpans.length)}
-              detail={`${formatTraceNumber(erroredServiceCount)} ${t('affected services')}`}
-              tone={trace.hasError ? 'critical' : 'healthy'}
-            />
-          </section>
-
-          <section className="trace-detail-context-grid">
-            <div className="trace-detail-context-panel">
-              <div className="trace-detail-panel-title">
-                <span>{t('Namespace Path')}</span>
-                <strong>{formatTraceNumber(traceNamespaces.length || 1)}</strong>
-              </div>
-              <div className="trace-detail-namespace-flow">
-                {(traceNamespaces.length > 0 ? traceNamespaces : [trace.namespace]).map((ns, idx) => (
-                  <React.Fragment key={ns}>
-                    {idx > 0 && <ChevronRight className="trace-chip-chevron" size={14} />}
-                    <TraceChip tone="violet">{ns}</TraceChip>
-                  </React.Fragment>
-                ))}
-                <ChevronRight className="trace-chip-chevron" size={14} />
-                <TraceChip>{trace.serviceName}</TraceChip>
-              </div>
-            </div>
-
-            <div className="trace-detail-context-panel">
-              <div className="trace-detail-panel-title">
-                <span>{t('Span Kinds')}</span>
-                <strong>{Object.keys(spanKindSummary).length}</strong>
-              </div>
-              <div className="trace-detail-kind-list">
-                {Object.entries(spanKindSummary).map(([kind, count]) => {
-                  const key = kind.toLowerCase();
-                  const tone = key === 'server' ? 'violet' : key === 'client' ? 'accent' : 'neutral';
-                  return (
-                    <TraceChip key={kind} tone={tone}>
-                      {key} <b>{count}</b>
-                    </TraceChip>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-
-          {brokenLinkSpans.length > 0 ? (
+          {brokenLinkSpans.length > 0 && (
             <div className="trace-detail-alert warning compact">
               <AlertTriangle size={16} />
               <span>
@@ -546,15 +484,68 @@ export default function TraceDetail() {
                 ({[...new Set(brokenLinkSpans.map(s => `${s.namespace || 'default'}/${s.serviceName}`))].slice(0, 3).join(', ')}).
               </span>
             </div>
-          ) : !(failureDiagnosis || errorSpans.length > 0) ? (
-            <div className="trace-detail-alert ok compact">
-              <Check size={16} />
-              <span>
-                <strong>{t('Complete span tree')}</strong>
-                {t('Every parent in this trace was captured.')}
-              </span>
+          )}
+
+          <section className="trace-detail-visualization-panel">
+            <div className="trace-detail-visualization-header">
+              <div>
+                <span>{t('Trace Visualization')}</span>
+                <h2>
+                  {viewMode === 'waterfall'
+                    ? t('Waterfall View')
+                    : viewMode === 'flame'
+                      ? t('Flame Graph')
+                      : t('Trace Topology')}
+                </h2>
+                <p>{formatTraceNumber(trace.spanCount)} {t('spans total')} / {formatDuration(trace.durationMs)}</p>
+              </div>
+
+              <div className="trace-detail-view-toggle">
+                <TraceViewButton
+                  active={viewMode === 'waterfall'}
+                  icon={<Activity size={16} />}
+                  label={t('Waterfall')}
+                  onClick={() => setViewMode('waterfall')}
+                />
+                <TraceViewButton
+                  active={viewMode === 'flame'}
+                  icon={<Flame size={16} />}
+                  label={t('Flame')}
+                  onClick={() => setViewMode('flame')}
+                />
+                <TraceViewButton
+                  active={viewMode === 'topology'}
+                  icon={<GitFork size={16} />}
+                  label={t('Topology')}
+                  onClick={() => setViewMode('topology')}
+                />
+              </div>
             </div>
-          ) : null}
+
+            <div className="trace-detail-visualization-body">
+              {viewMode === 'waterfall' ? (
+                <SpanTimeline
+                  spans={trace.spans || []}
+                  traceStartTime={startMs}
+                  traceDuration={trace.durationMs}
+                  onSelectSpan={(span) => setSelectedSpan(span)}
+                  selectedSpanId={selectedSpan?.spanId}
+                />
+              ) : viewMode === 'flame' ? (
+                <FlameGraph
+                  spans={trace.spans || []}
+                  traceStartTime={startMs}
+                  traceDuration={trace.durationMs}
+                  onSelectSpan={(span) => setSelectedSpan(span)}
+                />
+              ) : (
+                <TraceTopology
+                  spans={trace.spans || []}
+                  onSelectSpan={(span) => setSelectedSpan(span)}
+                />
+              )}
+            </div>
+          </section>
 
           {/* Detected Problems Panel — existing error summary, augmented with diagnosis */}
           {(failureDiagnosis || errorSpans.length > 0) && (() => {
@@ -791,81 +782,6 @@ export default function TraceDetail() {
               )}
             </section>
           )}
-
-          <section className="trace-detail-visualization-panel">
-            <div className="trace-detail-visualization-header">
-              <div>
-                <span>{t('Trace Visualization')}</span>
-                <h2>
-                  {viewMode === 'waterfall'
-                    ? t('Waterfall View')
-                    : viewMode === 'flame'
-                      ? t('Flame Graph')
-                      : t('Trace Topology')}
-                </h2>
-                <p>{formatTraceNumber(trace.spanCount)} {t('spans total')} / {formatDuration(trace.durationMs)}</p>
-              </div>
-
-              <div className="trace-detail-view-toggle">
-                <TraceViewButton
-                  active={viewMode === 'waterfall'}
-                  icon={<Activity size={16} />}
-                  label={t('Waterfall')}
-                  onClick={() => setViewMode('waterfall')}
-                />
-                <TraceViewButton
-                  active={viewMode === 'flame'}
-                  icon={<Flame size={16} />}
-                  label={t('Flame')}
-                  onClick={() => setViewMode('flame')}
-                />
-                <TraceViewButton
-                  active={viewMode === 'topology'}
-                  icon={<GitFork size={16} />}
-                  label={t('Topology')}
-                  onClick={() => setViewMode('topology')}
-                />
-              </div>
-            </div>
-            
-            <div className="trace-detail-visualization-body">
-              {viewMode === 'waterfall' ? (
-                <SpanTimeline
-                  spans={trace.spans || []}
-                  traceStartTime={startMs}
-                  traceDuration={trace.durationMs}
-                  onSelectSpan={(span) => setSelectedSpan(span)}
-                  selectedSpanId={selectedSpan?.spanId}
-                />
-              ) : viewMode === 'flame' ? (
-                <div className="trace-detail-view-stack">
-                  <FlameGraph
-                    spans={trace.spans || []}
-                    traceStartTime={startMs}
-                    traceDuration={trace.durationMs}
-                    onSelectSpan={(span) => setSelectedSpan(span)}
-                  />
-                  {!selectedSpan && (
-                    <div className="selected-span-placeholder">
-                      Click a span bar in the flame graph above to view its execution details and full telemetry attributes.
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="trace-detail-view-stack">
-                  <TraceTopology
-                    spans={trace.spans || []}
-                    onSelectSpan={(span) => setSelectedSpan(span)}
-                  />
-                  {!selectedSpan && (
-                    <div className="selected-span-placeholder">
-                      Click a service node to view span details and trace through the call chain.
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </section>
         </div>
 
         <SideDrawer
@@ -903,34 +819,30 @@ function TraceDetailSkeleton({
         <button type="button" onClick={onBack}>{t('Traces')}</button>
         <ChevronRight size={14} aria-hidden="true" />
         <em>{t('Trace')}</em>
+        <button type="button" className="trace-detail-back-link" onClick={onBack}>
+          <ArrowLeft size={14} />
+          {t('Back to Explorer')}
+        </button>
       </nav>
       <section className="trace-detail-hero">
         <div className="trace-detail-hero-main">
-          <button type="button" className="trace-detail-back-button" onClick={onBack}>
-            <ArrowLeft size={16} />
-            {t('Back to Explorer')}
-          </button>
           <span className="apm-skeleton apm-skeleton-title" />
           <span className="apm-skeleton apm-skeleton-id" />
         </div>
         <div className="trace-detail-hero-side">
           <span className="apm-skeleton" style={{ width: 56, height: 22, borderRadius: 999 }} />
-          <span className="apm-skeleton" style={{ width: 120, height: 36, borderRadius: 10 }} />
-          <span className="apm-skeleton" style={{ width: 148, height: 12 }} />
+          <span className="apm-skeleton" style={{ width: 88, height: 28, borderRadius: 8 }} />
+          <span className="apm-skeleton" style={{ width: 128, height: 12 }} />
         </div>
       </section>
-      <section className="trace-detail-metric-grid">
-        {Array.from({ length: 4 }, (_, index) => (
-          <div key={index} className="trace-detail-metric-card">
-            <span className="apm-skeleton" style={{ width: 36, height: 36, borderRadius: 10 }} />
-            <div>
-              <span className="apm-skeleton" style={{ width: 88, height: 10 }} />
-              <span className="apm-skeleton" style={{ width: 140, height: 22, marginTop: 10 }} />
-              <span className="apm-skeleton" style={{ width: 110, height: 10, marginTop: 8 }} />
-            </div>
+      <div className="trace-detail-stats" aria-hidden="true">
+        {Array.from({ length: 5 }, (_, index) => (
+          <div key={index}>
+            <span className="apm-skeleton" style={{ width: 64, height: 10 }} />
+            <span className="apm-skeleton" style={{ width: 88, height: 18, marginTop: 8 }} />
           </div>
         ))}
-      </section>
+      </div>
       <div className="apm-skeleton-table" style={{ marginTop: 16 }}>
         {Array.from({ length: 5 }, (_, index) => (
           <div key={index} className="apm-skeleton-row">

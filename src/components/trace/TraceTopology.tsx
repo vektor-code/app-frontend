@@ -409,10 +409,10 @@ export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelect
         </button>
       </div>
 
-      <svg viewBox="0 0 840 380" style={{ width: '100%', height: '100%', display: 'block', minHeight: '380px' }}>
+      <svg viewBox="0 0 840 420" className="trace-topology-canvas" style={{ width: '100%', height: '100%', display: 'block', minHeight: '420px' }}>
         <defs>
           <pattern id="topo-grid" width="20" height="20" patternUnits="userSpaceOnUse">
-            <circle cx="2" cy="2" r="1" fill="rgba(255, 255, 255, 0.08)" />
+            <circle cx="2" cy="2" r="1" className="trace-topology-grid-dot" />
           </pattern>
           <marker id="topo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
             <path d="M 0 2 L 10 5 L 0 8 z" fill="#6366f1" opacity="0.8" />
@@ -425,8 +425,8 @@ export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelect
             <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
           <linearGradient id="topo-node-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#1e293b" stopOpacity="0.98" />
-            <stop offset="100%" stopColor="#0f172a" stopOpacity="0.98" />
+            <stop offset="0%" className="trace-topology-node-fill-start" />
+            <stop offset="100%" className="trace-topology-node-fill-end" />
           </linearGradient>
           <filter id="topo-card-shadow" x="-20%" y="-40%" width="140%" height="180%">
             <feDropShadow dx="0" dy="8" stdDeviation="8" floodColor="#020617" floodOpacity="0.35" />
@@ -503,18 +503,7 @@ export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelect
                   <animateMotion dur="3s" repeatCount="indefinite" path={pathD} />
                 </circle>
                 <foreignObject x={mx - 50} y={(y1 + y2) / 2 - 11} width="100" height="22" style={{ pointerEvents: 'none' }}>
-                  <div style={{ 
-                    background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
-                    border: `1px solid ${edge.hasError ? 'rgba(244, 63, 94, 0.55)' : 'rgba(129, 140, 248, 0.38)'}`,
-                    borderRadius: '999px',
-                    fontSize: '9.5px', 
-                    fontFamily: 'var(--font-mono, monospace)', 
-                    fontWeight: 'bold',
-                    color: edge.hasError ? '#fb7185' : '#cbd5e1',
-                    textAlign: 'center', 
-                    lineHeight: '20px',
-                    boxShadow: '0 8px 20px rgba(2, 6, 23, 0.32)'
-                  }}>
+                  <div className={`trace-topology-edge-label ${edge.hasError ? 'is-error' : ''}`}>
                     x{edge.callCount} / {formatDuration(edge.avgDurationMs)}
                   </div>
                 </foreignObject>
@@ -526,9 +515,10 @@ export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelect
           {finalNodes.map(node => {
             const hasErr = node.errorCount > 0;
             const isHov = hoveredNode?.id === node.id;
-            const nodeCol = hasErr ? '#f43f5e' : node.durationMs >= 1000 ? '#f59e0b' : '#10b981';
+            const serviceColor = getSvcColor(node.name);
+            const nodeCol = hasErr ? '#e11d48' : node.durationMs >= 1000 ? '#d97706' : serviceColor;
             const nodeStatus = hasErr ? 'ERR' : node.durationMs >= 1000 ? 'SLOW' : 'OK';
-            const borderCol = hasErr ? '#f43f5e' : isHov ? '#818cf8' : 'rgba(148, 163, 184, 0.25)';
+            const borderCol = hasErr ? '#e11d48' : isHov ? serviceColor : 'var(--border-primary)';
 
             return (
               <g key={node.id} transform={`translate(${node.x}, ${node.y})`}
@@ -540,7 +530,7 @@ export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelect
                 onMouseLeave={() => setHoveredNode(null)}
               >
                 <rect x="-76" y="-30" width="152" height="60" rx="12" ry="12"
-                  fill={hasErr ? 'rgba(244, 63, 94, 0.10)' : isHov ? 'rgba(129, 140, 248, 0.12)' : 'rgba(15, 23, 42, 0.32)'}
+                  fill={hasErr ? 'color-mix(in srgb, var(--accent-rose) 10%, transparent)' : isHov ? 'color-mix(in srgb, var(--accent-indigo) 10%, transparent)' : 'transparent'}
                   filter={hasErr || isHov ? 'url(#topo-card-shadow)' : undefined}
                   style={{ transition: 'fill 0.2s' }}
                 />
@@ -576,7 +566,7 @@ export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelect
                   );
                 })()}
                 {/* Name */}
-                <text x={node.iconKey || getTopoIconKey(node.name, spans) ? "-24" : "-34"} y="-6" style={{ fontSize: '10.5px', fontWeight: 800, fill: '#f8fafc', fontFamily: 'var(--font-sans)', pointerEvents: 'none' }}>
+                <text x={node.iconKey || getTopoIconKey(node.name, spans) ? "-24" : "-34"} y="-6" style={{ fontSize: '10.5px', fontWeight: 800, fill: 'var(--text-primary)', fontFamily: 'var(--font-sans)', pointerEvents: 'none' }}>
                   {node.name.length > 13 ? `${node.name.slice(0, 10)}...` : node.name}
                 </text>
                 {/* Duration */}

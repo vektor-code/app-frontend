@@ -1,16 +1,30 @@
+/** Jaeger/Tempo-style palette: no rose/red so success bars never look like errors. */
 const SERVICE_PALETTE = [
-  '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316',
-  '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
+  '#4338ca',
+  '#2563eb',
+  '#0d9488',
+  '#7c3aed',
+  '#0891b2',
+  '#059669',
+  '#4f46e5',
+  '#0284c7',
+  '#6d28d9',
+  '#0f766e',
+  '#1d4ed8',
+  '#ca8a04',
 ];
 
-const serviceColors: Record<string, string> = {};
+function hashServiceName(name: string): number {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
 
 export function getServiceColor(name: string): string {
   const key = name || 'unknown';
-  if (!serviceColors[key]) {
-    serviceColors[key] = SERVICE_PALETTE[Object.keys(serviceColors).length % SERVICE_PALETTE.length];
-  }
-  return serviceColors[key];
+  return SERVICE_PALETTE[hashServiceName(key) % SERVICE_PALETTE.length];
 }
 
 export const getSvcColor = getServiceColor;

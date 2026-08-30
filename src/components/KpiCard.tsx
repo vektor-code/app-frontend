@@ -31,11 +31,13 @@ export function KpiCard({
     <div className={`apm-signal-card ${tone}${loading ? ' is-loading' : ''}`} aria-busy={loading || undefined}>
       <div className="apm-signal-topline">
         <span className="apm-signal-label">{label}</span>
-        {showDelta && (
+        {loading ? (
+          <span className="apm-skeleton apm-skeleton-delta" aria-hidden="true" />
+        ) : showDelta ? (
           <span className={`apm-signal-delta ${Math.abs(resolvedDelta) < 0.15 ? 'flat' : deltaGood ? 'good' : 'bad'}`}>
             {resolvedDelta >= 0 ? '↑' : '↓'} {Math.abs(resolvedDelta).toFixed(1)}%
           </span>
-        )}
+        ) : null}
       </div>
       <div className="apm-signal-value-row">
         {loading ? <span className="apm-skeleton apm-skeleton-value" /> : <strong>{value}</strong>}
@@ -52,7 +54,11 @@ export function KpiCard({
           <i style={{ width: `${bar}%` }} />
         </span>
       )}
-      {!loading && trend && trend.length > 0 && <MiniTrend data={trend} tone={tone} />}
+      {loading ? (
+        <span className="apm-skeleton apm-skeleton-trend" aria-hidden="true" />
+      ) : trend && trend.length > 0 ? (
+        <MiniTrend data={trend} tone={tone} />
+      ) : null}
     </div>
   );
 }

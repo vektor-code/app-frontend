@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Span } from '../../entities';
 import { isSpanError as isSpanError } from '../../utils/spanStatus';
+import { getSpanOperationLabel } from '../../utils/spanLabels';
 import { buildSpanForest } from '../../utils/spanTree';
 import { formatDuration as formatDuration, getContrastColor as getContrastColor, getSvcColor as getSvcColor } from '../../utils/traceDisplay';
 import { TraceDetailIcon } from './TraceDetailIcon';
@@ -213,7 +214,7 @@ export function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan 
     ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
     ctx.lineWidth = 1;
     ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
-    ctx.font = '9px Inter';
+    ctx.font = '500 10px "Plus Jakarta Sans", sans-serif';
     ctx.textAlign = 'center';
 
     const visibleDuration = (viewEnd - viewStart) * traceDuration;
@@ -270,7 +271,8 @@ export function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan 
       let matches = true;
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
-        const matchesName = item.span.name.toLowerCase().includes(query);
+        const operation = getSpanOperationLabel(item.span).toLowerCase();
+        const matchesName = item.span.name.toLowerCase().includes(query) || operation.includes(query);
         const matchesService = item.span.serviceName.toLowerCase().includes(query);
         const matchesAttrs = item.span.attributes && Object.entries(item.span.attributes).some(([k, v]) => 
           k.toLowerCase().includes(query) || String(v).toLowerCase().includes(query)
@@ -279,31 +281,21 @@ export function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan 
       }
 
       ctx.save();
-      // Apply opacity based on matches
-      ctx.globalAlpha = matches ? 1.0 : 0.25;
+      const baseColor = hasError ? '#e11d48' : getSvcColor(item.span.serviceName);
+      ctx.fillStyle = isHovered ? adjustColorBrightness(baseColor, 18) : baseColor;
+      ctx.globalAlpha = matches ? (isHovered ? 1 : 0.92) : 0.22;
 
-      const baseColor = getSvcColor(item.span.serviceName);
-      
-      // Vertical linear gradient for premium 3D glossy look
-      const grad = ctx.createLinearGradient(rx, ry, rx, ry + barHeight);
-      grad.addColorStop(0, adjustColorBrightness(baseColor, 25));
-      grad.addColorStop(1, adjustColorBrightness(baseColor, -20));
-      ctx.fillStyle = grad;
-      
-      // Draw rounded rectangle for bar
       ctx.beginPath();
       if (ctx.roundRect) {
-        ctx.roundRect(rx, ry, rw, barHeight, 3.5);
+        ctx.roundRect(rx, ry, rw, barHeight, 3);
       } else {
         ctx.rect(rx, ry, rw, barHeight);
       }
       ctx.fill();
+      ctx.globalAlpha = 1;
 
-      // If span has error, draw error stripes
       if (hasError) {
         ctx.save();
-        ctx.fillStyle = isDark ? 'rgba(244, 63, 94, 0.2)' : 'rgba(244, 63, 94, 0.15)';
-        // Draw diagonal pattern stripes
         ctx.beginPath();
         if (ctx.roundRect) {
           ctx.roundRect(rx, ry, rw, barHeight, 3);
@@ -311,11 +303,9 @@ export function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan 
           ctx.rect(rx, ry, rw, barHeight);
         }
         ctx.clip();
-
-        // Draw diagonal stripes
-        ctx.strokeStyle = '#f43f5e';
-        ctx.lineWidth = 2.5;
-        const step = 8;
+        ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+        ctx.lineWidth = 1.5;
+        const step = 7;
         for (let xOffset = rx - barHeight; xOffset < rx + rw; xOffset += step) {
           ctx.beginPath();
           ctx.moveTo(xOffset, ry + barHeight);
@@ -364,13 +354,14 @@ export function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan 
 
         // Use smart contrast text color (dark for light bg, white for dark bg)
         ctx.fillStyle = getContrastColor(baseColor);
-        ctx.font = 'bold 10px Inter';
+        ctx.font = '650 10.5px "Plus Jakarta Sans", sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
 
-        const labelText = `${item.span.serviceName} - ${item.span.name}`;
+        const operation = getSpanOperationLabel(item.span);
+        const labelText = `${item.span.serviceName} · ${operation}`;
         const fitsLabel = ctx.measureText(labelText).width < rw - 12;
-        const dispText = fitsLabel ? labelText : item.span.name;
+        const dispText = fitsLabel ? labelText : operation;
         
         ctx.fillText(dispText, rx + 6, ry + barHeight / 2);
         ctx.restore();
@@ -732,7 +723,7 @@ export function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan 
             <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: getSvcColor(hoveredSpan.span.serviceName) }} />
             {hoveredSpan.span.serviceName}
           </div>
-          <div style={{ fontWeight: 600, fontSize: '11.5px' }}>{hoveredSpan.span.name}</div>
+          <div style={{ fontWeight: 600, fontSize: '11.5px' }}>{getSpanOperationLabel(hoveredSpan.span)}</div>
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '4px', paddingTop: '4px', color: '#cbd5e1', fontFamily: 'var(--font-mono)' }}>
             Duration: {formatDuration(hoveredSpan.span.durationMs)} ({(hoveredSpan.span.durationMs / traceDuration * 100).toFixed(1)}%)
           </div>

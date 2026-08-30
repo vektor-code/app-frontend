@@ -135,6 +135,24 @@ body.dark-theme .trace-detail-page {
   font-size: 13px;
 }
 
+.trace-detail-back-link {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  padding: 4px 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trace-detail-back-link:hover {
+  color: var(--text-primary);
+}
+
 .trace-detail-breadcrumb button {
   border: 0;
   padding: 0;
@@ -176,10 +194,69 @@ body.dark-theme .trace-detail-page {
 .trace-detail-hero {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(200px, 18rem);
-  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
   overflow: hidden;
-  padding: 24px 24px 24px 28px;
+  padding: 16px 18px 16px 20px;
+}
+
+.trace-detail-hero-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.trace-detail-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.trace-detail-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  background: var(--border-primary);
+}
+
+.trace-detail-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+}
+
+.trace-detail-stats dt {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.trace-detail-stats dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.trace-detail-stats dd.is-error {
+  color: var(--accent-rose);
 }
 
 .trace-detail-hero::before {
@@ -210,13 +287,6 @@ body.dark-theme .trace-detail-page {
     radial-gradient(720px 180px at 100% 0%, color-mix(in srgb, var(--accent-amber) 14%, transparent), transparent 62%),
     var(--trace-panel-gradient),
     var(--bg-secondary);
-}
-
-.trace-detail-hero-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
 }
 
 .trace-detail-back-button {
@@ -263,8 +333,8 @@ body.dark-theme .trace-detail-page {
 .trace-detail-hero h1 {
   margin: 0;
   color: var(--text-primary);
-  font-size: clamp(28px, 3vw, 40px);
-  line-height: 1.05;
+  font-size: clamp(20px, 2.2vw, 28px);
+  line-height: 1.15;
   font-weight: 700;
   overflow-wrap: anywhere;
 }
@@ -272,13 +342,13 @@ body.dark-theme .trace-detail-page {
 .trace-detail-id-copy {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  max-width: 100%;
+  gap: 8px;
+  max-width: min(100%, 42rem);
   border: 1px solid var(--border-secondary);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--bg-tertiary);
   color: var(--text-tertiary);
-  padding: 8px 12px;
+  padding: 5px 8px;
   cursor: pointer;
 }
 
@@ -839,10 +909,10 @@ body.dark-theme .trace-detail-page {
 
 .trace-detail-chip,
 .trace-detail-tag-tile {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   min-width: 0;
   border: 1px solid var(--border-primary);
   border-radius: 10px;
@@ -869,12 +939,13 @@ body.dark-theme .trace-detail-page {
 .trace-detail-chip strong,
 .trace-detail-tag-tile strong {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 100%;
+  color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: 13px;
   font-weight: 650;
-  color: var(--accent-indigo);
+  line-height: 1.35;
+  word-break: break-all;
 }
 
 .trace-detail-visualization-panel {
@@ -885,14 +956,14 @@ body.dark-theme .trace-detail-page {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
-  align-items: start;
-  padding: 20px;
+  align-items: center;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border-primary);
 }
 
 .trace-detail-visualization-header h2 {
-  margin: 4px 0 2px;
-  font-size: 20px;
+  margin: 2px 0 0;
+  font-size: 16px;
   font-weight: 650;
 }
 
@@ -937,28 +1008,30 @@ body.dark-theme .trace-detail-page {
 
 .trace-detail-page .waterfall-visualizer .waterfall-controls,
 .trace-detail-page .trace-flame-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .trace-detail-page .search-box-wrapper,
 .trace-detail-page .trace-flame-search {
   display: flex;
-  min-width: 0;
+  flex: 0 1 240px;
+  min-width: 180px;
+  max-width: 280px;
   align-items: center;
   gap: 8px;
   border: 1px solid var(--border-secondary);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--bg-tertiary);
   padding: 0 12px;
 }
 
 .trace-detail-page .waterfall-search,
 .trace-detail-page .trace-flame-search input {
-  height: 42px;
+  height: 34px;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -1143,6 +1216,7 @@ body.dark-theme .trace-detail-page {
 }
 
 @media (max-width: 1100px) {
+  .trace-detail-stats,
   .trace-detail-metric-grid,
   .trace-detail-context-grid,
   .trace-detail-insights-grid,
@@ -1175,6 +1249,7 @@ body.dark-theme .trace-detail-page {
     padding-top: 16px;
   }
 
+  .trace-detail-stats,
   .trace-detail-metric-grid,
   .trace-detail-context-grid,
   .trace-detail-insights-grid,
@@ -1379,4 +1454,48 @@ body.dark-theme .trace-detail-page {
 
 .trace-detail-metric-card .apm-skeleton + .apm-skeleton {
   display: block;
+}
+
+.trace-detail-page .filter-tabs {
+  margin-left: auto;
+}
+
+.trace-topology-grid-dot {
+  fill: var(--text-muted);
+}
+
+.trace-topology-node-fill-start {
+  stop-color: var(--bg-secondary);
+}
+
+.trace-topology-node-fill-end {
+  stop-color: var(--bg-primary);
+}
+
+.trace-topology-edge-label {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.trace-topology-edge-label.is-error {
+  border-color: color-mix(in srgb, var(--accent-rose) 40%, var(--border-primary));
+  color: var(--accent-rose);
+}
+
+.trace-detail-page .trace-topology-panel,
+.trace-detail-page .trace-flame-panel {
+  min-height: 420px;
+  background: var(--bg-primary);
+}
+
+.trace-detail-page .performance-breakdown-card .breakdown-segment-bar {
+  height: 10px;
 }

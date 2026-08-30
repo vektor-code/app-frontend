@@ -278,13 +278,27 @@
 }
 
 .apm-dashboard .apm-kpi-strip .apm-mini-trend,
-.apm-kpi-strip .apm-mini-trend {
+.apm-kpi-strip .apm-mini-trend,
+.apm-dashboard .apm-kpi-strip .apm-skeleton-trend,
+.apm-kpi-strip .apm-skeleton-trend {
   display: block;
   width: calc(100% + 32px);
   height: 40px;
   margin: 12px -16px 0;
   flex: none;
   opacity: 1;
+}
+
+.apm-kpi-strip .apm-skeleton-value {
+  width: 7.25rem;
+  height: 31px;
+  border-radius: 8px;
+}
+
+.apm-kpi-strip .apm-skeleton-detail {
+  width: 58%;
+  height: 12px;
+  margin-top: 4px;
 }
 
 .apm-mini-trend-fill {
