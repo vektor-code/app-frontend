@@ -129,6 +129,8 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
   const minSpans = searchParams.get('minSpans') || '0';
   const minDuration = searchParams.get('minDuration') || '';
   const maxDuration = searchParams.get('maxDuration') || '';
+  const hasBodyFilter = searchParams.get('hasBody') || '';
+  const showProbes = searchParams.get('excludeProbes') === 'false';
   const timeRangeFilter = searchParams.get('timeRange') || '24h';
   const page = parseInt(searchParams.get('page') || '1', 10);
   const pageSize = parseInt(searchParams.get('pageSize') || '25', 10);
@@ -201,6 +203,8 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
       if (minSpans && parseInt(minSpans, 10) > 0) params.minSpans = minSpans;
       if (minDuration && parseFloat(minDuration) > 0) params.minDuration = minDuration;
       if (maxDuration && parseFloat(maxDuration) > 0) params.maxDuration = maxDuration;
+      if (hasBodyFilter) params.hasBody = hasBodyFilter;
+      if (showProbes) params.excludeProbes = 'false';
       params.startTime = getStartTimeISO(timeRangeFilter);
 
       if (activeTab === 'top') {
@@ -223,7 +227,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
         setLoading(false);
       }
     }
-  }, [namespace, cluster, serviceFilter, errorFilter, operationFilter, traceIdFilter, minSpans, minDuration, maxDuration, timeRangeFilter, page, pageSize, activeTab]);
+  }, [namespace, cluster, serviceFilter, errorFilter, operationFilter, traceIdFilter, minSpans, minDuration, maxDuration, hasBodyFilter, showProbes, timeRangeFilter, page, pageSize, activeTab]);
 
   useEffect(() => {
     loadTraces();
@@ -396,6 +400,8 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
     minSpans !== '0' ? { key: 'minSpans', label: `${t('Min spans')}: ${minSpans}+` } : null,
     minDuration ? { key: 'minDuration', label: `${t('Min')}: ${minDuration}ms` } : null,
     maxDuration ? { key: 'maxDuration', label: `${t('Max')}: ${maxDuration}ms` } : null,
+    hasBodyFilter === 'true' ? { key: 'hasBody', label: t('Has body') } : null,
+    showProbes ? { key: 'excludeProbes', label: t('Probes') } : null,
     timeRangeFilter !== '24h' ? { key: 'timeRange', label: `${t('Window')}: ${timeRangeFilter}` } : null,
   ].filter((chip): chip is { key: string; label: string } => Boolean(chip));
   const filterCount = activeFilters.length;
@@ -554,6 +560,14 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
             { value: '', label: t('All status') },
             { value: 'true', label: t('Errors') },
             { value: 'false', label: t('OK') },
+          ]} />
+          <FilterSelect label={t('Body')} value={hasBodyFilter} onChange={value => setFilterVal('hasBody', value)} options={[
+            { value: '', label: t('Any body') },
+            { value: 'true', label: t('Has body') },
+          ]} />
+          <FilterSelect label={t('Probes')} value={showProbes ? 'show' : ''} onChange={value => setFilterVal('excludeProbes', value === 'show' ? 'false' : '')} options={[
+            { value: '', label: t('Hide probes') },
+            { value: 'show', label: t('Show probes') },
           ]} />
           <FilterSelect label={t('Min spans')} value={minSpans} onChange={value => setFilterVal('minSpans', value)} options={[
             { value: '0', label: t('All') },
