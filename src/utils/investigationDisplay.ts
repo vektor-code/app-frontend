@@ -9,6 +9,9 @@ const STATE_LABELS: Record<string, string> = {
   'SOURCE NOT READY': 'Source not ready',
   'NOT VERIFIED': 'Not verified',
   'INCONCLUSIVE': 'Inconclusive',
+  'L4 REACHABLE (NOT A CLUSTER OBJECT)': 'L4 reachable (not a cluster object)',
+  'L4 REACHABLE': 'L4 reachable',
+  'NOT A CLUSTER OBJECT': 'Not a cluster object',
   UNKNOWN: 'Unknown',
 };
 
@@ -19,7 +22,8 @@ export function formatInvestigationState(value: string): string {
 }
 
 export function observationTone(item: { code?: string; ok?: boolean; message?: string }): 'ok' | 'warn' | 'info' {
-  if (item.code === 'destination_context' || item.code === 'context_local_target') return 'info';
+  if (item.code === 'destination_context' || item.code === 'context_local_target' || item.code === 'dest_protocol') return 'info';
+  if (item.code === 'dest_unmapped') return 'warn';
   if (item.ok === true) return 'ok';
   if (item.ok === false) return 'warn';
   return 'info';

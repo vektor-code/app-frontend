@@ -245,7 +245,7 @@ export function analyzeTraceFailure(trace: Trace, opts: Options = {}): TraceFail
     rules: unique(best.rules),
     spanTree: missingParents === 0 ? 'complete' : 'broken',
   };
-  diagnosis.live = livePlanFor(diagnosis.classification);
+  diagnosis.live = livePlanFor(diagnosis);
   return diagnosis;
 }
 
@@ -288,7 +288,7 @@ function unknownDiagnosis(trace: Trace): TraceFailureDiagnosis {
     affectedSpanIds: spans.filter(s => s.status === 'ERROR').map(s => s.spanId),
     rules: ['unknown_insufficient_evidence'],
     spanTree: missingParents === 0 ? 'complete' : 'broken',
-    live: livePlanFor('UNKNOWN'),
+    live: livePlanFor({ classification: 'UNKNOWN', confidence: 'LOW', evidence: [] }),
   };
 }
 
@@ -578,7 +578,11 @@ function isRPCSpan(span: Span): boolean {
 }
 
 function isDBSpan(span: Span): boolean {
-  return attrPresent(span, 'db.system', 'db.system.name', 'db.statement', 'db.query.text', 'db.operation', 'db.operation.name', 'db.name', 'db.namespace');
+  if (attrPresent(span, 'db.system', 'db.system.name', 'db.statement', 'db.query.text', 'db.operation', 'db.operation.name', 'db.name', 'db.namespace')) return true;
+  const kind = (span.attributes?.['crnet.apm.dependency.kind'] || '').toLowerCase();
+  if (kind === 'database' || kind === 'cache') return true;
+  const port = span.attributes?.['server.port'] || span.attributes?.['net.peer.port'] || '';
+  return ['5432', '5433', '6432', '3306', '1433', '1521', '27017', '6379', '11211', '9042', '9200'].includes(port);
 }
 
 function isMessagingSpan(span: Span): boolean {
@@ -850,8 +854,8 @@ export function classificationLabel(classification: string): string {
   }
 }
 
-function livePlanFor(classification: Classification): TraceFailureDiagnosis['live'] {
-  switch (classification) {
+function livePlanFor(diagnosis: Pick<TraceFailureDiagnosis, 'classification' | 'confidence' | 'evidence'>): TraceFailureDiagnosis['live'] {
+  switch (diagnosis.classification) {
     case 'INSTRUMENTATION_ANOMALY':
     case 'TRACE_CONTEXT_ANOMALY':
     case 'DUPLICATE_INSTRUMENTATION':
@@ -859,10 +863,20 @@ function livePlanFor(classification: Classification): TraceFailureDiagnosis['liv
     case 'UNKNOWN':
       return { recommended: false, maxLevel: 0, reason: 'Live probes would not explain this span; telemetry is already inconclusive' };
     case 'CLIENT_ERROR':
-      return { recommended: true, maxLevel: 1, reason: 'HTTP 4xx is explained by telemetry; confirm the target workload still exists' };
+      return { recommended: false, maxLevel: 0, reason: 'Not performed — telemetry was sufficient to classify this as an application-level HTTP 4xx error' };
     case 'APPLICATION_ERROR':
-    case 'DOWNSTREAM_ERROR':
-      return { recommended: true, maxLevel: 3, reason: 'Confirm the recorded HTTP failure from the same workload context' };
+    case 'DOWNSTREAM_ERROR': {
+      const codes = new Set((diagnosis.evidence || []).map(item => item.code));
+      const coherent = diagnosis.confidence === 'HIGH' &&
+        codes.has('valid_http_method') &&
+        codes.has('valid_url_path') &&
+        codes.has('reasonable_duration') &&
+        [...codes].some(code => code.startsWith('http_'));
+      if (coherent) {
+        return { recommended: false, maxLevel: 0, reason: 'Not performed — telemetry was sufficient to classify this as an application-level HTTP error' };
+      }
+      return { recommended: true, maxLevel: 1, reason: 'HTTP failure needs confirmation of target workload state' };
+    }
     case 'NETWORK_ERROR':
     case 'TIMEOUT':
       return { recommended: true, maxLevel: 3, reason: 'Telemetry suggests transport or infrastructure; verify from the source workload' };

@@ -1,6 +1,7 @@
 import type { Span } from '../entities';
 import { normalizeHttpMethod, readHttpStatus, isValidHttpStatus } from './httpTelemetry';
 import { grpcStatusName, isRefusedSignal, isResetSignal, isTimeoutSignal } from './errorSignals';
+import { getSpanDependency } from './dependency';
 
 // Human-readable analysis of a failed span: what happened, where the call
 // went, why it likely failed, and the concrete evidence backing it.
@@ -259,6 +260,28 @@ export function explainSpanError(span: Span): ErrorExplanation {
     };
   }
 
+  const dep = getSpanDependency(span.attributes);
+  const dbPortLabel = wellKnownStoreLabel(port);
+  if (dep.kind === 'database' || dep.kind === 'cache' || dbPortLabel) {
+    const sys = dep.system || dbPortLabel || 'database';
+    const instant = span.durationMs < 5;
+    return {
+      category: 'db',
+      title: instant ? `${sys} call failed instantly` : `${sys} error`,
+      what: instant
+        ? `${span.serviceName} failed a ${sys} call to ${remoteTarget || host || 'the database'} in ${span.durationMs.toFixed(2)} ms — that is a local reject, not a round trip.`
+        : `${span.serviceName} failed a ${sys} operation${remoteTarget ? ` against ${remoteTarget}` : ''}.`,
+      target: remoteTarget || undefined,
+      causes: instant
+        ? ['The process never waited on the wire — check credentials, TLS, a missing driver, or a sidecar that returned an error without connecting.', 'If this IP is not a cluster Pod or Service, it is likely a VPC or managed database.']
+        : ['The query failed, the pool was exhausted, or the database was unreachable.', 'If this IP is not a cluster Pod or Service, treat it as an external database.'],
+      evidence,
+      rawMessage,
+      exceptionType: exc.type || undefined,
+      stackTrace: exc.stack,
+    };
+  }
+
   // 2. HTTP errors with a status code — the most common case.
   if (isValidHttpStatus(status) && status >= 400) {
     const info = HTTP_STATUS_INFO[status] || {
@@ -366,4 +389,20 @@ export function explainSpanError(span: Span): ErrorExplanation {
     exceptionType: exc.type || undefined,
     stackTrace: exc.stack,
   };
+}
+
+const WELL_KNOWN_STORE_PORTS: Record<string, string> = {
+  '5432': 'PostgreSQL',
+  '5433': 'PostgreSQL',
+  '3306': 'MySQL',
+  '6379': 'Redis',
+  '27017': 'MongoDB',
+  '1433': 'Microsoft SQL Server',
+  '1521': 'Oracle',
+  '9200': 'Elasticsearch',
+  '11211': 'Memcached',
+};
+
+function wellKnownStoreLabel(port: string): string {
+  return WELL_KNOWN_STORE_PORTS[port] || '';
 }

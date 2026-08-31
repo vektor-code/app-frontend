@@ -17,6 +17,7 @@ import SideDrawer from '../components/SideDrawer';
 import { FlameGraph as FlameGraph } from '../components/trace/FlameGraph';
 import { SpanDrawerContent as SpanDrawerContent } from '../components/trace/SpanDrawer';
 import { TraceTopology as TraceTopology } from '../components/trace/TraceTopology';
+import { K8sVerification } from '../components/trace/K8sVerification';
 import { explainSpanError as explainSpanError } from '../utils/errorAnalysis';
 import {
   isHttpMethodAttribute as isHttpMethodAttribute,
@@ -26,17 +27,11 @@ import {
 } from '../utils/httpTelemetry';
 import { getErrorCategoryLabel, getSpanOperationLabel } from '../utils/spanLabels';
 import { useTranslation } from '../utils/i18n';
-import {
-  formatInvestigationState as formatInvestigationState,
-  formatObservationMessage as formatObservationMessage,
-  observationMark as observationMark,
-  observationTone as observationTone,
-} from '../utils/investigationDisplay';
+import { analyzeTraceFailure as analyzeTraceFailure, classificationLabel as classificationLabel } from '../utils/traceFailureAnalyzer';
 import { displayOperationName as displayOperationName } from '../utils/operationName';
 import { isMissingHttpResponse, isSpanError as isSpanError } from '../utils/spanStatus';
 import { buildSpanForest as buildSpanForest } from '../utils/spanTree';
 import { formatDuration as formatDuration, getSvcColor as getSvcColor } from '../utils/traceDisplay';
-import { analyzeTraceFailure as analyzeTraceFailure, classificationLabel as classificationLabel } from '../utils/traceFailureAnalyzer';
 import './traceDetail.css';
 
 type TraceViewMode = 'waterfall' | 'flame' | 'topology';
@@ -556,10 +551,11 @@ export default function TraceDetail() {
                 ? 'unknown'
                 : 'critical';
             const diagnosisEvidence = (failureDiagnosis?.evidence || []).filter(item => item.code !== 'span_tree_complete');
-            const k8sObserved = investigation?.observations?.filter(item => item.kind === 'observed') || [];
             const showK8s = investigation
               ? investigation.status !== 'skipped'
               : investigationLoading;
+            const maxErrorMs = Math.max(1, ...errorSpans.map(item => item.span.durationMs || 0));
+            const leafInstant = errorSpans.length > 1 && (errorSpans[errorSpans.length - 1].span.durationMs || 0) < 5 && errorSpans.some(item => (item.span.durationMs || 0) > 1000);
             return (
               <div className={`trace-detail-problems-panel ${diagnosisTone}`}>
                 <div className="problems-panel-header">
@@ -570,8 +566,8 @@ export default function TraceDetail() {
                   <div className="problems-panel-pills">
                     {failureDiagnosis ? (
                       <>
-                        <em>{classificationLabel(failureDiagnosis.classification)}</em>
-                        <em className={`conf ${failureDiagnosis.confidence.toLowerCase()}`}>{failureDiagnosis.confidence}</em>
+                        <em>{t(classificationLabel(failureDiagnosis.classification))}</em>
+                        <em className={`conf ${failureDiagnosis.confidence.toLowerCase()}`}>{t(failureDiagnosis.confidence)}</em>
                       </>
                     ) : (
                       <em>{formatTraceNumber(errorSpans.length)} {t('failed spans')} / {formatTraceNumber(affectedServices)} {t('services')}</em>
@@ -581,107 +577,53 @@ export default function TraceDetail() {
 
                 {failureDiagnosis ? (
                   <div className="problems-diagnosis">
-                    <h3>{failureDiagnosis.title}</h3>
-                    <p>{failureDiagnosis.summary}</p>
+                    <h3>{t(failureDiagnosis.title)}</h3>
+                    <p>{t(failureDiagnosis.summary)}</p>
                     {diagnosisEvidence.length > 0 && (
                       <ul className="diagnosis-evidence">
                         {diagnosisEvidence.map(item => (
-                          <li key={`${item.code}-${item.spanId || ''}`}>{item.message}</li>
+                          <li key={`${item.code}-${item.spanId || ''}`}>{t(item.message)}</li>
                         ))}
                       </ul>
                     )}
                   </div>
                 ) : (
                   <div className="problems-diagnosis">
-                    <h3>{primaryError.explanation.title}</h3>
-                    <p>{primaryError.explanation.what}</p>
+                    <h3>{t(primaryError.explanation.title)}</h3>
+                    <p>{t(primaryError.explanation.what)}</p>
                   </div>
                 )}
 
                 {showK8s && (
-                  <div className="diagnosis-k8s">
-                    <div className="diagnosis-k8s-head">
-                      <span>{t('Kubernetes verification')}</span>
-                      {investigation?.status === 'pending' && investigationLoading && <em>{t('Investigating…')}</em>}
-                      {investigation?.cached && <em>{t('Cached')}</em>}
-                      {investigation?.referencedBy && investigation.referencedBy > 1 && (
-                        <em>{investigation.referencedBy} {t('traces share this result')}</em>
-                      )}
-                    </div>
-                    {(!investigation || investigation.status === 'pending') && investigationLoading && !k8sObserved.length && (
-                      <span className="diagnosis-k8s-pending">
-                        {investigation?.status === 'pending'
-                          ? t('Investigating…')
-                          : t('Live verification available')}
-                      </span>
-                    )}
-                    {investigation && investigation.status !== 'pending' && (
-                      <>
-                        {k8sObserved.map(item => {
-                          const tone = observationTone(item);
-                          return (
-                            <div key={`obs-${item.code}-${item.pod || ''}`} className={`diagnosis-k8s-check ${tone}`}>
-                              <b aria-hidden="true">{observationMark(tone)}</b>
-                              <span>{formatObservationMessage(item)}</span>
-                            </div>
-                          );
-                        })}
-                        {!k8sObserved.length && investigation.checks?.map(check => {
-                          const tone = observationTone({ code: check.code, ok: check.ok, message: check.detail });
-                          return (
-                            <div key={`${check.level}-${check.code}-${check.pod || ''}`} className={`diagnosis-k8s-check ${tone}`}>
-                              <b aria-hidden="true">{observationMark(tone)}</b>
-                              <span>{formatObservationMessage({ code: check.code, message: check.detail })}</span>
-                            </div>
-                          );
-                        })}
-                        {(investigation.originalState || investigation.currentState || investigation.inference || investigation.conclusion) && (
-                          <div className="diagnosis-k8s-states">
-                            {investigation.originalState && (
-                              <span>
-                                {t('Original failure')}
-                                <strong>{formatInvestigationState(investigation.originalState)}</strong>
-                              </span>
-                            )}
-                            {investigation.currentState && (
-                              <span>
-                                {t('Current state')}
-                                <strong>{formatInvestigationState(investigation.currentState)}</strong>
-                              </span>
-                            )}
-                            {(investigation.inference || investigation.conclusion) && (
-                              <span className="wide">
-                                {t('Inference')}
-                                <strong>
-                                  {investigation.inference || investigation.conclusion}
-                                  {investigation.confidence ? ` · ${investigation.confidence}` : ''}
-                                </strong>
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {investigation.status === 'unavailable' && <span className="diagnosis-k8s-pending">{investigation.skipReason}</span>}
-                        {investigation.status === 'rate_limited' && <span className="diagnosis-k8s-pending">{investigation.skipReason}</span>}
-                        {investigation.status === 'expired' && <span className="diagnosis-k8s-pending">{investigation.skipReason}</span>}
-                      </>
-                    )}
-                  </div>
+                  <K8sVerification
+                    investigation={investigation}
+                    loading={investigationLoading}
+                    t={t}
+                  />
                 )}
 
                 {errorSpans.length > 0 && (
                   <div className="problems-span-list">
                     {errorSpans.length > 1 && (
-                      <span className="problems-span-label">{formatTraceNumber(errorSpans.length)} {t('failed spans')}</span>
+                      <span className="problems-span-label">
+                        {formatTraceNumber(errorSpans.length)} {t('failed spans')}
+                        {leafInstant ? ` · ${t('leaf is the likely cause')}` : ''}
+                      </span>
                     )}
-                    {errorSpans.map(({ span, explanation }, index) => (
+                    {errorSpans.map(({ span, explanation }, index) => {
+                      const isLeaf = index === errorSpans.length - 1;
+                      const role = leafInstant ? (isLeaf ? t('Cause') : t('Waited')) : '';
+                      const pct = Math.max(4, Math.min(100, ((span.durationMs || 0) / maxErrorMs) * 100));
+                      return (
                       <button
                         key={span.spanId}
-                        className={`problem-card ${selectedSpan?.spanId === span.spanId ? 'selected' : ''}`}
+                        className={`problem-card ${selectedSpan?.spanId === span.spanId ? 'selected' : ''} ${leafInstant && isLeaf ? 'is-cause' : ''}`}
                         onClick={() => setSelectedSpan(span)}
                         title={t('Open full failure details')}
                       >
                         <div className="problem-card-top">
                           <span className="problem-severity">#{index + 1}</span>
+                          {role && <span className={`problem-role ${isLeaf ? 'cause' : 'symptom'}`}>{role}</span>}
                           <span className="problem-service" style={{ color: getSvcColor(span.serviceName) }}>
                             <span className="problem-service-dot" style={{ background: getSvcColor(span.serviceName) }} />
                             {span.serviceName}
@@ -695,16 +637,20 @@ export default function TraceDetail() {
                           <span className="problem-title-badge">{t(getErrorCategoryLabel(explanation.category))}</span>
                         </div>
                         <div className="problem-main">
-                          <strong>{explanation.title}</strong>
-                          <span>{explanation.what}</span>
+                          <strong>{t(explanation.title)}</strong>
+                          <span>{t(explanation.what)}</span>
+                        </div>
+                        <div className="problem-timing" aria-hidden="true">
+                          <i style={{ width: `${pct}%` }} />
+                          <em>{formatDuration(span.durationMs)}</em>
                         </div>
                         <div className="problem-meta-grid">
                           <span>{t('Operation')} <strong>{getSpanOperationLabel(span)}</strong></span>
-                          <span>{t('Duration')} <strong>{formatDuration(span.durationMs)}</strong></span>
                           <span>{t('Kind')} <strong>{span.kind.toLowerCase()}</strong></span>
                         </div>
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

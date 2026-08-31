@@ -517,10 +517,10 @@ export function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerCo
                 <span className="span-drawer-failure-icon"><AlertCircle size={16} strokeWidth={2.2} /></span>
                 <div>
                   <div className="span-drawer-failure-title">
-                    <strong>{explanation.title}</strong>
+                    <strong>{t(explanation.title)}</strong>
                     <em>{t(getErrorCategoryLabel(explanation.category))}</em>
                   </div>
-                  <p>{explanation.what}</p>
+                  <p>{t(explanation.what)}</p>
                 </div>
               </div>
               <div className="span-drawer-metrics">

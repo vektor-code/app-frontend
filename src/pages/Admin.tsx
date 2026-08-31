@@ -590,7 +590,8 @@ export default function Admin() {
     try {
       const res = await api.clearAllTraces();
       if (res.success) {
-        setClearedMessage(`Purged database successfully. Deleted ${res.deletedCount || 0} span objects.`);
+        const deleted = Number(res.deletedCount ?? 0);
+        setClearedMessage(`Purged database successfully. Deleted ${deleted.toLocaleString()} spans.`);
         setTimeout(() => setClearedMessage(null), 5000);
       }
     } catch (err: any) {

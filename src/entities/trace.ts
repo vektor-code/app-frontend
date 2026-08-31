@@ -89,6 +89,7 @@ export interface TraceInvestigationObservation {
   level?: number;
   ok?: boolean;
   pod?: string;
+  hop?: string;
 }
 
 export interface TraceInvestigation {
