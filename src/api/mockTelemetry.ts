@@ -1,5 +1,8 @@
 import type {
   DatabaseQueryMetric,
+  InfraNode,
+  InfraPod,
+  InfrastructureMetrics,
   LatencyDistribution,
   NamespaceStats,
   ServiceErrorSeries,
@@ -314,5 +317,67 @@ export function mockDatabaseMetrics(namespace?: string): { metrics: DatabaseQuer
   ];
   return {
     metrics: rows.filter((row) => !namespace || row.namespace === namespace),
+  };
+}
+
+export function mockInfrastructure(namespace?: string): InfrastructureMetrics {
+  const pods: InfraPod[] = [
+    { name: 'checkout-api-7f8d9c4b6-xk2n1', namespace: 'production', node: 'worker-1', phase: 'Running', cpuUsage: 620, cpuLimit: 1000, memUsage: 780, memLimit: 1024, cpuPct: 62, memPct: 76, restarts: 1, oomRisk: false, cpuThrottle: false },
+    { name: 'checkout-api-7f8d9c4b6-p9q3c', namespace: 'production', node: 'worker-2', phase: 'Running', cpuUsage: 540, cpuLimit: 1000, memUsage: 710, memLimit: 1024, cpuPct: 54, memPct: 69, restarts: 0, oomRisk: false, cpuThrottle: false },
+    { name: 'gateway-6c5b7d8f9-ab12d', namespace: 'production', node: 'worker-1', phase: 'Running', cpuUsage: 310, cpuLimit: 500, memUsage: 220, memLimit: 512, cpuPct: 62, memPct: 43, restarts: 0, oomRisk: false, cpuThrottle: false },
+    { name: 'gateway-6c5b7d8f9-cd34e', namespace: 'production', node: 'worker-2', phase: 'Running', cpuUsage: 280, cpuLimit: 500, memUsage: 198, memLimit: 512, cpuPct: 56, memPct: 39, restarts: 0, oomRisk: false, cpuThrottle: false },
+    { name: 'payments-5a4c3b2d1-pay01', namespace: 'production', node: 'worker-1', phase: 'Running', cpuUsage: 910, cpuLimit: 1000, memUsage: 1480, memLimit: 1536, cpuPct: 91, memPct: 96, restarts: 4, oomRisk: true, cpuThrottle: true },
+    { name: 'cart-service-8e7f6a5b-c1r2t', namespace: 'production', node: 'worker-2', phase: 'Running', cpuUsage: 210, cpuLimit: 500, memUsage: 340, memLimit: 768, cpuPct: 42, memPct: 44, restarts: 0, oomRisk: false, cpuThrottle: false },
+    { name: 'identity-4d3c2b1a-id9k2', namespace: 'production', node: 'worker-1', phase: 'Running', cpuUsage: 140, cpuLimit: 400, memUsage: 180, memLimit: 512, cpuPct: 35, memPct: 35, restarts: 0, oomRisk: false, cpuThrottle: false },
+    { name: 'postgres-0', namespace: 'production', node: 'worker-2', phase: 'Running', cpuUsage: 1280, cpuLimit: 2000, memUsage: 4200, memLimit: 6144, cpuPct: 64, memPct: 68, restarts: 0, oomRisk: false, cpuThrottle: false },
+    { name: 'redis-master-0', namespace: 'production', node: 'worker-1', phase: 'Running', cpuUsage: 180, cpuLimit: 500, memUsage: 640, memLimit: 1024, cpuPct: 36, memPct: 62, restarts: 0, oomRisk: false, cpuThrottle: false },
+    { name: 'notifications-9b8a7c6d-ntf01', namespace: 'staging', node: 'worker-2', phase: 'Running', cpuUsage: 80, cpuLimit: 250, memUsage: 120, memLimit: 256, cpuPct: 32, memPct: 47, restarts: 2, oomRisk: false, cpuThrottle: false },
+    { name: 'coredns-5d78c986b4-dns01', namespace: 'kube-system', node: 'master-1', phase: 'Running', cpuUsage: 40, cpuLimit: 200, memUsage: 48, memLimit: 170, cpuPct: 20, memPct: 28, restarts: 0, oomRisk: false, cpuThrottle: false },
+    { name: 'coredns-5d78c986b4-dns02', namespace: 'kube-system', node: 'worker-1', phase: 'Running', cpuUsage: 36, cpuLimit: 200, memUsage: 44, memLimit: 170, cpuPct: 18, memPct: 26, restarts: 0, oomRisk: false, cpuThrottle: false },
+  ];
+  const scoped = pods.filter(pod => !namespace || pod.namespace === namespace);
+  const nodes: InfraNode[] = [
+    { name: 'master-1', role: 'control-plane', pods: scoped.filter(p => p.node === 'master-1').length, namespaces: 1, cpuUsage: 180, cpuCapacity: 4000, cpuAllocatable: 3800, totalCpuUsage: 420, cpuPct: 11, memUsage: 920, memCapacity: 8192, memAllocatable: 7600, totalMemUsage: 1100, memPct: 14, podCapacity: 110, podAllocatable: 110, podPct: 4, restarts: 0, atRisk: 0, metricsAvailable: true },
+    { name: 'worker-1', role: 'worker', pods: scoped.filter(p => p.node === 'worker-1').length, namespaces: 3, cpuUsage: 2190, cpuCapacity: 8000, cpuAllocatable: 7600, totalCpuUsage: 2480, cpuPct: 33, memUsage: 3348, memCapacity: 16384, memAllocatable: 15200, totalMemUsage: 3680, memPct: 24, podCapacity: 110, podAllocatable: 110, podPct: 8, restarts: 5, atRisk: 1, metricsAvailable: true },
+    { name: 'worker-2', role: 'worker', pods: scoped.filter(p => p.node === 'worker-2').length, namespaces: 2, cpuUsage: 2390, cpuCapacity: 8000, cpuAllocatable: 7600, totalCpuUsage: 2610, cpuPct: 34, memUsage: 5568, memCapacity: 16384, memAllocatable: 15200, totalMemUsage: 5920, memPct: 39, podCapacity: 110, podAllocatable: 110, podPct: 7, restarts: 2, atRisk: 0, metricsAvailable: true },
+  ];
+  const namespaces = [...new Set(scoped.map(pod => pod.namespace))].map(name => {
+    const group = scoped.filter(pod => pod.namespace === name);
+    return {
+      namespace: name,
+      pods: group.length,
+      cpuUsage: group.reduce((sum, pod) => sum + pod.cpuUsage, 0),
+      memUsage: group.reduce((sum, pod) => sum + pod.memUsage, 0),
+      restarts: group.reduce((sum, pod) => sum + pod.restarts, 0),
+      atRisk: group.filter(pod => pod.oomRisk || pod.cpuThrottle).length,
+    };
+  });
+  const cpuUsage = scoped.reduce((sum, pod) => sum + pod.cpuUsage, 0);
+  const memUsage = scoped.reduce((sum, pod) => sum + pod.memUsage, 0);
+
+  return {
+    summary: {
+      pods: scoped.length,
+      nodes: nodes.length,
+      namespaces: namespaces.length,
+      cpuUsage,
+      cpuLimit: scoped.reduce((sum, pod) => sum + pod.cpuLimit, 0),
+      cpuCapacity: 20000,
+      cpuAllocatable: 19000,
+      totalCpuUsage: 5510,
+      memUsage,
+      memLimit: scoped.reduce((sum, pod) => sum + pod.memLimit, 0),
+      memCapacity: 40960,
+      memAllocatable: 38000,
+      totalMemUsage: 10700,
+      podCapacity: 330,
+      podAllocatable: 330,
+      restarts: scoped.reduce((sum, pod) => sum + pod.restarts, 0),
+      atRisk: scoped.filter(pod => pod.oomRisk || pod.cpuThrottle).length,
+      metricsAvailable: true,
+    },
+    namespaces,
+    nodes,
+    pods: scoped,
   };
 }

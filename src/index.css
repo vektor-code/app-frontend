@@ -8639,34 +8639,35 @@ button.admin-integration-card:hover {
 
 .infra-section-heading {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
   justify-content: space-between;
   gap: 18px;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .infra-section-heading span {
   display: block;
   color: var(--text-tertiary);
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: 0.07em;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .infra-section-heading h2 {
-  margin: 3px 0 0;
+  margin: 2px 0 0;
   color: var(--text-primary);
-  font-size: 20px;
-  line-height: 1.2;
-  font-weight: 850;
+  font-size: 16px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .infra-section-heading > em {
   color: var(--text-tertiary);
-  font-size: 11.5px;
+  font-size: 12px;
   font-style: normal;
-  font-weight: 850;
+  font-weight: 450;
   white-space: nowrap;
 }
 
@@ -8972,14 +8973,14 @@ button.admin-integration-card:hover {
 }
 
 .infra-node-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
 .infra-node-grid-wide {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .infra-node-role-section {
@@ -9008,15 +9009,15 @@ button.admin-integration-card:hover {
 .infra-node-role-head strong {
   color: var(--text-primary);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .infra-node-role-head span {
   color: var(--text-tertiary);
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 450;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
 }
 
@@ -21902,7 +21903,7 @@ body.dark-theme .service-map-canvas-area {
 
 .infrastructure-dashboard-header {
   align-items: center;
-  margin-bottom: 14px;
+  margin-bottom: 28px;
 }
 
 .infrastructure-title-icon {
@@ -21928,14 +21929,14 @@ body.dark-theme .service-map-canvas-area {
 .infra-tab-rail button {
   position: relative;
   min-width: 0;
-  min-height: 38px;
+  min-height: 36px;
   justify-content: center;
   gap: 7px;
   border: 1px solid transparent;
   border-radius: 9px;
   padding: 0 10px;
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 550;
 }
 
 .infra-tab-rail button:hover {
@@ -22938,7 +22939,7 @@ body.dark-theme .service-map-canvas-area {
   align-items: stretch;
   gap: 0;
   overflow-x: auto;
-  margin-bottom: 14px;
+  margin-bottom: 18px;
   padding: 0;
   border: 0;
   border-bottom: 1px solid var(--border-primary);
@@ -22957,6 +22958,7 @@ body.dark-theme .service-map-canvas-area {
   background: transparent;
   color: var(--text-secondary);
   padding: 0 14px;
+  transition: color 180ms ease, background-color 180ms ease;
 }
 
 .infra-tab-rail button:hover {
@@ -22970,12 +22972,27 @@ body.dark-theme .service-map-canvas-area {
   box-shadow: none;
 }
 
+.infra-tab-rail button::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  bottom: -1px;
+  left: 14px;
+  height: 2px;
+  border-radius: 99px 99px 0 0;
+  background: var(--accent-indigo);
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 220ms ease;
+}
+
 .infra-tab-rail button.active::after {
   right: 14px;
   bottom: -1px;
   left: 14px;
   height: 2px;
-  background: var(--accent-blue);
+  background: var(--accent-indigo);
+  transform: scaleX(1);
 }
 
 .dependency-insight-card,
@@ -23870,4 +23887,442 @@ button.dependency-row:focus-visible,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.infra-cluster-overview {
+  display: block;
+  margin: 0 0 18px;
+}
+
+.infra-fleet-overview {
+  padding: 10px 14px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+
+.infra-fleet-overview-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.infra-fleet-overview-head h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.infra-cluster-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.infra-cluster-stats li {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 450;
+}
+
+.infra-cluster-stats strong {
+  margin-right: 4px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.infra-cluster-stats .critical,
+.infra-cluster-stats .critical strong {
+  color: var(--accent-rose);
+}
+
+.infra-fleet-overview-body {
+  display: grid;
+  grid-template-columns: minmax(160px, auto) minmax(0, 1fr);
+  gap: 12px 20px;
+  align-items: center;
+}
+
+.infra-host-map {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.infra-host-tile {
+  --tile-color: var(--accent-emerald);
+  min-width: 0;
+  min-height: 0;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+}
+
+.infra-host-tile::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 99px;
+  background: var(--tile-color);
+}
+
+.infra-host-tile.warning { --tile-color: var(--accent-amber); }
+.infra-host-tile.critical { --tile-color: var(--accent-rose); }
+
+.infra-host-tile strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.infra-host-tile span {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.infra-cluster-meters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 16px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.infra-cluster-meters .infra-fleet-meter-head {
+  margin-bottom: 3px;
+  gap: 6px;
+}
+
+.infra-cluster-meters .infra-fleet-meter-head span {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-secondary);
+}
+
+.infra-cluster-meters .infra-fleet-meter-head strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.infra-cluster-meters .infra-fleet-meter-head em {
+  font-size: 11px;
+  font-weight: 450;
+  color: var(--text-tertiary);
+}
+
+.infra-cluster-meters .infra-fleet-track {
+  height: 5px;
+}
+
+.infra-fleet-card {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-primary);
+  border-left: 3px solid var(--accent-emerald);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+
+.infra-fleet-card.warning { border-left-color: var(--accent-amber); }
+.infra-fleet-card.critical { border-left-color: var(--accent-rose); }
+
+.infra-fleet-identity {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.infra-fleet-identity > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.infra-fleet-identity strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.infra-fleet-identity > div > span {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.infra-fleet-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-emerald);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-emerald) 16%, transparent);
+}
+
+.infra-fleet-pulse.warning {
+  background: var(--accent-amber);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-amber) 16%, transparent);
+}
+
+.infra-fleet-pulse.critical {
+  background: var(--accent-rose);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-rose) 16%, transparent);
+}
+
+.infra-fleet-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-tertiary) 78%, var(--bg-primary));
+}
+
+.infra-fleet-meter-head {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.infra-fleet-meter-head span {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.infra-fleet-meter-head strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.infra-fleet-meter-head em {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-style: normal;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.infra-fleet-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--text-secondary) 14%, transparent) 0 1px,
+      transparent 1px calc(10% - 1px)
+    ),
+    color-mix(in srgb, var(--text-secondary) 10%, var(--bg-primary));
+}
+
+.infra-fleet-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-indigo);
+}
+
+.infra-fleet-meter.ok .infra-fleet-track i { background: var(--accent-emerald); }
+.infra-fleet-meter.warning .infra-fleet-track i { background: var(--accent-amber); }
+.infra-fleet-meter.critical .infra-fleet-track i { background: var(--accent-rose); }
+.infra-fleet-meter.warning .infra-fleet-meter-head strong { color: var(--accent-amber); }
+.infra-fleet-meter.critical .infra-fleet-meter-head strong { color: var(--accent-rose); }
+
+.infra-fleet-inspections {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.infra-fleet-inspections > span {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.infra-fleet-inspections > span.warning { color: var(--accent-amber); }
+.infra-fleet-inspections > span.critical { color: var(--accent-rose); }
+
+.infra-inspect {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent-emerald) 12%, transparent);
+  color: var(--accent-emerald);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.infra-inspect.warning {
+  background: color-mix(in srgb, var(--accent-amber) 14%, transparent);
+  color: var(--accent-amber);
+}
+
+.infra-inspect.critical {
+  background: color-mix(in srgb, var(--accent-rose) 14%, transparent);
+  color: var(--accent-rose);
+}
+
+.infra-node-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.infra-role-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-indigo) 10%, transparent);
+  color: var(--accent-indigo);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.infra-role-badge.worker {
+  background: color-mix(in srgb, var(--accent-blue) 10%, transparent);
+  color: var(--accent-blue);
+}
+
+.infra-nodes-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 10px 12px 12px;
+}
+
+.infra-node-grid,
+.infra-node-grid-wide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.infra-workload-grid,
+.infra-pod-card-grid,
+.infra-ns-grid {
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 10px;
+}
+
+.infra-workload-card,
+.infra-node-card,
+.infra-pod-card {
+  min-height: 0;
+  contain-intrinsic-size: 140px;
+}
+
+.infra-ns-card .infra-fleet-meters {
+  padding: 0;
+  background: transparent;
+}
+
+.infra-tab-panel {
+  animation: infra-tab-in 220ms ease-out;
+}
+
+@keyframes infra-tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .infra-tab-panel {
+    animation: none;
+  }
+
+  .infra-tab-rail button,
+  .infra-tab-rail button::after {
+    transition: none;
+  }
+}
+
+@media (max-width: 1180px) {
+  .infra-node-grid,
+  .infra-node-grid-wide {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .infra-cluster-meters,
+  .infra-fleet-identity,
+  .infra-fleet-overview-body {
+    grid-template-columns: 1fr;
+  }
+
+  .infra-fleet-overview-head,
+  .infra-cluster-stats {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .infra-workload-grid,
+  .infra-pod-card-grid,
+  .infra-ns-grid,
+  .infra-node-grid,
+  .infra-node-grid-wide {
+    grid-template-columns: 1fr;
+  }
 }

@@ -12,6 +12,8 @@ import type { InfrastructureMetrics, InfraNamespace, InfraNode, InfraPod } from 
 import { useTranslation } from '../utils/i18n';
 import { LoadingState, NoDataState } from '../components/DataState';
 import IconPack from '../components/IconPack';
+import { NodeHealthCard } from '../components/NodeHealthCard';
+import type { HealthLevel } from '../components/NodeHealthCard.types';
 import { useColumnResize } from '../utils/useColumnResize';
 
 interface InfrastructureProps {
@@ -22,6 +24,8 @@ type InfraSortField = 'risk' | 'memory' | 'cpu' | 'restarts' | 'name' | 'node';
 type InfraSortDir = 'asc' | 'desc';
 type InfraTone = 'ok' | 'warning' | 'critical' | 'info';
 type InfraViewMode = 'cards' | 'list';
+type NodeViewMode = 'cards' | 'matrix';
+type NamespaceViewMode = 'cards' | 'map';
 type InfraTab = 'applications' | 'nodes' | 'namespaces' | 'pods';
 type NodeRole = 'master' | 'worker';
 type WorkloadColumn = 'application' | 'health' | 'pods' | 'cpu' | 'memory' | 'restarts';
@@ -336,6 +340,33 @@ function nodeRole(node: Pick<InfraNode, 'name' | 'role'>): NodeRole {
   return 'worker';
 }
 
+/** Overall card status from pod health, independent of gauge colors. */
+function nodeHealthStatus(node: NodeGroup): HealthLevel {
+  if (node.atRisk > 1) return 'critical';
+  if (node.atRisk > 0 || node.restarts > 0) return 'warning';
+  return 'ok';
+}
+
+function nodeRiskReason(node: NodeGroup, t: (k: string) => string): string | undefined {
+  const parts: string[] = [];
+  if (node.atRisk > 0) {
+    parts.push(`${formatCompact(node.atRisk)} ${node.atRisk === 1 ? t('pod at risk') : t('pods at risk')}`);
+  }
+  if (node.restarts > 0) {
+    parts.push(`${formatCompact(node.restarts)} ${t('restarts')}`);
+  }
+  return parts.length ? parts.join(' · ') : undefined;
+}
+
+function formatAgoLabel(fromMs: number, nowMs: number): string {
+  const seconds = Math.max(0, Math.floor((nowMs - fromMs) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
+}
+
 function UsageBar({ pct, label, compact = false }: { pct: number; label: string; compact?: boolean }) {
   const tone = pressureTone(pct);
   return (
@@ -351,10 +382,176 @@ function UsageBar({ pct, label, compact = false }: { pct: number; label: string;
   );
 }
 
+function gaugeStroke(tone: InfraTone | 'info'): string {
+  if (tone === 'critical') return '#f43f5e';
+  if (tone === 'warning') return '#d97706';
+  if (tone === 'ok') return '#059669';
+  return '#4338ca';
+}
+
+function RadialGauge({
+  pct,
+  label,
+  value,
+  tone,
+  size = 104,
+}: {
+  pct: number;
+  label: string;
+  value?: string;
+  tone?: InfraTone | 'info';
+  size?: number;
+}) {
+  const resolvedTone = tone || pressureTone(pct);
+  const r = 34;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+  const offset = c * (1 - clamped / 100);
+  const display = value ?? (clamped > 0 ? formatPercent(clamped) : '—');
+
+  return (
+    <div className="infra-radial-stat">
+      <svg
+        className="infra-radial-svg"
+        viewBox="0 0 88 88"
+        width={size}
+        height={size}
+        role="img"
+        aria-label={`${label} ${display}`}
+      >
+        <circle className="infra-radial-track" cx="44" cy="44" r={r} />
+        <circle
+          className="infra-radial-fill"
+          cx="44"
+          cy="44"
+          r={r}
+          stroke={gaugeStroke(resolvedTone)}
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+          transform="rotate(-90 44 44)"
+        />
+        <text className="infra-radial-value" x="44" y="42" textAnchor="middle">{display}</text>
+        <text className="infra-radial-label" x="44" y="58" textAnchor="middle">{label}</text>
+      </svg>
+    </div>
+  );
+}
+
+function MiniGauge({
+  pct,
+  label,
+  detail,
+}: {
+  pct: number;
+  label: string;
+  detail?: string;
+}) {
+  const tone = pressureTone(pct);
+  const r = 16;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+  const offset = c * (1 - clamped / 100);
+
+  return (
+    <div className={`infra-mini-gauge ${tone}`}>
+      <svg viewBox="0 0 40 40" width={40} height={40} aria-hidden>
+        <circle className="infra-radial-track" cx="20" cy="20" r={r} />
+        <circle
+          className="infra-radial-fill"
+          cx="20"
+          cy="20"
+          r={r}
+          stroke={gaugeStroke(tone)}
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+          transform="rotate(-90 20 20)"
+        />
+      </svg>
+      <div>
+        <em>{label}</em>
+        <strong className={`infra-pct ${tone}`}>{clamped > 0 ? formatPercent(clamped) : '—'}</strong>
+        {detail && <span title={detail}>{detail}</span>}
+      </div>
+    </div>
+  );
+}
+
+function inspectLabel(tone: InfraTone, t: (k: string) => string): string {
+  if (tone === 'critical') return t('Hot');
+  if (tone === 'warning') return t('Watch');
+  return t('OK');
+}
+
+function FleetMeter({
+  label,
+  pct,
+  value,
+  tone,
+}: {
+  label: string;
+  pct: number;
+  value: string;
+  tone?: InfraTone;
+}) {
+  const resolved = tone || pressureTone(pct);
+  const width = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+
+  return (
+    <div className={`infra-fleet-meter ${resolved}`}>
+      <div className="infra-fleet-meter-head">
+        <span>{label}</span>
+        <strong>{width > 0 ? formatPercent(width) : '—'}</strong>
+        <em>{value}</em>
+      </div>
+      <div className="infra-fleet-track" aria-hidden>
+        <i style={{ width: `${width}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function InspectChip({ label, tone, t }: { label: string; tone: InfraTone; t: (k: string) => string }) {
+  return <em className={`infra-inspect ${tone}`}>{label} {inspectLabel(tone, t)}</em>;
+}
+
+function HostMap({
+  nodes,
+  max,
+  t,
+}: {
+  nodes: NodeGroup[];
+  max: { pods: number; cpuUsage: number; memUsage: number };
+  t: (k: string) => string;
+}) {
+  return (
+    <div className="infra-host-map" aria-label={t('Nodes')}>
+      {[...nodes].sort((a, b) => {
+        const roleDelta = (nodeRole(a) === 'master' ? 0 : 1) - (nodeRole(b) === 'master' ? 0 : 1);
+        return roleDelta || a.name.localeCompare(b.name);
+      }).map(node => {
+        const cpu = capacityPercent(nodeCpuLoad(node), nodeCpuCapacity(node), max.cpuUsage);
+        const memory = capacityPercent(nodeMemLoad(node), nodeMemCapacity(node), max.memUsage);
+        const pods = capacityPercent(node.pods, nodePodCapacity(node), max.pods);
+        const pressure = Math.max(cpu, memory, pods);
+        const tone = pressureTone(pressure);
+        const short = node.name.length > 12 ? `${node.name.slice(0, 11)}…` : node.name;
+        return (
+          <div className={`infra-host-tile ${tone}`} key={node.name} title={`${node.name} · ${formatPercent(pressure)}`}>
+            <strong>{short}</strong>
+            <span>{formatPercent(pressure)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Infrastructure({ namespace }: InfrastructureProps) {
   const { t } = useTranslation();
   const [data, setData] = useState<InfrastructureMetrics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastLoadedAt, setLastLoadedAt] = useState(() => Date.now());
+  const [clock, setClock] = useState(() => Date.now());
   const [query, setQuery] = useState('');
   const [sortField, setSortField] = useState<InfraSortField>('risk');
   const [sortDir, setSortDir] = useState<InfraSortDir>('desc');
@@ -362,6 +559,8 @@ export default function Infrastructure({ namespace }: InfrastructureProps) {
   const [workloadSortDir, setWorkloadSortDir] = useState<InfraSortDir>('desc');
   const [workloadView, setWorkloadView] = useState<InfraViewMode>('cards');
   const [podView, setPodView] = useState<InfraViewMode>('list');
+  const [nodeView, setNodeView] = useState<NodeViewMode>('cards');
+  const [namespaceView, setNamespaceView] = useState<NamespaceViewMode>('cards');
   const [activeTab, setActiveTab] = useState<InfraTab>('applications');
   const [workloadLimit, setWorkloadLimit] = useState(24);
   const [podLimit, setPodLimit] = useState(100);
@@ -388,6 +587,7 @@ export default function Infrastructure({ namespace }: InfrastructureProps) {
     try {
       const res = await api.getInfrastructure(namespace || undefined);
       setData(res);
+      setLastLoadedAt(Date.now());
     } catch (err) {
       console.error('load infrastructure:', err);
       setData(null);
@@ -402,6 +602,11 @@ export default function Infrastructure({ namespace }: InfrastructureProps) {
     const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
   }, [load]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setClock(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const allPods = useMemo(() => dedupePods(data?.pods || []), [data]);
 
@@ -578,6 +783,22 @@ export default function Infrastructure({ namespace }: InfrastructureProps) {
   }), [nodeGroups]);
   const masterNodes = useMemo(() => nodeGroups.filter(node => nodeRole(node) === 'master'), [nodeGroups]);
   const workerNodes = useMemo(() => nodeGroups.filter(node => nodeRole(node) === 'worker'), [nodeGroups]);
+  const filteredNodeGroups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return nodeGroups;
+    return nodeGroups.filter(node =>
+      node.name.toLowerCase().includes(q) ||
+      nodeRole(node).includes(q) ||
+      (node.role || '').toLowerCase().includes(q)
+    );
+  }, [nodeGroups, query]);
+  const filteredMasterNodes = useMemo(() => filteredNodeGroups.filter(node => nodeRole(node) === 'master'), [filteredNodeGroups]);
+  const filteredWorkerNodes = useMemo(() => filteredNodeGroups.filter(node => nodeRole(node) === 'worker'), [filteredNodeGroups]);
+  const filteredNamespaces = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return namespaces;
+    return namespaces.filter(ns => ns.namespace.toLowerCase().includes(q));
+  }, [namespaces, query]);
   const summaryPodCapacity = s ? (s.podAllocatable || s.podCapacity || 0) : 0;
   const podCapacityPct = summaryPodCapacity > 0 ? Math.min(100, (allPods.length / summaryPodCapacity) * 100) : 0;
   const workloadHealthCounts = useMemo(() => workloadGroups.reduce(
@@ -687,6 +908,13 @@ export default function Infrastructure({ namespace }: InfrastructureProps) {
           <h1>{t('Infrastructure')}</h1>
         </div>
         <div className="apm-header-meta">
+          {s && s.pods > 0 && (
+            <div className="apm-health-chips" aria-label={t('Application health')}>
+              <span className="healthy">{workloadHealthCounts.healthy} {t('healthy')}</span>
+              <span className="warning">{workloadHealthCounts.warning} {t('degraded')}</span>
+              <span className="critical">{workloadHealthCounts.critical} {t('critical')}</span>
+            </div>
+          )}
           <div className="apm-live-pill">
             <span />
             {t('Live')}
@@ -700,8 +928,37 @@ export default function Infrastructure({ namespace }: InfrastructureProps) {
         <NoDataState height={320} title={t('No pod metrics yet')} hint={t('Resource usage appears once the agent reports pods with metrics-server enabled.')} />
       ) : (
         <>
+          <section className="infra-cluster-overview" aria-label={t('Cluster overview')}>
+            <article className="infra-fleet-overview">
+              <div className="infra-fleet-overview-head">
+                <h3>{t('Cluster')}</h3>
+                <ul className="infra-cluster-stats">
+                  <li><strong>{formatCompact(s.nodes)}</strong> {t('nodes')}</li>
+                  <li><strong>{formatCompact(allPods.length)}</strong> {t('pods')}</li>
+                  <li><strong>{formatCompact(workloadGroups.length)}</strong> {t('apps')}</li>
+                  <li className={s.atRisk > 0 ? 'critical' : ''}><strong>{formatCompact(s.atRisk)}</strong> {t('at risk')}</li>
+                </ul>
+              </div>
+              <div className="infra-fleet-overview-body">
+                <HostMap nodes={nodeGroups} max={nodeMax} t={t} />
+                <div className="infra-cluster-meters">
+                  <FleetMeter label={t('CPU')} pct={cpuPct} value={cpuCapacityDetail} />
+                  <FleetMeter label={t('Memory')} pct={memPct} value={memCapacityDetail} />
+                  <FleetMeter
+                    label={t('Pods')}
+                    pct={podCapacityPct}
+                    value={summaryPodCapacity > 0
+                      ? `${formatCompact(allPods.length)} / ${formatCompact(summaryPodCapacity)}`
+                      : formatCompact(allPods.length)}
+                  />
+                </div>
+              </div>
+            </article>
+          </section>
+
           <InfraTabRail tabs={tabItems} active={activeTab} onChange={setActiveTab} />
 
+          <div className="infra-tab-panel" key={activeTab}>
           {activeTab === 'applications' && (
             <>
               <SectionHeading eyebrow={t('Workload inventory')} title={t('Applications')} meta={`${formatCompact(visibleWorkloads.length)} / ${formatCompact(filteredWorkloads.length)} ${t('shown')}`} />
@@ -757,15 +1014,83 @@ export default function Infrastructure({ namespace }: InfrastructureProps) {
 
           {activeTab === 'nodes' && (
             <>
-              <SectionHeading eyebrow={t('Cluster capacity')} title={t('Nodes')} meta={`${formatCompact(masterNodes.length)} ${t('masters')} / ${formatCompact(workerNodes.length)} ${t('workers')}`} />
-              <InfraNodeMatrix nodes={nodeGroups} max={nodeMax} t={t} />
+              <SectionHeading
+                title={t('Nodes')}
+                meta={`${formatCompact(filteredMasterNodes.length)} ${t('control plane')} / ${formatCompact(filteredWorkerNodes.length)} ${t('workers')}`}
+              />
+              <section className="infra-controls">
+                <SearchBox query={query} onChange={setQuery} placeholder={t('Search nodes...')} />
+                <ViewSwitch
+                  value={nodeView}
+                  onChange={setNodeView}
+                  t={t}
+                  options={[
+                    { key: 'cards', label: t('Cards'), icon: INFRA_ICONS.apps },
+                    { key: 'matrix', label: t('Matrix'), icon: INFRA_ICONS.topology },
+                  ]}
+                />
+              </section>
+              {nodeView === 'cards' ? (
+                filteredNodeGroups.length === 0 ? (
+                  <NoDataState height={180} title={t('No matching nodes')} hint={t('Try a different search.')} />
+                ) : (
+                  <section className="infra-nodes-panel">
+                    <NodeRoleSection
+                      nodes={filteredNodeGroups}
+                      max={nodeMax}
+                      t={t}
+                      updatedAgoLabel={formatAgoLabel(lastLoadedAt, clock)}
+                      onViewNode={(name) => {
+                        setQuery(name);
+                        setActiveTab('pods');
+                      }}
+                    />
+                  </section>
+                )
+              ) : filteredNodeGroups.length === 0 ? (
+                <NoDataState height={180} title={t('No matching nodes')} hint={t('Try a different search.')} />
+              ) : (
+                <InfraNodeMatrix nodes={filteredNodeGroups} max={nodeMax} t={t} />
+              )}
             </>
           )}
 
           {activeTab === 'namespaces' && (
             <>
-              <SectionHeading eyebrow={t('Resource scope')} title={t('Namespaces by resource use')} meta={`${formatCompact(namespaces.length)} ${t('namespaces')}`} />
-              <InfraNamespaceFootprint namespaces={namespaces} max={namespaceMax} t={t} />
+              <SectionHeading
+                eyebrow={t('Resource scope')}
+                title={t('Namespaces by resource use')}
+                meta={`${formatCompact(filteredNamespaces.length)} ${t('namespaces')}`}
+              />
+              <section className="infra-controls">
+                <SearchBox query={query} onChange={setQuery} placeholder={t('Search namespaces...')} />
+                <ViewSwitch
+                  value={namespaceView}
+                  onChange={setNamespaceView}
+                  t={t}
+                  options={[
+                    { key: 'cards', label: t('Cards'), icon: INFRA_ICONS.apps },
+                    { key: 'map', label: t('Map'), icon: INFRA_ICONS.namespace },
+                  ]}
+                />
+              </section>
+              {namespaceView === 'cards' ? (
+                filteredNamespaces.length === 0 ? (
+                  <NoDataState height={180} title={t('No matching namespaces')} hint={t('Try a different search.')} />
+                ) : (
+                  <section className="infra-namespace-panel">
+                    <div className="infra-ns-grid">
+                      {filteredNamespaces.map(ns => (
+                        <NamespaceCard key={ns.namespace} ns={ns} max={namespaceMax} t={t} />
+                      ))}
+                    </div>
+                  </section>
+                )
+              ) : filteredNamespaces.length === 0 ? (
+                <NoDataState height={180} title={t('No matching namespaces')} hint={t('Try a different search.')} />
+              ) : (
+                <InfraNamespaceFootprint namespaces={filteredNamespaces} max={namespaceMax} t={t} />
+              )}
             </>
           )}
 
@@ -818,6 +1143,7 @@ export default function Infrastructure({ namespace }: InfrastructureProps) {
               </section>
             </>
           )}
+          </div>
         </>
       )}
     </div>
@@ -1414,11 +1740,13 @@ function InfraTabRail({
   onChange: (tab: InfraTab) => void;
 }) {
   return (
-    <div className="infra-tab-rail">
+    <div className="infra-tab-rail" role="tablist">
       {tabs.map(tab => (
         <button
           key={tab.key}
           type="button"
+          role="tab"
+          aria-selected={active === tab.key}
           className={active === tab.key ? 'active' : ''}
           onClick={() => onChange(tab.key)}
         >
@@ -1431,11 +1759,11 @@ function InfraTabRail({
   );
 }
 
-function SectionHeading({ eyebrow, title, meta }: { eyebrow: string; title: string; meta?: string }) {
+function SectionHeading({ eyebrow, title, meta }: { eyebrow?: string; title: string; meta?: string }) {
   return (
     <div className="infra-section-heading">
       <div>
-        <span>{eyebrow}</span>
+        {eyebrow ? <span>{eyebrow}</span> : null}
         <h2>{title}</h2>
       </div>
       {meta && <em>{meta}</em>}
@@ -1490,17 +1818,35 @@ function SearchBox({ query, onChange, placeholder }: { query: string; onChange: 
   );
 }
 
-function ViewSwitch({ value, onChange, t }: { value: InfraViewMode; onChange: (value: InfraViewMode) => void; t: (k: string) => string }) {
+function ViewSwitch<T extends string>({
+  value,
+  onChange,
+  t,
+  options,
+}: {
+  value: T;
+  onChange: (value: T) => void;
+  t: (k: string) => string;
+  options?: { key: T; label: string; icon: string }[];
+}) {
+  const items = options ?? [
+    { key: 'cards' as T, label: t('Cards'), icon: INFRA_ICONS.apps },
+    { key: 'list' as T, label: t('List'), icon: '/observability-icons/sitemap.svg' },
+  ];
+
   return (
     <div className="infra-view-switch" role="group" aria-label={t('View mode')}>
-      <button type="button" className={value === 'cards' ? 'active' : ''} onClick={() => onChange('cards')}>
-        <IconPack src={INFRA_ICONS.apps} size={14} />
-        {t('Cards')}
-      </button>
-      <button type="button" className={value === 'list' ? 'active' : ''} onClick={() => onChange('list')}>
-        <IconPack src="/observability-icons/sitemap.svg" size={14} />
-        {t('List')}
-      </button>
+      {items.map(item => (
+        <button
+          key={item.key}
+          type="button"
+          className={value === item.key ? 'active' : ''}
+          onClick={() => onChange(item.key)}
+        >
+          <IconPack src={item.icon} size={14} />
+          {item.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -1518,41 +1864,36 @@ function ShowMoreButton({ label, remaining, onClick, t }: { label: string; remai
 
 function WorkloadCard({ workload, t }: { workload: WorkloadGroup; t: (k: string) => string }) {
   const tone: InfraTone = workload.atRisk > 0 ? 'critical' : workload.restarts > 0 ? 'warning' : 'ok';
+  const cpuTone = pressureTone(workload.cpuPct);
+  const memTone = pressureTone(workload.memPct);
 
   return (
-    <div className={`infra-workload-card ${tone}`}>
-      <div className="infra-workload-card-head">
-        <div className="infra-workload-main">
-          <span className="infra-app-logo">
-            <InfraLogo src={workload.icon} size={25} />
-          </span>
-          <div>
-            <strong>{workload.name}</strong>
-            <span>{workload.namespace}</span>
-          </div>
+    <article className={`infra-fleet-card infra-workload-card ${tone}`}>
+      <div className="infra-fleet-identity">
+        <span className="infra-app-logo">
+          <InfraLogo src={workload.icon} size={22} />
+        </span>
+        <div>
+          <strong>{workload.name}</strong>
+          <span>{workload.namespace} · {workload.kind}</span>
         </div>
-        <em className="infra-kind-badge">{workload.kind}</em>
-      </div>
-
-      <div className="infra-workload-health">
         <span className={`infra-status-chip ${tone}`}>
           <IconPack src={statusIconForTone(tone)} size={12} />
           {statusLabelForTone(tone, t)}
         </span>
+      </div>
+      <div className="infra-fleet-meters">
+        <FleetMeter label={t('CPU')} pct={workload.cpuPct} value={formatCpu(workload.cpuUsage)} tone={cpuTone} />
+        <FleetMeter label={t('Memory')} pct={workload.memPct} value={formatMem(workload.memUsage)} tone={memTone} />
+      </div>
+      <div className="infra-fleet-inspections">
+        <InspectChip label={t('CPU')} tone={cpuTone} t={t} />
+        <InspectChip label={t('Memory')} tone={memTone} t={t} />
         <span>{formatCompact(workload.pods)} {t('pods')}</span>
+        <span>{formatCompact(workload.nodes.length)} {t('nodes')}</span>
+        <span className={workload.restarts > 0 ? 'warning' : ''}>{formatCompact(workload.restarts)} {t('restarts')}</span>
       </div>
-
-      <div className="infra-workload-bars">
-        <UsageBar pct={workload.cpuPct} label={`${t('CPU')} ${formatCpu(workload.cpuUsage)}`} compact />
-        <UsageBar pct={workload.memPct} label={`${t('Memory')} ${formatMem(workload.memUsage)}`} compact />
-      </div>
-
-      <div className="infra-workload-foot">
-        <MetricPair label={t('Nodes')} value={formatCompact(workload.nodes.length)} />
-        <MetricPair label={t('Restarts')} value={formatCompact(workload.restarts)} />
-        <MetricPair label={t('Risk')} value={formatCompact(workload.atRisk)} />
-      </div>
-    </div>
+    </article>
   );
 }
 
@@ -1661,9 +2002,11 @@ function NamespaceCard({
       </div>
 
       <div className="infra-ns-resource-stack">
-        <ResourceBar label={t('CPU share')} value={formatCpu(ns.cpuUsage)} pct={cpuShare} tone={tone === 'critical' ? 'critical' : 'info'} />
-        <ResourceBar label={t('Memory share')} value={formatMem(ns.memUsage)} pct={memShare} tone={tone === 'ok' ? 'ok' : tone} />
-        <ResourceBar label={t('Pod density')} value={formatCompact(ns.pods)} pct={podShare} tone="info" />
+        <div className="infra-fleet-meters">
+          <FleetMeter label={t('CPU share')} pct={cpuShare} value={formatCpu(ns.cpuUsage)} />
+          <FleetMeter label={t('Memory share')} pct={memShare} value={formatMem(ns.memUsage)} />
+          <FleetMeter label={t('Pod density')} pct={podShare} value={formatCompact(ns.pods)} />
+        </div>
       </div>
 
       <div className="infra-ns-footer">
@@ -1679,26 +2022,37 @@ function NodeRoleSection({
   nodes,
   max,
   t,
-  wide = false,
-  compact = false,
+  updatedAgoLabel,
+  onViewNode,
 }: {
-  title: string;
+  title?: string;
   nodes: NodeGroup[];
   max: { pods: number; cpuUsage: number; memUsage: number };
   t: (k: string) => string;
-  wide?: boolean;
-  compact?: boolean;
+  updatedAgoLabel: string;
+  onViewNode?: (name: string) => void;
 }) {
   if (nodes.length === 0) return null;
 
   return (
-    <div className={`infra-node-role-section ${compact ? 'compact' : ''}`}>
-      <div className="infra-node-role-head">
-        <strong>{title}</strong>
-        <span>{formatCompact(nodes.length)} {t('nodes')}</span>
-      </div>
-      <div className={`infra-node-grid ${wide ? 'infra-node-grid-wide' : ''}`}>
-        {nodes.map(node => <NodeCard key={node.name} node={node} max={max} t={t} />)}
+    <div className="infra-node-role-section">
+      {title ? (
+        <div className="infra-node-role-head">
+          <strong>{title}</strong>
+          <span>{formatCompact(nodes.length)} {t('nodes')}</span>
+        </div>
+      ) : null}
+      <div className="infra-node-grid">
+        {nodes.map(node => (
+          <NodeCard
+            key={node.name}
+            node={node}
+            max={max}
+            t={t}
+            updatedAgoLabel={updatedAgoLabel}
+            onViewDetails={onViewNode ? () => onViewNode(node.name) : undefined}
+          />
+        ))}
       </div>
     </div>
   );
@@ -1707,11 +2061,15 @@ function NodeRoleSection({
 function NodeCard({
   node,
   max,
-  t
+  t,
+  updatedAgoLabel,
+  onViewDetails,
 }: {
   node: NodeGroup;
   max: { pods: number; cpuUsage: number; memUsage: number };
   t: (k: string) => string;
+  updatedAgoLabel: string;
+  onViewDetails?: () => void;
 }) {
   const cpuLoad = nodeCpuLoad(node);
   const memLoad = nodeMemLoad(node);
@@ -1721,56 +2079,43 @@ function NodeCard({
   const cpuShare = capacityPercent(cpuLoad, cpuCapacity, max.cpuUsage);
   const memShare = capacityPercent(memLoad, memCapacity, max.memUsage);
   const podShare = capacityPercent(node.pods, podCapacity, max.pods);
-  const pressure = Math.max(cpuShare, memShare, podShare);
-  const tone: InfraTone = node.atRisk > 0 || pressure >= 90 ? 'critical' : node.restarts > 0 || pressure >= 75 ? 'warning' : 'ok';
-  const status = node.atRisk > 0 ? t('At risk') : pressure >= 90 ? t('High load') : node.restarts > 0 ? t('Restarting') : pressure >= 75 ? t('Busy') : t('Stable');
-  const usageSource = node.metricsAvailable
-    ? `${t('Node load')} ${formatPercent(pressure)}`
-    : t('Using reported pod usage');
+  const role = nodeRole(node);
+  const status = nodeHealthStatus(node);
 
   return (
-    <div className={`infra-node-card ${tone}`}>
-      <div className="infra-node-card-head">
-        <div className="infra-node-main">
-          <span className="infra-node-logo">
-            <IconPack src={INFRA_ICONS.node} size={18} />
-          </span>
-          <div>
-            <strong>{node.name}</strong>
-            <span>{nodeRole(node) === 'master' ? t('Master') : t('Worker')} / {node.namespaces} {t('namespaces')}</span>
-          </div>
-        </div>
-        <span className={`infra-status-chip ${tone}`}>
-          <IconPack src={tone === 'ok' ? INFRA_ICONS.check : tone === 'warning' ? INFRA_ICONS.clock : INFRA_ICONS.alert} size={12} />
-          {status}
-        </span>
-      </div>
-
-      <div className="infra-node-capacity">
-        <MetricPair label={t('Allocatable CPU')} value={cpuCapacity > 0 ? formatCpu(cpuCapacity) : t('Unknown')} />
-        <MetricPair label={t('Allocatable memory')} value={memCapacity > 0 ? formatMem(memCapacity) : t('Unknown')} />
-        <MetricPair label={t('Pod slots')} value={podCapacity > 0 ? formatCompact(podCapacity) : t('Unknown')} />
-      </div>
-
-      <div className="infra-node-chart">
-        <ResourceBar label={t('CPU load')} value={loadValue(cpuLoad, cpuCapacity, formatCpu)} pct={cpuShare} tone={tone === 'critical' ? 'critical' : 'info'} />
-        <ResourceBar label={t('Memory load')} value={loadValue(memLoad, memCapacity, formatMem)} pct={memShare} tone={tone === 'ok' ? 'ok' : tone} />
-        <ResourceBar label={t('Pod density')} value={podCapacityValue(node.pods, podCapacity)} pct={podShare} tone="info" />
-      </div>
-
-      <p className="infra-node-note">
-        {usageSource}
-        {node.metricsAvailable && node.cpuUsage > 0 && (node.cpuUsage !== cpuLoad || node.memUsage !== memLoad)
-          ? ` / ${t('scope pods')} ${formatCpu(node.cpuUsage)}, ${formatMem(node.memUsage)}`
-          : ''}
-      </p>
-
-      <div className="infra-node-card-metrics">
-        <MetricPair label={t('Pods')} value={podCapacityValue(node.pods, podCapacity)} />
-        <MetricPair label={t('Restarts')} value={formatCompact(node.restarts)} />
-        <MetricPair label={t('Risk')} value={formatCompact(node.atRisk)} />
-      </div>
-    </div>
+    <NodeHealthCard
+      name={node.name}
+      role={role === 'master' ? 'control-plane' : 'worker'}
+      namespaceCount={node.namespaces}
+      podCount={node.pods}
+      status={status}
+      riskReason={nodeRiskReason(node, t)}
+      updatedAgoLabel={updatedAgoLabel}
+      onViewDetails={onViewDetails}
+      metrics={[
+        {
+          key: 'cpu',
+          label: t('CPU'),
+          percent: cpuShare,
+          usedLabel: formatCpu(cpuLoad),
+          totalLabel: cpuCapacity > 0 ? formatCpu(cpuCapacity) : '—',
+        },
+        {
+          key: 'memory',
+          label: t('Memory'),
+          percent: memShare,
+          usedLabel: formatMem(memLoad),
+          totalLabel: memCapacity > 0 ? formatMem(memCapacity) : '—',
+        },
+        {
+          key: 'pods',
+          label: t('Pods'),
+          percent: podShare,
+          usedLabel: formatCompact(node.pods),
+          totalLabel: podCapacity > 0 ? formatCompact(podCapacity) : '—',
+        },
+      ]}
+    />
   );
 }
 
@@ -1856,7 +2201,7 @@ function PodCard({ pod, t }: { pod: InfraPod; t: (k: string) => string }) {
   const statusLabel = pod.oomRisk ? t('OOM risk') : pod.cpuThrottle ? t('CPU throttle') : t('OK');
 
   return (
-    <article className={`infra-pod-card ${tone}`}>
+    <article className={`infra-fleet-card infra-pod-card ${tone}`}>
       <div className="infra-pod-card-head">
         <div className="infra-pod-id">
           <span className="infra-pod-logo">
@@ -1873,9 +2218,17 @@ function PodCard({ pod, t }: { pod: InfraPod; t: (k: string) => string }) {
         </span>
       </div>
       <span className="infra-node">{pod.node || '—'}</span>
-      <div className="infra-workload-bars">
-        <UsageBar pct={pod.cpuPct} label={`${t('CPU')} ${formatCpu(pod.cpuUsage)} / ${pod.cpuLimit > 0 ? formatCpu(pod.cpuLimit) : '∞'}`} compact />
-        <UsageBar pct={pod.memPct} label={`${t('Memory')} ${formatMem(pod.memUsage)} / ${pod.memLimit > 0 ? formatMem(pod.memLimit) : '∞'}`} compact />
+      <div className="infra-fleet-meters">
+        <FleetMeter
+          label={t('CPU')}
+          pct={pod.cpuPct}
+          value={`${formatCpu(pod.cpuUsage)} / ${pod.cpuLimit > 0 ? formatCpu(pod.cpuLimit) : '∞'}`}
+        />
+        <FleetMeter
+          label={t('Memory')}
+          pct={pod.memPct}
+          value={`${formatMem(pod.memUsage)} / ${pod.memLimit > 0 ? formatMem(pod.memLimit) : '∞'}`}
+        />
       </div>
       <MetricPair label={t('Restarts')} value={formatCompact(pod.restarts)} />
     </article>

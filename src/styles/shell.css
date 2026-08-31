@@ -1780,4 +1780,30 @@
   }
 }
 
+.infra-page .apm-dashboard-header {
+  margin: 0 0 28px;
+}
+
+.infra-page .apm-health-chips {
+  flex-wrap: wrap;
+}
+
+.infra-kpi-grid .infra-summary-icon {
+  display: inline-flex !important;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--accent-indigo);
+}
+
+.infra-kpi-grid .infra-summary-card.ok .infra-summary-icon { color: var(--accent-emerald); }
+.infra-kpi-grid .infra-summary-card.warning .infra-summary-icon { color: var(--accent-amber); }
+.infra-kpi-grid .infra-summary-card.critical .infra-summary-icon { color: var(--accent-rose); }
+
+.infra-kpi-grid .infra-summary-top > i {
+  display: none !important;
+}
+
 

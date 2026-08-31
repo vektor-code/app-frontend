@@ -30,6 +30,7 @@ import {
 import {
   mockClusters,
   mockDatabaseMetrics,
+  mockInfrastructure,
   mockLatencyDistribution,
   mockNamespaces,
   mockStats,
@@ -251,6 +252,7 @@ class ApiClient {
   }
 
   getInfrastructure(namespace?: string) {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockInfrastructure(namespace));
     const params = new URLSearchParams();
     if (namespace) params.set('namespace', namespace);
     const qs = params.toString();
