@@ -20,6 +20,7 @@ export type DependencyKind =
   | 'secrets'
   | 'discovery'
   | 'observability'
+  | 'rpc'
   | '';
 
 export interface SpanDependency {
@@ -54,9 +55,13 @@ export function getSpanDependency(attributes: Attrs): SpanDependency {
   if (legacyDb) {
     return { system: legacyDb, kind: 'database', evidence: 'db.system', confidence: 1 };
   }
-  const legacyMsg = attributes['messaging.system'];
+  const legacyMsg = attributes['messaging.system'] || attributes['messaging.system.name'];
   if (legacyMsg) {
     return { system: legacyMsg, kind: 'messaging', evidence: 'messaging.system', confidence: 1 };
+  }
+  const legacyRpc = attributes['rpc.system'] || attributes['rpc.system.name'];
+  if (legacyRpc) {
+    return { system: legacyRpc, kind: 'rpc', evidence: 'rpc.system', confidence: 1 };
   }
   return EMPTY;
 }

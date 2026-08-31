@@ -21,11 +21,12 @@ import {
 import { api } from '../api/client';
 import type { ServiceMapData } from '../entities';
 import { useTranslation } from '../utils/i18n';
-import { LoadingState, NoDataState } from '../components/DataState';
+import { NoDataState } from '../components/DataState';
 import CustomSelect from '../components/CustomSelect';
 import { techLogoFor } from '../components/TechIcon';
 import IconPack from '../components/IconPack';
 import { useColumnResize } from '../utils/useColumnResize';
+import { KpiCard } from '../components/KpiCard';
 
 interface DependenciesProps {
   namespace: string;
@@ -185,6 +186,19 @@ const getDependencyType = (name: string): 'database' | 'messaging' | '3rdparty' 
   return 'other';
 };
 
+function dependencyTypeLabel(type: DependencyItem['type'], t: (key: string) => string): string {
+  switch (type) {
+    case 'database':
+      return t('Databases / Cache');
+    case 'messaging':
+      return t('Message Queues');
+    case '3rdparty':
+      return t('3rd-Party APIs');
+    default:
+      return t('Other');
+  }
+}
+
 type DependencyIconName =
   | 'alert'
   | 'clock'
@@ -291,29 +305,6 @@ const formatDependencyShare = (value: number) => {
   if (value < 1) return '<1%';
   return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
 };
-
-const DEPENDENCY_METRIC_ICONS = {
-  total: '/observability-icons/topology.svg',
-  latency: '/observability-icons/clock-bolt.svg',
-  traffic: '/observability-icons/chart-arrows-vertical.svg',
-  clean: '/observability-icons/shield-check.svg',
-  errors: '/observability-icons/alert-triangle.svg'
-} as const;
-
-type DependencyMetricIconName = keyof typeof DEPENDENCY_METRIC_ICONS;
-
-// The tinted chip has to be a wrapper around the icon, not the icon itself:
-// IconPack paints its glyph with `background: currentColor` behind a mask, so
-// setting a background on it repaints the glyph rather than putting a surface
-// behind it — which is why these icons rendered at 8% opacity, i.e. invisible.
-// Same structure as trace-detail-metric-icon and service-map-stat-icon.
-function DependencyMetricIcon({ name }: { name: DependencyMetricIconName }) {
-  return (
-    <span className="dependency-metric-icon">
-      <IconPack src={DEPENDENCY_METRIC_ICONS[name]} />
-    </span>
-  );
-}
 
 const HEALTH_STATUS_ICONS = {
   operational: '/status-icons/circle-check.svg',
@@ -424,8 +415,8 @@ export default function Dependencies({ namespace }: DependenciesProps) {
     return !enabledNamespaces || enabledNamespaces.has(n);
   }, [namespace, enabledNamespaces]);
 
-  const loadData = useCallback(() => {
-    setLoading(true);
+  const loadData = useCallback((opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     api.getServiceMap(namespace)
       .then((res) => {
         setData(res);
@@ -434,12 +425,14 @@ export default function Dependencies({ namespace }: DependenciesProps) {
         console.error('Error fetching service map for dependencies:', err);
         setData(null);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!opts?.silent) setLoading(false);
+      });
   }, [namespace]);
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 30000);
+    const interval = setInterval(() => loadData({ silent: true }), 30000);
     return () => clearInterval(interval);
   }, [loadData]);
 
@@ -680,11 +673,18 @@ export default function Dependencies({ namespace }: DependenciesProps) {
 
     return {
       count: filteredItems.length,
+      active: filteredItems.filter(item => item.isActive).length,
       calls: totalCalls,
       avgLatency: avgDuration,
       errorRate
     };
   }, [filteredItems]);
+
+  const summaryTrends = useMemo(
+    () => buildDependencyTrends(filteredItems),
+    [filteredItems],
+  );
+  const awaitingResults = loading && !data;
 
   const visibleItems = useMemo(() => filteredItems.slice(0, itemLimit), [filteredItems, itemLimit]);
   const selectedDependency = selectedDependencyId
@@ -804,54 +804,66 @@ export default function Dependencies({ namespace }: DependenciesProps) {
         </div>
       </section>
 
-      <section className="dependency-metric-grid">
-        <div className="dependency-metric-card indigo">
-          <div className="dependency-metric-top">
-            <DependencyMetricIcon name="total" />
-            <span>{t('Total Dependencies')}</span>
-            <i />
-          </div>
-          <strong>{formatDependencyNumber(summaryMetrics.count)}</strong>
-          <em>{formatDependencyNumber(filteredItems.filter(item => item.isActive).length)} {t('active')}</em>
-        </div>
-        <div className="dependency-metric-card emerald">
-          <div className="dependency-metric-top">
-            <DependencyMetricIcon name="latency" />
-            <span>{t('Avg Latency')}</span>
-            <i />
-          </div>
-          <strong>{formatDependencyLatency(summaryMetrics.avgLatency)}</strong>
-          <em>{t('weighted avg')}</em>
-        </div>
-        <div className="dependency-metric-card cyan">
-          <div className="dependency-metric-top">
-            <DependencyMetricIcon name="traffic" />
-            <span>{t('Traffic')}</span>
-            <i />
-          </div>
-          <strong>{formatDependencyNumber(summaryMetrics.calls)}</strong>
-          <em>{t('calls')}</em>
-        </div>
-        <div className={`dependency-metric-card ${summaryMetrics.errorRate > 0 ? 'rose' : 'emerald'}`}>
-          <div className="dependency-metric-top">
-            <DependencyMetricIcon name={summaryMetrics.errorRate > 0 ? 'errors' : 'clean'} />
-            <span>{t('Error Rate')}</span>
-            <i />
-          </div>
-          <strong>{formatDependencyRate(summaryMetrics.errorRate)}</strong>
-          <em>{summaryMetrics.errorRate > 0 ? t('errors') : t('clean')}</em>
-        </div>
+      <section className="apm-kpi-strip" aria-label={t('Dependency health')}>
+        <KpiCard
+          label={t('Total Dependencies')}
+          value={formatDependencyNumber(summaryMetrics.count)}
+          detail={`${formatDependencyNumber(summaryMetrics.active)} ${t('active')}`}
+          tone="info"
+          trend={summaryTrends.active}
+          positiveIsGood
+          loading={awaitingResults}
+        />
+        <KpiCard
+          label={t('Avg Latency')}
+          value={formatDependencyLatency(summaryMetrics.avgLatency)}
+          detail={t('weighted avg')}
+          tone={
+            summaryMetrics.calls === 0
+              ? 'neutral'
+              : summaryMetrics.avgLatency > 1000
+                ? 'warning'
+                : summaryMetrics.avgLatency > 300
+                  ? 'info'
+                  : 'healthy'
+          }
+          trend={summaryTrends.latency}
+          positiveIsGood={false}
+          loading={awaitingResults}
+        />
+        <KpiCard
+          label={t('Traffic')}
+          value={formatDependencyNumber(summaryMetrics.calls)}
+          detail={t('calls')}
+          tone="info"
+          trend={summaryTrends.calls}
+          positiveIsGood
+          loading={awaitingResults}
+        />
+        <KpiCard
+          label={t('Error Rate')}
+          value={formatDependencyRate(summaryMetrics.errorRate)}
+          detail={summaryMetrics.errorRate > 0 ? t('errors') : t('clean')}
+          tone={
+            summaryMetrics.errorRate > 5 ? 'critical' : summaryMetrics.errorRate > 0 ? 'warning' : 'healthy'
+          }
+          trend={summaryTrends.errorRate}
+          positiveIsGood={false}
+          loading={awaitingResults}
+        />
       </section>
 
       <section className="dependency-insight-grid">
         <DependencyHealthChart
           counts={healthCounts}
           total={healthCounts.all}
+          loading={awaitingResults}
           t={t}
         />
         <DependencyTrafficChart
           items={dependencyTrafficLeaders}
           totalCalls={summaryMetrics.calls}
+          loading={awaitingResults}
           t={t}
         />
       </section>
@@ -923,7 +935,11 @@ export default function Dependencies({ namespace }: DependenciesProps) {
         <div className="dependency-list-header">
           <div>
             <span>{t('Dependency Metrics')}</span>
-            <h2>{formatDependencyNumber(visibleItems.length)} / {formatDependencyNumber(filteredItems.length)} {t('connection targets')}</h2>
+            <h2>
+              {awaitingResults
+                ? <span className="apm-skeleton" style={{ width: 148, height: 16, display: 'inline-block' }} />
+                : `${formatDependencyNumber(visibleItems.length)} / ${formatDependencyNumber(filteredItems.length)} ${t('connection targets')}`}
+            </h2>
           </div>
           {viewMode === 'list' && (
             <div className="dependency-list-tools">
@@ -936,8 +952,8 @@ export default function Dependencies({ namespace }: DependenciesProps) {
           )}
         </div>
 
-        {loading && filteredItems.length === 0 ? (
-          <LoadingState height={280} label={t('Loading dependencies...')} />
+        {awaitingResults ? (
+          <DependencyTableSkeleton />
         ) : filteredItems.length === 0 ? (
           <NoDataState
             height={280}
@@ -1018,7 +1034,7 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                     <DependencyLogo item={selectedDependency} />
                   </div>
                   <div className="dependency-drawer-title">
-                    <span>{selectedDependency.namespace} · {selectedDependency.type === '3rdparty' ? t('external') : selectedDependency.type}</span>
+                    <span>{selectedDependency.namespace} · {dependencyTypeLabel(selectedDependency.type, t)}</span>
                     <h2>{selectedDependency.system}</h2>
                     <p title={selectedDependency.details || selectedDependency.rawName}>
                       {selectedDependency.details || selectedDependency.rawName}
@@ -1137,13 +1153,31 @@ export default function Dependencies({ namespace }: DependenciesProps) {
   );
 }
 
+function DependencyTableSkeleton({ rows = 8 }: { rows?: number }) {
+  return (
+    <div className="apm-skeleton-table" aria-busy="true" aria-label="Loading">
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="apm-skeleton-row">
+          <span className="apm-skeleton" style={{ width: `${52 + (index % 4) * 9}%` }} />
+          <span className="apm-skeleton" style={{ width: 72 }} />
+          <span className="apm-skeleton" style={{ width: 88 }} />
+          <span className="apm-skeleton" style={{ width: 64 }} />
+          <span className="apm-skeleton" style={{ width: 56 }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function DependencyHealthChart({
   counts,
   total,
+  loading = false,
   t,
 }: {
   counts: { all: number; healthy: number; warning: number; critical: number; idle: number };
   total: number;
+  loading?: boolean;
   t: (k: string) => string;
 }) {
   const segments = [
@@ -1160,9 +1194,14 @@ function DependencyHealthChart({
           <span>{t('Reliability')}</span>
           <h2>{t('Dependency health')}</h2>
         </div>
-        <em>{formatDependencyNumber(total)} {t('targets')}</em>
+        <em>{loading ? <span className="apm-skeleton" style={{ width: 72, height: 12, display: 'inline-block' }} /> : `${formatDependencyNumber(total)} ${t('targets')}`}</em>
       </div>
       <div className="dependency-health-chart-body">
+        {loading && (
+          <div className="apm-chart-overlay">
+            <span className="apm-skeleton" style={{ width: 88, height: 88, borderRadius: '50%' }} />
+          </div>
+        )}
         <div className="dependency-health-total">
           <strong>{formatDependencyNumber(total)}</strong>
           <span>{t('monitored targets')}</span>
@@ -1197,10 +1236,12 @@ function DependencyHealthChart({
 function DependencyTrafficChart({
   items,
   totalCalls,
+  loading = false,
   t,
 }: {
   items: AccumulatedDependency[];
   totalCalls: number;
+  loading?: boolean;
   t: (k: string) => string;
 }) {
   const colors = ['#3157f6', '#7558ff', '#19beea', '#10b981', '#f59e0b'];
@@ -1213,10 +1254,20 @@ function DependencyTrafficChart({
           <span>{t('Traffic')}</span>
           <h2>{t('Dependency concentration')}</h2>
         </div>
-        <em>{formatDependencyNumber(totalCalls)} {t('calls')}</em>
+        <em>{loading ? <span className="apm-skeleton" style={{ width: 72, height: 12, display: 'inline-block' }} /> : `${formatDependencyNumber(totalCalls)} ${t('calls')}`}</em>
       </div>
       <div className="dependency-ranking-chart">
-        {items.length > 0 ? items.map((item, index) => {
+        {loading ? (
+          <div className="apm-skeleton-table" style={{ minHeight: 0, padding: 0 }}>
+            {Array.from({ length: 5 }, (_, index) => (
+              <div key={index} className="apm-skeleton-row" style={{ gridTemplateColumns: '32px minmax(0, 1fr) 56px', minHeight: 36, padding: '8px 4px' }}>
+                <span className="apm-skeleton" style={{ width: 20 }} />
+                <span className="apm-skeleton" style={{ width: `${62 + (index % 3) * 10}%` }} />
+                <span className="apm-skeleton" style={{ width: 40 }} />
+              </div>
+            ))}
+          </div>
+        ) : items.length > 0 ? items.map((item, index) => {
           const share = totalCalls > 0 ? (item.requestCount / totalCalls) * 100 : 0;
           return (
             <div className="dependency-ranking-row" key={item.id}>
@@ -1350,7 +1401,7 @@ function DependencyRow({
         <div className="dependency-name-block">
           <div className="dependency-name-line">
             <strong title={item.rawName}>{item.system}</strong>
-            <span>{item.type === '3rdparty' ? t('external') : item.type}</span>
+            <span>{dependencyTypeLabel(item.type, t)}</span>
           </div>
           <p title={item.details || item.namespace}>
             {item.details || item.namespace}
@@ -1443,7 +1494,7 @@ function DependencyCard({
           <div className="dependency-name-block">
             <div className="dependency-name-line">
               <strong title={item.rawName}>{item.system}</strong>
-              <span>{item.type === '3rdparty' ? t('external') : item.type}</span>
+              <span>{dependencyTypeLabel(item.type, t)}</span>
             </div>
             <p title={item.details || item.namespace}>{item.details || item.namespace}</p>
           </div>
@@ -1531,4 +1582,57 @@ function DependencyTrend({
       <Sparkline data={data} color={color} />
     </div>
   );
+}
+
+function finiteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function buildDependencyTrends(items: AccumulatedDependency[]) {
+  const pointCount = Math.max(
+    2,
+    ...items.flatMap(item => [
+      item.throughputHistory.length,
+      item.latencyHistory.length,
+      item.errorsHistory.length,
+    ]),
+  );
+  const indices = Array.from({ length: pointCount }, (_, index) => index);
+  const atPoint = (history: number[], fallback: number, index: number) => {
+    const offset = history.length - pointCount + index;
+    return offset >= 0 && finiteNumber(history[offset]) ? history[offset] : history[0] ?? fallback;
+  };
+
+  const active = indices.map(index =>
+    items.filter(item => atPoint(item.throughputHistory, item.isActive ? item.requestCount : 0, index) > 0).length
+  );
+  const calls = indices.map(index =>
+    items.reduce((sum, item) => sum + atPoint(item.throughputHistory, item.isActive ? item.requestCount : 0, index), 0)
+  );
+  const latency = indices.map(index => {
+    const live = items.filter(item => atPoint(item.throughputHistory, item.isActive ? item.requestCount : 0, index) > 0);
+    if (live.length === 0) return 0;
+    const weight = live.reduce((sum, item) => sum + atPoint(item.throughputHistory, item.requestCount, index), 0);
+    if (weight <= 0) return 0;
+    return live.reduce(
+      (sum, item) => sum + atPoint(item.latencyHistory, item.avgDurationMs, index) * atPoint(item.throughputHistory, item.requestCount, index),
+      0,
+    ) / weight;
+  });
+  const errorRate = indices.map(index => {
+    const volume = items.reduce((sum, item) => sum + atPoint(item.throughputHistory, item.isActive ? item.requestCount : 0, index), 0);
+    if (volume <= 0) return 0;
+    return items.reduce((sum, item) => {
+      const traffic = atPoint(item.throughputHistory, item.isActive ? item.requestCount : 0, index);
+      return sum + (atPoint(item.errorsHistory, item.errorRate, index) / 100) * traffic;
+    }, 0) / volume * 100;
+  });
+
+  const hasShape = pointCount >= 2 && items.some(item =>
+    item.throughputHistory.length > 1 || item.latencyHistory.length > 1 || item.errorsHistory.length > 1
+  );
+  if (!hasShape) {
+    return { active: undefined, calls: undefined, latency: undefined, errorRate: undefined };
+  }
+  return { active, calls, latency, errorRate };
 }

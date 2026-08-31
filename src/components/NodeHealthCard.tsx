@@ -8,6 +8,13 @@ const STATUS_KEY: Record<HealthLevel, string> = {
   critical: 'Critical',
 };
 
+function roleLabel(role: string, t: (key: string) => string): string {
+  const normalized = role.toLowerCase().replace(/_/g, '-');
+  if (normalized === 'control-plane' || normalized === 'master') return t('Control plane');
+  if (normalized === 'worker') return t('Worker');
+  return t(role);
+}
+
 /** Resolves a metric's own threshold color, independent of overall node status. */
 function metricLevel(percent: number, warnAt: number, critAt: number): HealthLevel {
   if (percent >= critAt) return 'critical';
@@ -42,6 +49,7 @@ interface RadialGaugeProps {
 }
 
 function RadialGauge({ metric, level, size = 48 }: RadialGaugeProps) {
+  const { t } = useTranslation();
   const percent = Math.min(100, Math.max(0, metric.percent));
   const radius = 30;
   const circumference = 2 * Math.PI * radius;
@@ -56,7 +64,7 @@ function RadialGauge({ metric, level, size = 48 }: RadialGaugeProps) {
         height={size}
         viewBox="0 0 72 72"
         role="img"
-        aria-label={`${metric.label}: ${roundedPercent}%, ${metric.usedLabel} of ${metric.totalLabel}`}
+        aria-label={`${metric.label}: ${roundedPercent}%, ${metric.usedLabel} ${t('of')} ${metric.totalLabel}`}
       >
         <circle cx={36} cy={36} r={radius} className="apm-node-card__gauge-track" strokeWidth={6} fill="none" />
         <circle
@@ -114,7 +122,7 @@ export function NodeHealthCard({
         <div className="apm-node-card__header">
           <div className="apm-node-card__title-group">
             <span className="apm-node-card__name">{name}</span>
-            <span className="apm-node-card__role">{role}</span>
+            <span className="apm-node-card__role">{roleLabel(role, t)}</span>
             <span className="apm-node-card__meta">
               {namespaceCount} {namespaceWord} &middot; {podCount} {t('pods')}
             </span>

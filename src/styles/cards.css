@@ -244,3 +244,14 @@
   font-weight: 650 !important;
   margin-top: 0 !important;
 }
+
+.dependency-health-chart-body,
+.dependency-ranking-chart {
+  position: relative;
+}
+
+.dependency-insight-card .apm-chart-overlay {
+  background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}

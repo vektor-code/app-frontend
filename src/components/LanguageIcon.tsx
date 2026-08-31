@@ -52,12 +52,13 @@ interface LanguageIconProps {
 }
 
 export default function LanguageIcon({ language, size = 20 }: LanguageIconProps) {
-  const key = (language || '').toLowerCase().trim();
+  if (!language) return null;
+  const key = language.toLowerCase().trim();
   if (!key || key === 'unknown' || key === 'auto' || key === 'unk') {
     return null;
   }
   const src = languageLogoFor(language);
-  
+
   if (!src) {
     // Premium generic fallback text representation
     return (
