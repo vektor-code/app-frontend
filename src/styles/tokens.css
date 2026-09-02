@@ -86,6 +86,25 @@
   --apm-glass: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
   --z-drawer: 1200;
   --table-row-height: 52px;
+
+  /* Observability semantic tokens (Grafana/SigNoz/Kuma-informed, APM indigo canvas) */
+  --success-emerald: var(--accent-emerald);
+  --warning-amber: var(--accent-amber);
+  --critical-rose: var(--accent-rose);
+  --neutral-muted: var(--text-muted);
+  --obs-panel-bg: var(--bg-secondary);
+  --obs-panel-border: color-mix(in srgb, var(--border-primary) 88%, transparent);
+  --obs-panel-radius: 10px;
+  --obs-panel-pad: 14px 16px 12px;
+  --obs-grid-line: rgba(15, 23, 42, 0.06);
+  --obs-crosshair: color-mix(in srgb, var(--text-tertiary) 45%, transparent);
+  --obs-chart-stroke: 1.6;
+  --obs-area-top: 0.22;
+  --obs-kpi-value-size: 28px;
+  --obs-tooltip-bg: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  --obs-tooltip-border: color-mix(in srgb, var(--border-secondary) 70%, transparent);
+  --obs-tooltip-blur: 12px;
+  --obs-tooltip-shadow: 0 8px 28px rgba(15, 23, 42, 0.14), 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 
 body.dark-theme {
@@ -146,4 +165,18 @@ body.dark-theme {
   --apm-grid: color-mix(in srgb, var(--accent-indigo) 10%, transparent);
   --apm-glow: color-mix(in srgb, var(--accent-indigo) 22%, transparent);
   --apm-glass: color-mix(in srgb, var(--bg-secondary) 78%, transparent);
+
+  --success-emerald: #34d399;
+  --warning-amber: #fbbf24;
+  --critical-rose: #fb7185;
+  --neutral-muted: #64748b;
+  --obs-panel-bg: var(--bg-secondary);
+  --obs-panel-border: color-mix(in srgb, var(--border-primary) 92%, transparent);
+  --obs-grid-line: rgba(255, 255, 255, 0.04);
+  --obs-crosshair: rgba(255, 255, 255, 0.14);
+  --obs-area-top: 0.26;
+  --obs-tooltip-bg: color-mix(in srgb, var(--bg-elevated) 72%, rgba(15, 20, 28, 0.55));
+  --obs-tooltip-border: rgba(255, 255, 255, 0.08);
+  --obs-tooltip-blur: 16px;
+  --obs-tooltip-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
 }

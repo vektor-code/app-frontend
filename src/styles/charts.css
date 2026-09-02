@@ -1,106 +1,177 @@
-.apm-chart-stage,
-.infra-chart-card svg,
-.live-volume-card {
-  background-image:
-    linear-gradient(var(--apm-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--apm-grid) 1px, transparent 1px);
-  background-size: 22px 22px;
-  background-position: center top;
-}
+/* Chart surfaces — Grafana/SigNoz density: mute chrome, let series lead. */
 
 .apm-chart-stage {
   position: relative;
   isolation: isolate;
   overflow: visible;
+  background: transparent;
+  background-image: none;
 }
 
 .apm-chart-stage::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: var(--apm-scan);
-  opacity: 0.4;
+  display: none;
+}
+
+.infra-chart-card svg,
+.live-volume-card {
+  background-image:
+    linear-gradient(var(--obs-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--obs-grid-line) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: center top;
 }
 
 .apm-chart-panel,
-.apm-visual-card {
-  background:
-    radial-gradient(520px 140px at 100% 0%, color-mix(in srgb, var(--accent-indigo) 9%, transparent), transparent 62%),
-    var(--bg-secondary);
-  border-color: color-mix(in srgb, var(--accent-indigo) 16%, var(--border-primary));
+.apm-visual-card,
+.apm-list-panel {
+  background: var(--obs-panel-bg);
+  border-color: var(--obs-panel-border);
+  box-shadow: none;
 }
 
 .apm-kpi-strip {
   position: relative;
-  overflow: hidden;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-tertiary) 70%, transparent), var(--bg-secondary));
+  overflow: visible;
+  background: transparent;
 }
 
 .apm-kpi-strip::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto auto 0;
-  height: 2px;
-  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-indigo) 42%, transparent 78%);
-  pointer-events: none;
-  z-index: 1;
+  display: none;
 }
 
 .apm-signal-card .apm-signal-content strong,
 .db-metric-card strong,
 .apm-hist-stats strong {
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.04em;
 }
 
 .apm-svg-chart .apm-grid-line {
-  stroke: color-mix(in srgb, var(--accent-cyan) 22%, var(--border-secondary));
-  opacity: 0.7;
+  stroke: var(--obs-grid-line);
+  stroke-width: 1;
+  opacity: 1;
 }
 
 .apm-area-fill {
-  opacity: 0.16;
+  opacity: 1;
 }
 
 .apm-point-ring {
-  filter: drop-shadow(0 0 6px var(--apm-glow));
+  filter: none;
+  stroke: var(--bg-secondary);
+  stroke-width: 2;
+}
+
+.apm-crosshair {
+  stroke: var(--obs-crosshair);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 1;
 }
 
 .apm-error-board-bar.critical {
-  box-shadow: 0 0 8px color-mix(in srgb, var(--chart-rose) 28%, transparent);
+  box-shadow: none;
 }
 
 .apm-hist-bar {
-  box-shadow: 0 0 12px color-mix(in srgb, var(--hist-color, var(--accent-indigo)) 28%, transparent);
+  box-shadow: none;
 }
 
 .live-volume-bars span {
   background: linear-gradient(180deg, var(--accent-cyan), var(--accent-indigo));
-  box-shadow: 0 0 8px var(--apm-glow);
+  box-shadow: none;
 }
 
 .live-volume-bars span.has-error {
-  background: linear-gradient(180deg, #fb7185, var(--accent-rose));
+  background: linear-gradient(180deg, #fb7185, var(--critical-rose));
 }
 
 .live-status-pill.live i {
-  box-shadow: 0 0 10px var(--accent-emerald);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--success-emerald) 50%, transparent);
   animation: apm-live-pulse 1.6s ease-in-out infinite;
 }
 
 .service-sparkline path,
 .dependency-sparkline path {
-  filter: drop-shadow(0 0 4px var(--apm-glow));
+  filter: none;
 }
 
 .db-metric-card,
 .infra-chart-card,
 .dependency-insight-card {
-  background:
-    radial-gradient(420px 120px at 100% 0%, color-mix(in srgb, var(--accent-cyan) 9%, transparent), transparent 60%),
-    var(--bg-secondary);
-  border-color: color-mix(in srgb, var(--accent-indigo) 14%, var(--border-primary));
+  background: var(--obs-panel-bg);
+  border-color: var(--obs-panel-border);
+}
+
+/* Glass tooltips — SigNoz/Grafana floating readouts */
+.apm-floating-tooltip {
+  backdrop-filter: blur(var(--obs-tooltip-blur));
+  -webkit-backdrop-filter: blur(var(--obs-tooltip-blur));
+  background: var(--obs-tooltip-bg);
+  border: 1px solid var(--obs-tooltip-border);
+  box-shadow: var(--obs-tooltip-shadow);
+  border-radius: 8px;
+  padding: 9px 11px;
+  gap: 5px;
+  min-width: 168px;
+}
+
+.apm-floating-tooltip strong {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--text-tertiary);
+}
+
+.apm-tooltip-series {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.apm-tooltip-series > i {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg-elevated) 40%, transparent);
+}
+
+.apm-tooltip-series > em {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-style: normal;
+  font-size: 11.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.apm-tooltip-series > b {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.apm-mini-trend-fill {
+  opacity: 0.18;
+}
+
+body.dark-theme .apm-floating-tooltip {
+  background: var(--obs-tooltip-bg);
+  border-color: var(--obs-tooltip-border);
+  box-shadow: var(--obs-tooltip-shadow);
 }
 
 @keyframes apm-live-pulse {

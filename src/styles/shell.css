@@ -140,7 +140,7 @@
 .apm-dashboard .apm-kpi-strip .apm-signal-card:nth-child(n),
 .apm-kpi-strip .apm-signal-card,
 .apm-kpi-strip .apm-signal-card.featured {
-  --signal-card-color: var(--text-tertiary);
+  --signal-card-color: var(--neutral-muted);
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -150,9 +150,9 @@
   gap: 0;
   padding: 14px 16px 0;
   overflow: hidden;
-  border: 1px solid var(--border-primary);
-  border-radius: 10px;
-  background: var(--bg-secondary);
+  border: 1px solid var(--obs-panel-border);
+  border-radius: var(--obs-panel-radius);
+  background: var(--obs-panel-bg);
   box-shadow: none;
   transform: none;
 }
@@ -172,15 +172,15 @@
 }
 
 .apm-dashboard .apm-kpi-strip .apm-signal-card.healthy,
-.apm-kpi-strip .apm-signal-card.healthy { --signal-card-color: var(--accent-emerald); }
+.apm-kpi-strip .apm-signal-card.healthy { --signal-card-color: var(--success-emerald); }
 .apm-dashboard .apm-kpi-strip .apm-signal-card.warning,
-.apm-kpi-strip .apm-signal-card.warning { --signal-card-color: var(--accent-amber); }
+.apm-kpi-strip .apm-signal-card.warning { --signal-card-color: var(--warning-amber); }
 .apm-dashboard .apm-kpi-strip .apm-signal-card.critical,
-.apm-kpi-strip .apm-signal-card.critical { --signal-card-color: var(--accent-rose); }
+.apm-kpi-strip .apm-signal-card.critical { --signal-card-color: var(--critical-rose); }
 .apm-dashboard .apm-kpi-strip .apm-signal-card.info,
 .apm-kpi-strip .apm-signal-card.info { --signal-card-color: var(--accent-indigo); }
 .apm-dashboard .apm-kpi-strip .apm-signal-card.neutral,
-.apm-kpi-strip .apm-signal-card.neutral { --signal-card-color: var(--text-tertiary); }
+.apm-kpi-strip .apm-signal-card.neutral { --signal-card-color: var(--neutral-muted); }
 
 .apm-dashboard .apm-kpi-strip .apm-signal-topline,
 .apm-kpi-strip .apm-signal-topline {
@@ -221,20 +221,20 @@
 
 .apm-dashboard .apm-kpi-strip .apm-signal-delta.good,
 .apm-kpi-strip .apm-signal-delta.good {
-  color: var(--accent-emerald);
-  background: color-mix(in srgb, var(--accent-emerald) 12%, transparent);
+  color: var(--success-emerald);
+  background: color-mix(in srgb, var(--success-emerald) 14%, transparent);
 }
 
 .apm-dashboard .apm-kpi-strip .apm-signal-delta.bad,
 .apm-kpi-strip .apm-signal-delta.bad {
-  color: var(--accent-rose);
-  background: color-mix(in srgb, var(--accent-rose) 12%, transparent);
+  color: var(--critical-rose);
+  background: color-mix(in srgb, var(--critical-rose) 14%, transparent);
 }
 
 .apm-dashboard .apm-kpi-strip .apm-signal-delta.flat,
 .apm-kpi-strip .apm-signal-delta.flat {
-  color: var(--text-tertiary);
-  background: var(--bg-tertiary);
+  color: var(--neutral-muted);
+  background: color-mix(in srgb, var(--bg-tertiary) 85%, transparent);
 }
 
 .apm-dashboard .apm-kpi-strip .apm-signal-value-row,
@@ -247,10 +247,10 @@
 .apm-dashboard .apm-kpi-strip .apm-signal-value-row > strong,
 .apm-kpi-strip .apm-signal-value-row > strong {
   color: var(--text-primary);
-  font-size: 28px;
-  font-weight: 650;
-  letter-spacing: -0.045em;
-  line-height: 1.1;
+  font-size: var(--obs-kpi-value-size);
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
 

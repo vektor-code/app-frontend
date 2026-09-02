@@ -783,14 +783,14 @@ function TrafficChart({
         )}
         <XAxis layout={layout} labels={labels} />
       </svg>
-      {hoverIndex !== null && (
-        <ChartTooltip leftPercent={tooltipPercent(hoverIndex, successData.length)}>
-          <strong>{labels[hoverIndex]}</strong>
-          <span>{t('Requests')}: {formatMetric(totalData[hoverIndex], 'count')}</span>
-          <span>{t('Failed')}: {formatMetric(errorData[hoverIndex], 'count')}</span>
-          <span>{t('Error rate')}: {formatPercent(errorRateData[hoverIndex] || 0)}</span>
-        </ChartTooltip>
-      )}
+        {hoverIndex !== null && (
+          <ChartTooltip leftPercent={tooltipPercent(hoverIndex, successData.length)}>
+            <strong>{labels[hoverIndex]}</strong>
+            <SeriesRow color={trafficColor} label={t('Requests')} value={formatMetric(totalData[hoverIndex], 'count')} />
+            <SeriesRow color={errorColor} label={t('Failed')} value={formatMetric(errorData[hoverIndex], 'count')} />
+            <SeriesRow color={errorColor} label={t('Error rate')} value={formatPercent(errorRateData[hoverIndex] || 0)} />
+          </ChartTooltip>
+        )}
     </div>
   );
 }
@@ -845,21 +845,21 @@ function LineChart({
       >
         <defs>
           <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={primaryColor} stopOpacity="0.22" />
-            <stop offset="100%" stopColor={primaryColor} stopOpacity="0.02" />
+            <stop offset="0%" stopColor={primaryColor} stopOpacity={0.24} />
+            <stop offset="100%" stopColor={primaryColor} stopOpacity={0} />
           </linearGradient>
         </defs>
         <ChartGrid layout={layout} maxValue={maxValue} unit={unit} />
-        <path d={areaPath(primaryPoints, layout)} fill={`url(#${fillId})`} />
-        <path d={smoothLinePath(primaryPoints)} fill="none" stroke={primaryColor} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={areaPath(primaryPoints, layout)} fill={`url(#${fillId})`} className="apm-area-fill" />
+        <path d={smoothLinePath(primaryPoints)} fill="none" stroke={primaryColor} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         {hasSecondary && (
-          <path d={smoothLinePath(secondaryPoints)} fill="none" stroke={secondaryColor} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+          <path d={smoothLinePath(secondaryPoints)} fill="none" stroke={secondaryColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="0" opacity="0.92" />
         )}
         {hoverPoint && (
           <g>
             <line x1={hoverPoint.x} y1={layout.top} x2={hoverPoint.x} y2={layout.height - layout.bottom} className="apm-crosshair" />
-            <circle cx={hoverPoint.x} cy={hoverPoint.y} r="3.25" fill={primaryColor} className="apm-point-ring" />
-            {secondaryHoverPoint && <circle cx={secondaryHoverPoint.x} cy={secondaryHoverPoint.y} r="3.25" fill={secondaryColor} className="apm-point-ring" />}
+            <circle cx={hoverPoint.x} cy={hoverPoint.y} r="3.5" fill={primaryColor} className="apm-point-ring" />
+            {secondaryHoverPoint && <circle cx={secondaryHoverPoint.x} cy={secondaryHoverPoint.y} r="3.5" fill={secondaryColor} className="apm-point-ring" />}
           </g>
         )}
         <XAxis layout={layout} labels={labels} />
@@ -867,8 +867,10 @@ function LineChart({
       {hoverIndex !== null && (
         <ChartTooltip leftPercent={tooltipPercent(hoverIndex, primary.length)}>
           <strong>{labels[hoverIndex]}</strong>
-          <span>{primaryLabel}: {formatValue(primary[hoverIndex])}</span>
-          {hasSecondary && secondaryLabel ? <span>{secondaryLabel}: {formatValue(secondary[hoverIndex])}</span> : null}
+          <SeriesRow color={primaryColor} label={primaryLabel} value={formatValue(primary[hoverIndex])} />
+          {hasSecondary && secondaryLabel ? (
+            <SeriesRow color={secondaryColor} label={secondaryLabel} value={formatValue(secondary[hoverIndex])} />
+          ) : null}
         </ChartTooltip>
       )}
     </div>
@@ -914,12 +916,12 @@ function DatabaseChart({
       >
         <defs>
           <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={dbLatencyColor} stopOpacity="0.18" />
-            <stop offset="100%" stopColor={dbLatencyColor} stopOpacity="0.02" />
+            <stop offset="0%" stopColor={dbLatencyColor} stopOpacity={0.24} />
+            <stop offset="100%" stopColor={dbLatencyColor} stopOpacity={0} />
           </linearGradient>
         </defs>
         <ChartGrid layout={layout} maxValue={maxCalls} unit="count" />
-        <path d={areaPath(latencyPoints, layout)} fill={`url(#${fillId})`} />
+        <path d={areaPath(latencyPoints, layout)} fill={`url(#${fillId})`} className="apm-area-fill" />
         {calls.map((value, idx) => {
           const height = scaleY(value, maxCalls, layout);
           const x = layout.left + idx * barStep + (barStep - barWidth) / 2;
@@ -934,15 +936,15 @@ function DatabaseChart({
               rx="1.5"
               fill={dbColor}
               className="apm-db-volume-bar"
-              opacity={hoverIndex === null || hoverIndex === idx ? 0.72 : 0.22}
+              opacity={hoverIndex === null || hoverIndex === idx ? 0.68 : 0.2}
             />
           );
         })}
-        <path d={smoothLinePath(latencyPoints)} fill="none" stroke={dbLatencyColor} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={smoothLinePath(latencyPoints)} fill="none" stroke={dbLatencyColor} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         {hoverIndex !== null && latencyPoints[hoverIndex] && (
           <g>
             <line x1={latencyPoints[hoverIndex].x} y1={layout.top} x2={latencyPoints[hoverIndex].x} y2={layout.height - layout.bottom} className="apm-crosshair" />
-            <circle cx={latencyPoints[hoverIndex].x} cy={latencyPoints[hoverIndex].y} r="3.25" fill={dbLatencyColor} className="apm-point-ring" />
+            <circle cx={latencyPoints[hoverIndex].x} cy={latencyPoints[hoverIndex].y} r="3.5" fill={dbLatencyColor} className="apm-point-ring" />
           </g>
         )}
         <XAxis layout={layout} labels={labels} />
@@ -950,8 +952,8 @@ function DatabaseChart({
       {hoverIndex !== null && (
         <ChartTooltip leftPercent={tooltipPercent(hoverIndex, calls.length)}>
           <strong>{labels[hoverIndex]}</strong>
-          <span>{t('DB Operations')}: {formatMetric(calls[hoverIndex], 'count')}</span>
-          <span>{t('Avg Latency')}: {formatMetric(latency[hoverIndex], 'latency')}</span>
+          <SeriesRow color={dbColor} label={t('DB Operations')} value={formatMetric(calls[hoverIndex], 'count')} />
+          <SeriesRow color={dbLatencyColor} label={t('Avg Latency')} value={formatMetric(latency[hoverIndex], 'latency')} />
         </ChartTooltip>
       )}
     </div>
@@ -1068,8 +1070,8 @@ function ServiceErrorBoard({
             return (
               <>
                 <strong>{service.service} · {labels[hoverCell.timeIdx]}</strong>
-                <span>{t('Errors')}: {formatMetric(errors, 'count')} ({formatPercent(errorRate)})</span>
-                <span>{t('Spans')}: {formatMetric(spans, 'count')}</span>
+                <SeriesRow color="var(--critical-rose)" label={t('Errors')} value={`${formatMetric(errors, 'count')} (${formatPercent(errorRate)})`} />
+                <SeriesRow color="var(--accent-indigo)" label={t('Spans')} value={formatMetric(spans, 'count')} />
               </>
             );
           })()}
@@ -1186,6 +1188,16 @@ function ChartTooltip({ leftPercent, children }: { leftPercent: number; children
   );
 }
 
+function SeriesRow({ color, label, value }: { color: string; label: string; value: string }) {
+  return (
+    <span className="apm-tooltip-series">
+      <i style={{ background: color }} aria-hidden />
+      <em>{label}</em>
+      <b>{value}</b>
+    </span>
+  );
+}
+
 function weightedServiceValue(services: ServiceStats[], getValue: (service: ServiceStats) => number, fallback = 0) {
   const totals = services.reduce(
     (acc, service) => {
@@ -1292,17 +1304,22 @@ function linePath(points: { x: number; y: number }[]) {
 function smoothLinePath(points: { x: number; y: number }[]) {
   if (points.length === 0) return '';
   if (points.length === 1) return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
-  let path = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
-  for (let idx = 1; idx < points.length; idx += 1) {
-    const previous = points[idx - 1];
-    const current = points[idx];
-    const midpointX = (previous.x + current.x) / 2;
-    const midpointY = (previous.y + current.y) / 2;
-    path += ` Q ${previous.x.toFixed(2)} ${previous.y.toFixed(2)} ${midpointX.toFixed(2)} ${midpointY.toFixed(2)}`;
+  if (points.length === 2) {
+    return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)} L ${points[1].x.toFixed(2)} ${points[1].y.toFixed(2)}`;
   }
-  const penultimate = points[points.length - 2];
-  const last = points[points.length - 1];
-  path += ` Q ${penultimate.x.toFixed(2)} ${penultimate.y.toFixed(2)} ${last.x.toFixed(2)} ${last.y.toFixed(2)}`;
+  // Catmull-Rom → cubic Bezier (Grafana/uPlot-style smooth series)
+  let path = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+  for (let idx = 0; idx < points.length - 1; idx += 1) {
+    const p0 = points[idx - 1] || points[idx];
+    const p1 = points[idx];
+    const p2 = points[idx + 1];
+    const p3 = points[idx + 2] || p2;
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    path += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
   return path;
 }
 
@@ -1311,7 +1328,9 @@ function areaPath(points: { x: number; y: number }[], layout: ChartLayout) {
   const baseY = layout.height - layout.bottom;
   const first = points[0];
   const last = points[points.length - 1];
-  return `M ${first.x.toFixed(2)} ${baseY} ${points.map(point => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ')} L ${last.x.toFixed(2)} ${baseY} Z`;
+  const top = smoothLinePath(points);
+  const topBody = top.replace(/^M\s+[-\d.eE+]+\s+[-\d.eE+]+/, '');
+  return `M ${first.x.toFixed(2)} ${baseY.toFixed(2)} L ${first.x.toFixed(2)} ${first.y.toFixed(2)}${topBody} L ${last.x.toFixed(2)} ${baseY.toFixed(2)} Z`;
 }
 
 function rangeBandPath(
