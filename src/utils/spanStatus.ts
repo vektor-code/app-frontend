@@ -8,6 +8,13 @@ export function isMissingHttpResponse(span: Span | null | undefined): boolean {
   return status.present && !isValidHttpStatus(status.code);
 }
 
+/** HTTP ≥ 500 is an error even when OTel status is UNSET (common with auto-instr). */
+export function isHttpServerFailure(span: Span | null | undefined): boolean {
+  if (!span) return false;
+  const status = readHttpStatus(span.attributes);
+  return status.present && isValidHttpStatus(status.code) && status.code >= 500;
+}
+
 export function isSpanError(span: Span | null | undefined): boolean {
   if (!span) return false;
   const statusCode = span.statusCode as unknown;
@@ -15,6 +22,7 @@ export function isSpanError(span: Span | null | undefined): boolean {
 
   return (
     isMissingHttpResponse(span) ||
+    isHttpServerFailure(span) ||
     span.status === 'ERROR' ||
     statusCode === 'ERROR' ||
     statusCode === 2 ||

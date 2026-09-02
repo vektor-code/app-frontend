@@ -2,6 +2,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -101,6 +102,8 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
   const [timeseries, setTimeseries] = useState<TimeseriesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const loadSeqRef = useRef(0);
+  const isLoadingRef = useRef(false);
   const endpointColumns = useColumnResize(endpointColumnWidths, {
     minWidths: endpointColumnMinimums,
     storageKey: 'traceEndpointColumnsV1',
@@ -188,10 +191,18 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
   };
 
   const loadTraces = useCallback(async (opts?: { silent?: boolean }) => {
+    if (opts?.silent && isLoadingRef.current) return;
+    const seq = opts?.silent ? loadSeqRef.current : ++loadSeqRef.current;
     try {
       if (!opts?.silent) {
+        isLoadingRef.current = true;
         setLoading(true);
         setLoadError(false);
+        // Drop stale rows immediately so filter/namespace changes always show
+        // the loading skeleton instead of old results flashing into new ones.
+        setTraces([]);
+        setEndpoints([]);
+        setSelectedTrace(null);
       }
       const params: Record<string, string> = {};
       if (namespace) params.namespace = namespace;
@@ -210,20 +221,25 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
       if (activeTab === 'top') {
         params.limit = '500';
         const data = await api.getTopEndpoints(params);
+        if (seq !== loadSeqRef.current) return;
         setEndpoints(data.endpoints || []);
       } else {
         params.limit = pageSize.toString();
         params.offset = ((page - 1) * pageSize).toString();
         const data = await api.getTraces(params);
+        if (seq !== loadSeqRef.current) return;
         setTraces(data.traces || []);
       }
     } catch (err) {
       console.error('load traces:', err);
+      if (seq !== loadSeqRef.current) return;
       if (!opts?.silent) {
         setLoadError(true);
       }
     } finally {
+      if (seq !== loadSeqRef.current) return;
       if (!opts?.silent) {
+        isLoadingRef.current = false;
         setLoading(false);
       }
     }
@@ -261,6 +277,8 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
   }, [loadTimeseries]);
 
   useEffect(() => {
+    setServices([]);
+    setServiceLanguages({});
     api.getServices(namespace || undefined).then(data => {
       const serviceNames = (data.services || []).map(service => service.serviceName);
       setServices([...new Set(serviceNames)].sort((a, b) => a.localeCompare(b)));
@@ -443,7 +461,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
     traceColumns.resizeBy(column, event.key === 'ArrowRight' ? 16 : -16);
   };
 
-  const awaitingResults = loading && (activeTab === 'top' ? endpoints.length === 0 : traces.length === 0);
+  const awaitingResults = loading;
   const windowLabel = timeRangeFilter === 'all' ? t('All time') : timeRangeFilter;
   const errorTone = summary.errorRate > 5 ? 'critical' : summary.errorRate > 0 ? 'warning' : 'healthy';
   const latencyKpiTone = summary.avgLatency > 1000 ? 'warning' : summary.avgLatency > 300 ? 'info' : 'healthy';

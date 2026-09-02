@@ -567,6 +567,7 @@ export default function TraceDetail() {
                     {failureDiagnosis ? (
                       <>
                         <em>{t(classificationLabel(failureDiagnosis.classification))}</em>
+                        <em className={`sev ${failureDiagnosis.severity.toLowerCase()}`}>{t(failureDiagnosis.severity)}</em>
                         <em className={`conf ${failureDiagnosis.confidence.toLowerCase()}`}>{t(failureDiagnosis.confidence)}</em>
                       </>
                     ) : (

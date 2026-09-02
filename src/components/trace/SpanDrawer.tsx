@@ -29,6 +29,7 @@ import { getSpanDependency, getQuerySummary, getQueryText } from '../../utils/de
 import { formatDuration as formatDuration, getSvcColor as getSvcColor } from '../../utils/traceDisplay';
 import { explainSpanError as explainSpanError } from '../../utils/errorAnalysis';
 import { getErrorCategoryLabel, getSpanOperationLabel } from '../../utils/spanLabels';
+import { redactEvidenceList, redactSecretText } from '../../utils/secretRedact';
 
 const SPAN_KIND_ICON: Record<string, LucideIcon> = {
   SERVER: Server,
@@ -511,18 +512,40 @@ export function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerCo
 
         {activeTab === 'error' && (() => {
           const explanation = explainSpanError(span);
+          const http = explanation.httpStatus ?? (readHttpStatus(span.attributes).present ? readHttpStatus(span.attributes).code : undefined);
+          const evidence = redactEvidenceList(explanation.evidence);
+          const exceptionMessage = redactSecretText(explanation.rawMessage || '');
+          const exceptionType = explanation.exceptionType || '';
+          const resolvedStack = stackTrace || explanation.stackTrace || null;
+          const failureSummary = [
+            explanation.title,
+            explanation.what,
+            exceptionType ? `Exception: ${exceptionType}` : '',
+            exceptionMessage && exceptionMessage !== explanation.title ? exceptionMessage.split('\n')[0] : '',
+            ...evidence.slice(0, 6).map(([k, v]) => `${k}: ${v}`),
+          ].filter(Boolean).join('\n');
+
           return (
             <div className="span-drawer-stack">
               <div className="span-drawer-failure">
                 <span className="span-drawer-failure-icon"><AlertCircle size={16} strokeWidth={2.2} /></span>
-                <div>
+                <div className="span-drawer-failure-body">
                   <div className="span-drawer-failure-title">
                     <strong>{t(explanation.title)}</strong>
+                    {http != null && Number.isFinite(http) && http > 0 && (
+                      <em className="is-status">HTTP {http}</em>
+                    )}
                     <em>{t(getErrorCategoryLabel(explanation.category))}</em>
+                    <DrawerCopyButton
+                      copied={copiedKey === 'failure-summary'}
+                      onCopy={() => handleCopy('failure-summary', failureSummary)}
+                      label={t('Copy failure summary')}
+                    />
                   </div>
                   <p>{t(explanation.what)}</p>
                 </div>
               </div>
+
               <div className="span-drawer-metrics">
                 <article>
                   <small>{t('Operation')}</small>
@@ -538,31 +561,75 @@ export function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerCo
                   <em>{explanation.target || dest.name || t('not captured')}</em>
                 </article>
               </div>
-              {explanation.evidence.length > 0 && (
+
+              {(exceptionType || exceptionMessage) && (
+                <section className="span-drawer-card">
+                  <h3>{t('Exception')}</h3>
+                  <div className="span-drawer-kv-list">
+                    {exceptionType && (
+                      <DrawerKvRow
+                        label={t('Type')}
+                        value={exceptionType}
+                        copied={copiedKey === 'exc-type'}
+                        onCopy={() => handleCopy('exc-type', exceptionType)}
+                      />
+                    )}
+                    {exceptionMessage && exceptionMessage !== explanation.title && (
+                      <DrawerKvRow label={t('Message')} mono={false}>
+                        <pre className="span-drawer-pre is-inline">{exceptionMessage}</pre>
+                      </DrawerKvRow>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              {explanation.causes.length > 0 && (
+                <section className="span-drawer-card">
+                  <h3>{t('Likely causes')}</h3>
+                  <ol className="span-drawer-causes">
+                    {explanation.causes.map((cause, idx) => (
+                      <li key={`${idx}-${cause.slice(0, 24)}`}>{t(cause)}</li>
+                    ))}
+                  </ol>
+                </section>
+              )}
+
+              {evidence.length > 0 && (
                 <section className="span-drawer-card">
                   <h3>{t('Evidence from span')}</h3>
                   <div className="span-drawer-kv-list">
-                    {explanation.evidence.map(([k, v]) => (
-                      <DrawerKvRow key={k} label={k} value={copiedKey === 'ev-' + k ? t('copied') : v} copied={copiedKey === 'ev-' + k} onCopy={() => handleCopy('ev-' + k, v)} />
+                    {evidence.map(([k, v]) => (
+                      <DrawerKvRow
+                        key={k}
+                        label={k}
+                        value={copiedKey === 'ev-' + k ? t('copied') : v}
+                        copied={copiedKey === 'ev-' + k}
+                        onCopy={() => handleCopy('ev-' + k, v)}
+                      />
                     ))}
                   </div>
                 </section>
               )}
-              {explanation.rawMessage && explanation.rawMessage !== explanation.title && (
-                <section className="span-drawer-card">
-                  <h3>{t('Raw error message')}</h3>
-                  <pre className="span-drawer-pre">{explanation.rawMessage}</pre>
-                </section>
-              )}
-              {stackTrace && (
-                <section className="span-drawer-card">
-                  <h3>
-                    {t('Stack Trace')}
-                    <DrawerCopyButton copied={copiedKey === 'stacktrace'} onCopy={() => handleCopy('stacktrace', stackTrace)} label={t('Copy Stack Trace')} />
-                  </h3>
-                  <pre className="span-drawer-pre is-code"><code>{stackTrace}</code></pre>
-                </section>
-              )}
+
+              <section className="span-drawer-card">
+                <h3>
+                  {t('Stack Trace')}
+                  {resolvedStack && (
+                    <DrawerCopyButton
+                      copied={copiedKey === 'stacktrace'}
+                      onCopy={() => handleCopy('stacktrace', resolvedStack)}
+                      label={t('Copy Stack Trace')}
+                    />
+                  )}
+                </h3>
+                {resolvedStack ? (
+                  <pre className="span-drawer-pre is-code"><code>{resolvedStack}</code></pre>
+                ) : (
+                  <p className="span-drawer-empty-hint">
+                    {t('No stack captured — exception may only exist as a message on this span.')}
+                  </p>
+                )}
+              </section>
             </div>
           );
         })()}
@@ -613,9 +680,10 @@ export function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerCo
                 )}
                 {details.request.headers && Object.keys(details.request.headers).length > 0 && (
                   <div className="span-drawer-kv-list nested">
-                    {Object.entries(details.request.headers).map(([k, v]) => (
-                      <DrawerKvRow key={k} label={k} value={v} />
-                    ))}
+                    {Object.entries(details.request.headers).map(([k, v]) => {
+                      const [rk, rv] = redactEvidenceList([[k, String(v)]])[0];
+                      return <DrawerKvRow key={k} label={rk} value={rv} />;
+                    })}
                   </div>
                 )}
                 {details.type === 'db' ? (

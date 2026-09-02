@@ -133,6 +133,23 @@ function errorText(span: Span): string {
   return parts.join(' ').toLowerCase();
 }
 
+function exceptionMessage(span: Span): string {
+  const a = span.attributes || {};
+  if (a['exception.message']?.trim()) return a['exception.message'].trim();
+  for (const ev of span.events || []) {
+    const name = (ev.name || '').toLowerCase().trim();
+    if (name !== 'exception' && name !== 'error') continue;
+    const msg = ev.attributes?.['exception.message']?.trim() || ev.attributes?.message?.trim();
+    if (msg) return msg;
+  }
+  return (span.error || '').trim();
+}
+
+function truncateText(s: string, max: number): string {
+  if (!s || s.length <= max) return s;
+  return `${s.slice(0, max)}…`;
+}
+
 function httpStatusName(code: number): string {
   const names: Record<number, string> = {
     400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found',
@@ -504,6 +521,10 @@ function ruleHTTPOutcome(spans: Span[], children: Map<string, Span[]>): Finding[
       { code: 'valid_url_path', message: `URL path ${path} is present.`, spanId: sp.spanId, score: 10 },
       { code: 'reasonable_duration', message: `Duration ${formatDuration(sp.durationMs)} is internally consistent with an HTTP response.`, spanId: sp.spanId, score: 10 },
     ];
+    const excMsg = st.code >= 500 ? exceptionMessage(sp) : '';
+    if (excMsg) {
+      evidence.push({ code: 'exception_message', message: truncateText(excMsg, 240), spanId: sp.spanId, score: 20 });
+    }
     let down: Span | undefined;
     if (sp.kind === 'SERVER') {
       for (const child of children.get(sp.spanId) || []) {
@@ -520,11 +541,14 @@ function ruleHTTPOutcome(spans: Span[], children: Map<string, Span[]>): Finding[
     if (down) {
       const dst = httpStatus(down).code;
       evidence.push({ code: 'downstream_5xx', message: `Downstream span ${down.serviceName} returned HTTP ${dst}.`, spanId: down.spanId, score: 15 });
+      const downExc = exceptionMessage(down);
       out.push({
         classification: 'DOWNSTREAM_ERROR',
         score: 85,
         title,
-        summary: `Application request failed because downstream service returned HTTP ${dst}.`,
+        summary: downExc
+          ? `Application request failed because downstream service returned HTTP ${dst}: ${truncateText(downExc, 180)}`
+          : `Application request failed because downstream service returned HTTP ${dst}.`,
         evidence,
         causes: [`A downstream service returned HTTP ${dst}; this service propagated the failure.`, "Inspect the downstream service's own logs and traces for the application-level cause."],
         spanIds: [sp.spanId, down.spanId],
@@ -534,13 +558,20 @@ function ruleHTTPOutcome(spans: Span[], children: Map<string, Span[]>): Finding[
       continue;
     }
     if (sp.kind === 'CLIENT' && st.code >= 500) {
+      const summary = excMsg
+        ? `${sp.serviceName} received HTTP ${st.code} from a remote dependency for ${op}: ${truncateText(excMsg, 180)}`
+        : `${sp.serviceName} received HTTP ${st.code} from a remote dependency for ${op}.`;
       out.push({
         classification: 'DOWNSTREAM_ERROR',
         score: 82,
         title,
-        summary: `${sp.serviceName} received HTTP ${st.code} from a remote dependency for ${op}.`,
+        summary,
         evidence,
-        causes: [`A remote HTTP dependency returned ${st.code}; this is not a local application crash.`, "Inspect that dependency's traces and logs around this timestamp."],
+        causes: [
+          ...(excMsg ? [truncateText(excMsg, 180)] : []),
+          `A remote HTTP dependency returned ${st.code}; this is not a local application crash.`,
+          "Inspect that dependency's traces and logs around this timestamp.",
+        ],
         spanIds: [sp.spanId],
         rules: ['client_http_5xx'],
         priority: 70,
@@ -548,13 +579,19 @@ function ruleHTTPOutcome(spans: Span[], children: Map<string, Span[]>): Finding[
       continue;
     }
     const clientErr = st.code >= 400 && st.code < 500;
+    let summary = `The target service returned HTTP ${st.code} for ${op}.`;
+    const causes = [clientErr ? `The server rejected the request with HTTP ${st.code}.` : `The application itself returned HTTP ${st.code}.`];
+    if (!clientErr && excMsg) {
+      summary = `The target service returned HTTP ${st.code} for ${op}: ${truncateText(excMsg, 180)}`;
+      causes.unshift(truncateText(excMsg, 180));
+    }
     out.push({
       classification: clientErr ? 'CLIENT_ERROR' : 'APPLICATION_ERROR',
       score: clientErr ? 70 : 80,
       title,
-      summary: `The target service returned HTTP ${st.code} for ${op}.`,
+      summary,
       evidence,
-      causes: [clientErr ? `The server rejected the request with HTTP ${st.code}.` : `The application itself returned HTTP ${st.code}.`],
+      causes,
       spanIds: [sp.spanId],
       rules: [clientErr ? 'http_4xx' : 'http_5xx'],
       priority: 70,

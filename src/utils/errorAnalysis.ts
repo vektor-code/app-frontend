@@ -14,6 +14,7 @@ export interface ErrorExplanation {
   rawMessage: string;     // original error text from instrumentation
   exceptionType?: string;
   stackTrace?: string | null;
+  httpStatus?: number;
   category: 'http' | 'db' | 'messaging' | 'exception' | 'timeout' | 'connection' | 'app' | 'rpc';
 }
 
@@ -133,10 +134,37 @@ function extractException(span: Span): { type: string; message: string; stack: s
     if (ev && ev.attributes) {
       type = type || ev.attributes['exception.type'] || '';
       message = message || ev.attributes['exception.message'] || ev.attributes['message'] || '';
-      stack = stack || ev.attributes['exception.stacktrace'] || null;
+      stack = stack || ev.attributes['exception.stacktrace'] || ev.attributes['error.stacktrace'] || null;
     }
   }
+  if (!type && message) {
+    type = inferExceptionType(message, stack);
+  }
   return { type, message, stack };
+}
+
+/** When Python auto-instr omits exception.type, infer a short label from the message. */
+export function inferExceptionType(message: string, stack?: string | null): string {
+  const text = `${message}\n${stack || ''}`;
+  if (/validation error for /i.test(text) || /pydantic/i.test(text)) {
+    return 'ValidationError';
+  }
+  if (/TypeError:/i.test(text)) return 'TypeError';
+  if (/ValueError:/i.test(text)) return 'ValueError';
+  if (/KeyError:/i.test(text)) return 'KeyError';
+  if (/AttributeError:/i.test(text)) return 'AttributeError';
+  if (/TimeoutError|asyncio\.TimeoutError/i.test(text)) return 'TimeoutError';
+  const fromStack = text.match(/^\s*([A-Za-z_][\w.]*(?:Error|Exception))\s*:/m);
+  if (fromStack) {
+    const parts = fromStack[1].split('.');
+    return parts[parts.length - 1];
+  }
+  return '';
+}
+
+function isValidationException(message: string, type: string): boolean {
+  const blob = `${type} ${message}`.toLowerCase();
+  return blob.includes('validation error') || blob.includes('pydantic') || type === 'ValidationError';
 }
 
 export function explainSpanError(span: Span): ErrorExplanation {
@@ -286,11 +314,37 @@ export function explainSpanError(span: Span): ErrorExplanation {
   if (isValidHttpStatus(status) && status >= 400) {
     const info = HTTP_STATUS_INFO[status] || {
       name: status >= 500 ? 'Server Error' : 'Client Error',
-      meaning: status >= 500 ? 'the remote service failed to process the request' : 'the server rejected the request',
+      meaning: status >= 500 ? 'the remote service crashed or rejected the request' : 'the server rejected the request',
       causes: [],
     };
 
     const causes = [...info.causes];
+    const validation = isValidationException(rawMessage, exc.type);
+
+    // Prefer the exception when a 5xx is really an application validation/crash.
+    if (status >= 500 && validation) {
+      causes.unshift(
+        'A response or domain model failed validation (often a null/enum mismatch) — fix the producer data or widen the schema.',
+        'Inspect the stack for the response model and the field that rejected the value.'
+      );
+      const shortMsg = rawMessage.split('\n')[0].trim();
+      return {
+        category: 'exception',
+        title: `Validation failed — HTTP ${status}`,
+        what: `${span.serviceName} returned HTTP ${status} because validation failed${shortMsg ? `: ${shortMsg}` : '.'}`,
+        target: targetDisplay || undefined,
+        causes,
+        evidence,
+        rawMessage,
+        exceptionType: exc.type || 'ValidationError',
+        stackTrace: exc.stack,
+        httpStatus: status,
+      };
+    }
+
+    if (status >= 500 && rawMessage) {
+      causes.unshift('An exception was recorded on this span — use the message and stack below as the primary signal.');
+    }
 
     // Sharper diagnosis for 404s with a missing/root path: the classic
     // "base URL called without an endpoint" bug.
@@ -306,9 +360,13 @@ export function explainSpanError(span: Span): ErrorExplanation {
       ? ' The URL contains no path (only the host), so the target had nothing to serve.'
       : '';
 
-    const what = span.kind === 'SERVER'
+    let what = span.kind === 'SERVER'
       ? `${span.serviceName} received ${method || 'an HTTP'} ${inboundUrl} and responded ${status} ${info.name}: ${info.meaning}.${pathNote}`
       : `${span.serviceName} sent ${method || 'a'} request to ${remoteTarget || 'a remote service'} and received ${status} ${info.name}: ${info.meaning}.${pathNote}`;
+    if (status >= 500 && rawMessage) {
+      const shortMsg = rawMessage.split('\n')[0].trim();
+      if (shortMsg) what += ` Exception: ${shortMsg}`;
+    }
 
     return {
       category: 'http',
@@ -320,6 +378,7 @@ export function explainSpanError(span: Span): ErrorExplanation {
       rawMessage,
       exceptionType: exc.type || undefined,
       stackTrace: exc.stack,
+      httpStatus: status,
     };
   }
 
