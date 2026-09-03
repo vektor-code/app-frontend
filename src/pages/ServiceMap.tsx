@@ -18,7 +18,6 @@ import { traceListDisplayName } from '../utils/operationName';
 
 interface ServiceMapProps {
   namespace: string;
-  collapsed?: boolean;
 }
 
 type MapHealthFilter = 'all' | 'healthy' | 'warning' | 'critical' | 'neutral';
@@ -671,7 +670,7 @@ const getColumnTheme = (name: string, _index: number, isDark: boolean) => {
   return slate;
 };
 
-export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
+export default function ServiceMap({ namespace }: ServiceMapProps) {
   const { t } = useTranslation();
   const [data, setData] = useState<ServiceMapData | null>(null);
   const [visibleNamespaces, setVisibleNamespaces] = useState<string[]>([]);
@@ -2239,20 +2238,20 @@ export default function ServiceMap({ namespace, collapsed }: ServiceMapProps) {
   // --- Window resize handler ---
   useEffect(() => {
     const handleResize = () => {
-      let w = window.innerWidth - (collapsed ? 144 : 340);
+      let w = window.innerWidth - 144;
       if (containerRef.current) {
         w = containerRef.current.clientWidth;
       }
       setDimensions({ width: Math.max(600, w), height: 600 });
     };
     handleResize();
-    const timer = setTimeout(handleResize, 200); // Account for sidebar transition
+    const timer = setTimeout(handleResize, 200);
     window.addEventListener('resize', handleResize);
     return () => {
       window.removeEventListener('resize', handleResize);
       clearTimeout(timer);
     };
-  }, [collapsed]);
+  }, []);
 
   // --- Zoom Control Handlers ---
   const handleZoomIn = () => {

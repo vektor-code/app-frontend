@@ -1,5 +1,5 @@
 import React from 'react';
-import { IconLanguage } from '@tabler/icons-react';
+import { Translate } from '@phosphor-icons/react';
 import HeaderDropdown from './HeaderDropdown';
 import { LANGUAGES, useTranslation, type Language } from '../utils/i18n';
 
@@ -11,7 +11,7 @@ export default function LanguageSwitcher({ compact = false }: { compact?: boolea
       label={t('Language')}
       value={language}
       className={compact ? 'header-dropdown-compact' : undefined}
-      icon={<IconLanguage size={16} stroke={1.7} />}
+      icon={<Translate size={16} weight="light" />}
       options={LANGUAGES.map(item => ({
         value: item.code,
         label: item.nativeName,

@@ -15,6 +15,7 @@ import './styles/traces.css'
 import './styles/dashboard.css'
 import './styles/cards.css'
 import './styles/shell.css'
+import './styles/sidebar.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

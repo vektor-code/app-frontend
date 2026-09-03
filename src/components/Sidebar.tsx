@@ -1,30 +1,24 @@
-import React from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useMemo } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
-  IconActivity,
-  IconBell,
-  IconChartHistogram,
-  IconDatabase,
-  IconGitFork,
-  IconLayoutDashboard,
-  IconLayoutSidebarLeftCollapse,
-  IconLayoutSidebarLeftExpand,
-  IconNetwork,
-  IconServer,
-  IconSettings,
-  IconStack2,
+  Bell,
+  Broadcast,
+  Database,
+  GearSix,
+  GitFork,
+  Graph,
+  HardDrives,
+  SquaresFour,
   type Icon,
-} from '@tabler/icons-react';
-import CrnetApmMark from './CrnetApmMark';
+} from '@phosphor-icons/react';
+import SidebarUnion from './SidebarUnion';
 import { useTranslation } from '../utils/i18n';
 
 interface SidebarProps {
-  collapsed: boolean;
-  onToggleCollapse: () => void;
-  user: { role?: string } | null;
+  user: { role?: string; name?: string; username?: string; displayName?: string } | null;
 }
 
-type NavigationItem = {
+type NavItem = {
   label: string;
   to: string;
   icon: Icon;
@@ -32,76 +26,116 @@ type NavigationItem = {
   adminOnly?: boolean;
 };
 
-const navigationItems: NavigationItem[] = [
-  { label: 'Dashboard', to: '/', icon: IconLayoutDashboard, end: true },
-  { label: 'Services', to: '/services', icon: IconStack2 },
-  { label: 'Traces', to: '/traces', icon: IconChartHistogram },
-  { label: 'Service Map', to: '/servicemap', icon: IconNetwork },
-  { label: 'Dependencies', to: '/dependencies', icon: IconGitFork },
-  { label: 'Database', to: '/database', icon: IconDatabase },
-  { label: 'Infrastructure', to: '/infrastructure', icon: IconServer },
-  { label: 'Live Stream', to: '/live', icon: IconActivity },
-  { label: 'Alerts', to: '/alerts', icon: IconBell },
-  { label: 'Admin', to: '/admin', icon: IconSettings, adminOnly: true },
+const iconWeight = 'light' as const;
+
+const mainItems: NavItem[] = [
+  { label: 'Dashboard', to: '/', icon: SquaresFour, end: true },
+  { label: 'Service Map', to: '/servicemap', icon: Graph },
+  { label: 'Database', to: '/database', icon: Database },
+  { label: 'Infrastructure', to: '/infrastructure', icon: HardDrives },
+  { label: 'Dependencies', to: '/dependencies', icon: GitFork },
+  { label: 'Live Stream', to: '/live', icon: Broadcast },
+  { label: 'Alerts', to: '/alerts', icon: Bell },
+  { label: 'Admin', to: '/admin', icon: GearSix, adminOnly: true },
 ];
 
+const dashboardFlyout: NavItem[] = [
+  { label: 'Dashboard', to: '/', icon: SquaresFour, end: true },
+  { label: 'Services', to: '/services', icon: SquaresFour },
+  { label: 'Traces', to: '/traces', icon: SquaresFour },
+];
+
+function isPathActive(pathname: string, to: string, end?: boolean) {
+  if (end) return pathname === to;
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
+
+function isDashboardFamily(pathname: string) {
+  return pathname === '/' || pathname.startsWith('/services') || pathname.startsWith('/traces');
+}
+
+function flyoutFor(item: NavItem): NavItem[] {
+  return item.to === '/' ? dashboardFlyout : [item];
+}
+
 export default function Sidebar({
-  collapsed,
-  onToggleCollapse,
   user,
 }: SidebarProps) {
   const { t } = useTranslation();
+  const { pathname } = useLocation();
 
-  const visibleItems = navigationItems.filter(item => {
-    if (item.adminOnly && user?.role !== 'admin') return false;
-    return true;
-  });
+  const visibleMain = useMemo(
+    () => mainItems.filter(item => !(item.adminOnly && user?.role !== 'admin')),
+    [user?.role],
+  );
+
+  const initials = useMemo(() => {
+    const displayName = user?.name || user?.displayName || user?.username || t('User');
+    return String(displayName)
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map(word => word[0]?.toUpperCase() || '')
+      .join('') || 'AP';
+  }, [t, user?.displayName, user?.name, user?.username]);
+
+  const dashboardFamilyActive = isDashboardFamily(pathname);
 
   return (
-    <aside className="app-sidebar" aria-label={t('Primary navigation')}>
-      <div className="primary-sidebar">
-        <div className="sidebar-brand">
-          <div className="sidebar-brand-mark">
-            <CrnetApmMark size={40} />
+    <aside className="app-sidebar apm-sidebar" aria-label={t('Primary navigation')}>
+      <div className="apm-rail">
+        <div className="apm-rail-header">
+          <div className="apm-rail-avatar" title="APM" aria-label="APM">
+            {initials}
           </div>
-          <div className="sidebar-brand-copy">
-            <strong>APM</strong>
-          </div>
-          <button
-            type="button"
-            className="sidebar-collapse-button"
-            onClick={onToggleCollapse}
-            aria-label={collapsed ? t('Expand sidebar') : t('Collapse sidebar')}
-            title={collapsed ? t('Expand sidebar') : t('Collapse sidebar')}
-          >
-            {collapsed ? (
-              <IconLayoutSidebarLeftExpand size={16} stroke={1.8} />
-            ) : (
-              <IconLayoutSidebarLeftCollapse size={16} stroke={1.8} />
-            )}
-          </button>
         </div>
 
-        <div className="sidebar-section-label">{t('Workspace')}</div>
-        <nav className="primary-sidebar-nav">
-          {visibleItems.map(item => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) => `primary-nav-item ${isActive ? 'active' : ''}`}
-                title={t(item.label)}
-              >
-                <span className="primary-nav-icon">
-                  <Icon size={20} stroke={1.8} />
-                </span>
-                <span className="primary-nav-label">{t(item.label)}</span>
-              </NavLink>
-            );
-          })}
-        </nav>
+        <div className="apm-rail-section apm-rail-section-main">
+          <div className="apm-rail-kicker">{t('Main')}</div>
+          <div className="apm-rail-stack">
+            {visibleMain.map(item => {
+              const Icon = item.icon;
+              const links = flyoutFor(item);
+              const parentActive = item.to === '/' ? dashboardFamilyActive : isPathActive(pathname, item.to);
+              return (
+                <div
+                  key={item.to}
+                  className={`apm-rail-slot ${parentActive ? 'is-active is-family-active' : ''}`}
+                >
+                  <NavLink
+                    to={item.to}
+                    end={item.end}
+                    className={`apm-rail-icon ${parentActive ? 'is-active' : ''}`}
+                    title={t(item.label)}
+                  >
+                    <Icon size={20} weight={iconWeight} />
+                  </NavLink>
+                  <div className={`apm-rail-flyout ${links.length === 1 ? 'is-single' : 'is-branch'}`} role="group" aria-label={t(item.label)}>
+                    {links.length === 1 ? (
+                      <span className="apm-rail-union apm-rail-union-single" aria-hidden="true" />
+                    ) : (
+                      <SidebarUnion className="apm-rail-union" />
+                    )}
+                    <div className="apm-rail-flyout-panel">
+                      {links.map(link => (
+                        <NavLink
+                          key={link.to}
+                          to={link.to}
+                          end={link.end}
+                          className={({ isActive }) =>
+                            `apm-rail-flyout-link ${isActive ? 'is-active' : ''}`
+                          }
+                        >
+                          {t(link.label)}
+                        </NavLink>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </aside>
   );

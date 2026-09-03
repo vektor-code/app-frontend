@@ -1636,14 +1636,19 @@
   flex: 0 0 auto;
   flex-wrap: nowrap;
   gap: 8px;
-  padding-left: 12px;
-  margin-left: 4px;
-  border-left: 1px solid var(--border-primary);
+  padding-left: 0;
+  margin-left: 0;
+  border-left: 0;
 }
 
 .header-dropdown-compact {
-  min-width: 112px;
-  max-width: 132px;
+  min-width: 148px;
+  max-width: 168px;
+}
+
+.header-dropdown-menu.header-dropdown-compact {
+  min-width: 0;
+  max-width: none;
 }
 
 .header-session .apm-theme-icon {
@@ -1804,6 +1809,24 @@
 
 .infra-kpi-grid .infra-summary-top > i {
   display: none !important;
+}
+
+.header-dropdown {
+  overflow: visible;
+}
+
+.header-dropdown-menu,
+.header-dropdown-menu.is-attached {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.dark-theme .header-dropdown-menu,
+body.dark-theme .header-dropdown-menu.is-attached {
+  background: #222a38 !important;
+  background-color: #222a38 !important;
 }
 
 

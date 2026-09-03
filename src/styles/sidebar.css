@@ -1,0 +1,336 @@
+/* Glass icon-rail sidebar. Layout from the Small rail mock; APM indigo tokens. */
+
+.app-layout {
+  --sidebar-inset: 12px;
+  --apm-rail-width: 80px;
+  --apm-flyout-width: 176px;
+  --sidebar-width: calc(var(--sidebar-inset) + var(--apm-rail-width) + 16px);
+  --primary-sidebar-width: var(--sidebar-width);
+}
+
+.app-layout .app-sidebar.apm-sidebar,
+body:not(.dark-theme) .app-sidebar.apm-sidebar,
+body.dark-theme .app-sidebar.apm-sidebar {
+  width: var(--primary-sidebar-width) !important;
+  min-width: var(--primary-sidebar-width) !important;
+  padding: var(--sidebar-inset) 0 var(--sidebar-inset) var(--sidebar-inset);
+  overflow: visible !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.app-sidebar.apm-sidebar .apm-rail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: var(--apm-rail-width);
+  height: 100%;
+  padding: 18px 0 16px;
+  overflow: visible;
+  border: 1px solid color-mix(in srgb, var(--border-primary) 88%, transparent);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--bg-secondary) 94%, transparent);
+  box-shadow:
+    0 18px 40px rgba(15, 23, 42, 0.08),
+    0 1px 0 color-mix(in srgb, #fff 70%, transparent) inset;
+  backdrop-filter: blur(28px) saturate(1.15);
+  -webkit-backdrop-filter: blur(28px) saturate(1.15);
+}
+
+body.dark-theme .app-sidebar.apm-sidebar .apm-rail {
+  border-color: color-mix(in srgb, #fff 8%, transparent);
+  background: color-mix(in srgb, #0f141c 88%, var(--bg-secondary));
+  box-shadow:
+    0 28px 48px rgba(8, 10, 16, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+.app-layout .app-main {
+  overflow: visible;
+}
+
+.app-layout .app-header,
+body:not(.dark-theme) .app-layout .app-header,
+body.dark-theme .app-layout .app-header {
+  min-height: 56px;
+  margin: var(--sidebar-inset) var(--sidebar-inset) 0 8px;
+  padding: 8px 14px;
+  overflow: visible;
+  border: 1px solid color-mix(in srgb, var(--border-primary) 88%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 88%, transparent);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--bg-secondary) 94%, transparent);
+  box-shadow:
+    0 18px 40px rgba(15, 23, 42, 0.08),
+    0 1px 0 color-mix(in srgb, #fff 70%, transparent) inset;
+  backdrop-filter: blur(28px) saturate(1.15);
+  -webkit-backdrop-filter: blur(28px) saturate(1.15);
+  position: sticky;
+  top: var(--sidebar-inset);
+  z-index: 50;
+}
+
+body.dark-theme .app-layout .app-header {
+  border-color: color-mix(in srgb, #fff 8%, transparent);
+  background: color-mix(in srgb, #0f141c 88%, var(--bg-secondary));
+  box-shadow:
+    0 28px 48px rgba(8, 10, 16, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+.app-layout .app-content {
+  padding-top: 20px;
+}
+
+.apm-rail-header,
+.apm-rail-section {
+  position: relative;
+  z-index: 1;
+}
+
+.apm-rail-header {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  margin-bottom: 18px;
+}
+
+.apm-rail-avatar {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(160deg, var(--accent-indigo-light), var(--accent-fill));
+  box-shadow: 0 0 0 1px color-mix(in srgb, #fff 10%, transparent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.apm-rail-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: 4px;
+}
+
+.apm-rail-section-main {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.apm-rail-kicker {
+  width: 100%;
+  min-width: 100%;
+  padding: 0 8px 4px;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--text-primary) 32%, transparent);
+  font-size: 8px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  line-height: 18px;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.apm-rail-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  overflow: visible;
+}
+
+.apm-rail-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  min-height: 38px;
+  margin: 1px 0;
+  overflow: visible;
+}
+
+.apm-rail-icon {
+  position: relative;
+  z-index: 1;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: color-mix(in srgb, var(--text-primary) 62%, transparent);
+  text-decoration: none;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.apm-rail-icon:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+.apm-rail-icon.is-active {
+  color: var(--accent-indigo);
+  background: color-mix(in srgb, var(--accent-fill) 8%, transparent);
+}
+
+body.dark-theme .apm-rail-icon.is-active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.apm-rail-icon.is-active svg {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent-indigo) 28%, transparent));
+}
+
+.apm-rail-icon svg {
+  position: relative;
+  z-index: 1;
+}
+
+.apm-rail-flyout {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 2px);
+  z-index: 30;
+  display: flex;
+  align-items: stretch;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-6px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.apm-rail-flyout.is-single {
+  top: 50%;
+  align-items: center;
+  transform: translate(-6px, -50%);
+}
+
+.apm-rail-slot:hover .apm-rail-flyout,
+.apm-rail-slot:focus-within .apm-rail-flyout {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.apm-rail-slot:hover .apm-rail-flyout.is-single,
+.apm-rail-slot:focus-within .apm-rail-flyout.is-single {
+  transform: translateY(-50%);
+}
+
+.apm-rail-union {
+  display: block;
+  flex: 0 0 12px;
+  width: 12px;
+  height: auto;
+  min-height: 0;
+  margin-top: 0;
+  overflow: visible;
+  color: color-mix(in srgb, var(--text-primary) 28%, transparent);
+}
+
+.apm-rail-union-single {
+  min-height: 0;
+  height: 1px;
+  margin: 0;
+  align-self: center;
+  background: color-mix(in srgb, var(--text-primary) 28%, transparent);
+}
+
+.apm-rail-flyout-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 2px;
+  min-width: var(--apm-flyout-width);
+  padding: 4px;
+  isolation: isolate;
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  background-color: var(--bg-elevated);
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.apm-rail-flyout.is-branch .apm-rail-flyout-panel {
+  height: auto;
+  margin-top: 0;
+  padding: 4px;
+  justify-content: flex-start;
+}
+
+.apm-rail-flyout.is-branch .apm-rail-flyout-link {
+  min-height: 32px;
+  height: auto;
+  display: flex;
+  align-items: center;
+}
+
+body.dark-theme .apm-rail-flyout-panel {
+  border-color: color-mix(in srgb, #fff 10%, transparent);
+  background: var(--bg-elevated);
+  box-shadow: 0 16px 32px rgba(8, 10, 16, 0.48);
+}
+
+.apm-rail-flyout-link {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: left;
+  text-decoration: none;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.apm-rail-flyout-link:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.apm-rail-flyout-link.is-active {
+  color: var(--text-primary);
+  font-weight: 500;
+  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
+}
+
+body.dark-theme .apm-rail-flyout-link.is-active {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent-indigo) 16%, transparent);
+}
+
+@media (max-width: 900px) {
+  .app-layout {
+    --sidebar-inset: 8px;
+    --apm-rail-width: 72px;
+    --apm-flyout-width: 160px;
+    --sidebar-width: calc(var(--sidebar-inset) + var(--apm-rail-width) + 16px);
+  }
+}
+
+@media (max-height: 720px) {
+  .apm-rail {
+    padding-top: 12px;
+    padding-bottom: 10px;
+  }
+
+  .apm-rail-header { margin-bottom: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .apm-rail-flyout,
+  .apm-rail-icon {
+    transition: none;
+  }
+}

@@ -1,6 +1,6 @@
 import React, { Suspense, useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { IconServer, IconStack2 } from '@tabler/icons-react';
+import { HardDrives, Stack } from '@phosphor-icons/react';
 import { api } from './api/client';
 import type { NamespaceStats } from './entities';
 import HeaderDropdown, { type HeaderDropdownOption } from './components/HeaderDropdown';
@@ -65,22 +65,6 @@ export default function App() {
   const handleClusterChange = useCallback((cluster: string) => {
     setSelectedCluster(cluster);
     localStorage.setItem('selectedCluster', cluster);
-  }, []);
-
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    const savedPreference = localStorage.getItem('sidebarCollapsed');
-    if (savedPreference !== null) {
-      return savedPreference === 'true';
-    }
-    return window.innerWidth <= 900;
-  });
-
-  const handleToggleSidebar = useCallback(() => {
-    setSidebarCollapsed(prev => {
-      const next = !prev;
-      localStorage.setItem('sidebarCollapsed', String(next));
-      return next;
-    });
   }, []);
 
   const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') === 'dark');
@@ -363,19 +347,15 @@ export default function App() {
   }
 
   return (
-    <div className={`app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      <Sidebar
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={handleToggleSidebar}
-        user={user}
-      />
+    <div className="app-layout">
+      <Sidebar user={user} />
       <div className="app-main">
         <header className="app-header">
           <div className="header-actions header-scope">
             <HeaderDropdown
               label={t('Cluster')}
               value={selectedCluster}
-              icon={<IconServer size={16} stroke={1.7} />}
+              icon={<HardDrives size={16} weight="light" />}
               options={[
                 { value: '', label: t('All Clusters') },
                 ...clusters.map(clusterOption).filter((option): option is HeaderDropdownOption => Boolean(option)),
@@ -389,7 +369,7 @@ export default function App() {
             <HeaderDropdown
               label={t('Namespace')}
               value={selectedNamespace}
-              icon={<IconStack2 size={16} stroke={1.7} />}
+              icon={<Stack size={16} weight="light" />}
               options={[
                 { value: '', label: t('All Namespaces') },
                 ...namespaces
@@ -416,7 +396,7 @@ export default function App() {
               <Route path="/services" element={<Services namespace={selectedNamespace} />} />
               <Route path="/traces" element={<TraceExplorer namespace={selectedNamespace} cluster={selectedCluster} />} />
               <Route path="/traces/:traceId" element={<TraceDetail />} />
-              <Route path="/servicemap" element={<ServiceMap namespace={selectedNamespace} collapsed={sidebarCollapsed} />} />
+              <Route path="/servicemap" element={<ServiceMap namespace={selectedNamespace} />} />
               <Route path="/dependencies" element={<Dependencies namespace={selectedNamespace} />} />
               <Route path="/database" element={<DbAnalytics namespace={selectedNamespace} />} />
               <Route path="/infrastructure" element={<Infrastructure namespace={selectedNamespace} />} />
