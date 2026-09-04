@@ -14,11 +14,9 @@
 
 .infra-chart-card svg,
 .live-volume-card {
-  background-image:
-    linear-gradient(var(--obs-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--obs-grid-line) 1px, transparent 1px);
-  background-size: 24px 24px;
-  background-position: center top;
+  background-image: linear-gradient(var(--obs-grid-line) 1px, transparent 1px);
+  background-size: 100% 24px;
+  background-position: 0 top;
 }
 
 .apm-chart-panel,
@@ -52,6 +50,10 @@
   opacity: 1;
 }
 
+.apm-svg-chart .apm-grid-line-minor {
+  opacity: 0.45;
+}
+
 .apm-area-fill {
   opacity: 1;
 }
@@ -83,7 +85,7 @@
 }
 
 .live-volume-bars span.has-error {
-  background: linear-gradient(180deg, #fb7185, var(--critical-rose));
+  background: linear-gradient(180deg, var(--chart-rose), var(--critical-rose));
 }
 
 .live-status-pill.live i {
@@ -165,7 +167,7 @@
 }
 
 .apm-mini-trend-fill {
-  opacity: 0.18;
+  opacity: 0.16;
 }
 
 body.dark-theme .apm-floating-tooltip {

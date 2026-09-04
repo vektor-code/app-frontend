@@ -85,9 +85,9 @@ function useChartLayout() {
 
 const trafficColor = 'var(--chart-blue)';
 const errorColor = 'var(--chart-rose)';
-const latencyColor = 'var(--chart-cyan)';
-const tailLatencyColor = 'var(--chart-purple)';
-const dbColor = 'var(--chart-purple)';
+const latencyColor = 'var(--chart-blue)';
+const tailLatencyColor = 'var(--chart-amber)';
+const dbColor = 'var(--chart-blue)';
 const dbLatencyColor = 'var(--chart-cyan)';
 
 export default function Dashboard({ namespaces, selectedNamespace }: DashboardProps) {
@@ -340,6 +340,8 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
             unit="latency"
             primaryColor={latencyColor}
             secondaryColor={tailLatencyColor}
+            secondaryDashed
+            fillBetween
             hoverIndex={timeseriesHover}
             setHoverIndex={setTimeseriesHover}
             loading={tsLoading}
@@ -407,7 +409,7 @@ export default function Dashboard({ namespaces, selectedNamespace }: DashboardPr
           icon="errors"
           legend={[
             { label: t('Errors'), color: 'var(--chart-rose)' },
-            { label: t('Quiet'), color: 'color-mix(in srgb, var(--text-tertiary) 35%, transparent)' },
+            { label: t('Quiet'), color: 'color-mix(in srgb, var(--text-muted) 28%, var(--bg-tertiary))' },
           ]}
           summary={{
             label: t('Affected'),
@@ -729,7 +731,7 @@ function TrafficChart({
   const maxValue = Math.max(...totalData, 1) * 1.08;
   const usableWidth = plotWidth(layout);
   const barStep = usableWidth / Math.max(totalData.length, 1);
-  const barWidth = Math.max(3, barStep * 0.62);
+  const barWidth = Math.max(2.5, barStep * 0.46);
   const plotBottom = layout.height - layout.bottom;
 
   return (
@@ -755,7 +757,7 @@ function TrafficChart({
                   y={plotBottom - successHeight}
                   width={barWidth}
                   height={successHeight}
-                  rx="1.5"
+                  rx="1.25"
                   className="apm-request-bar-success"
                 />
                 {errorHeight > 0 && (
@@ -764,7 +766,7 @@ function TrafficChart({
                     y={plotBottom - successHeight - errorHeight}
                     width={barWidth}
                     height={Math.max(errorHeight, 1.5)}
-                    rx="1.5"
+                    rx="1.25"
                     className="apm-request-bar-error"
                   />
                 )}
@@ -804,6 +806,8 @@ function LineChart({
   unit,
   primaryColor,
   secondaryColor = primaryColor,
+  secondaryDashed = false,
+  fillBetween = false,
   hoverIndex,
   setHoverIndex,
   loading,
@@ -818,6 +822,8 @@ function LineChart({
   unit: 'latency' | 'count' | 'percent';
   primaryColor: string;
   secondaryColor?: string;
+  secondaryDashed?: boolean;
+  fillBetween?: boolean;
   hoverIndex: number | null;
   setHoverIndex: (idx: number | null) => void;
   loading: boolean;
@@ -826,6 +832,7 @@ function LineChart({
 }) {
   const [stageRef, layout] = useChartLayout();
   const fillId = React.useId().replace(/:/g, '');
+  const bandId = React.useId().replace(/:/g, '');
   const hasSecondary = secondary.length > 0;
   const maxValue = Math.max(...primary, ...secondary, 1) * 1.08;
   const primaryPoints = getPoints(primary, maxValue, layout);
@@ -845,15 +852,31 @@ function LineChart({
       >
         <defs>
           <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={primaryColor} stopOpacity={0.24} />
+            <stop offset="0%" stopColor={primaryColor} stopOpacity={0.18} />
             <stop offset="100%" stopColor={primaryColor} stopOpacity={0} />
+          </linearGradient>
+          <linearGradient id={bandId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={secondaryColor} stopOpacity={0.14} />
+            <stop offset="100%" stopColor={secondaryColor} stopOpacity={0.02} />
           </linearGradient>
         </defs>
         <ChartGrid layout={layout} maxValue={maxValue} unit={unit} />
+        {fillBetween && hasSecondary && (
+          <path d={seriesBandPath(secondaryPoints, primaryPoints)} fill={`url(#${bandId})`} className="apm-area-fill" />
+        )}
         <path d={areaPath(primaryPoints, layout)} fill={`url(#${fillId})`} className="apm-area-fill" />
-        <path d={smoothLinePath(primaryPoints)} fill="none" stroke={primaryColor} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={smoothLinePath(primaryPoints)} fill="none" stroke={primaryColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         {hasSecondary && (
-          <path d={smoothLinePath(secondaryPoints)} fill="none" stroke={secondaryColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="0" opacity="0.92" />
+          <path
+            d={smoothLinePath(secondaryPoints)}
+            fill="none"
+            stroke={secondaryColor}
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray={secondaryDashed ? '5 4' : undefined}
+            opacity="0.95"
+          />
         )}
         {hoverPoint && (
           <g>
@@ -902,7 +925,7 @@ function DatabaseChart({
   const maxLatency = Math.max(...latency, 1) * 1.08;
   const usableWidth = plotWidth(layout);
   const barStep = usableWidth / Math.max(calls.length, 1);
-  const barWidth = Math.max(3, barStep * 0.42);
+  const barWidth = Math.max(2.5, barStep * 0.4);
   const latencyPoints = getPoints(latency, maxLatency, layout);
 
   return (
@@ -916,7 +939,7 @@ function DatabaseChart({
       >
         <defs>
           <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={dbLatencyColor} stopOpacity={0.24} />
+            <stop offset="0%" stopColor={dbLatencyColor} stopOpacity={0.16} />
             <stop offset="100%" stopColor={dbLatencyColor} stopOpacity={0} />
           </linearGradient>
         </defs>
@@ -933,14 +956,14 @@ function DatabaseChart({
               y={y}
               width={barWidth}
               height={height}
-              rx="1.5"
+              rx="1.25"
               fill={dbColor}
               className="apm-db-volume-bar"
-              opacity={hoverIndex === null || hoverIndex === idx ? 0.68 : 0.2}
+              opacity={hoverIndex === null || hoverIndex === idx ? 0.42 : 0.16}
             />
           );
         })}
-        <path d={smoothLinePath(latencyPoints)} fill="none" stroke={dbLatencyColor} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={smoothLinePath(latencyPoints)} fill="none" stroke={dbLatencyColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         {hoverIndex !== null && latencyPoints[hoverIndex] && (
           <g>
             <line x1={latencyPoints[hoverIndex].x} y1={layout.top} x2={latencyPoints[hoverIndex].x} y2={layout.height - layout.bottom} className="apm-crosshair" />
@@ -983,8 +1006,6 @@ function ServiceErrorBoard({
 }) {
   const navigate = useNavigate();
   const rows = services.slice(0, 6);
-  const maxBucketErrors = Math.max(1, ...rows.flatMap(service => service.errors));
-  const totalErrors = rows.reduce((sum, service) => sum + service.errors.reduce((acc, value) => acc + value, 0), 0);
   const axisStep = Math.max(1, Math.ceil(labels.length / 4));
 
   if (loading) {
@@ -1008,7 +1029,6 @@ function ServiceErrorBoard({
         const errorTotal = service.errors.reduce((sum, value) => sum + value, 0);
         const spanTotal = service.spans.reduce((sum, value) => sum + value, 0);
         const rate = spanTotal > 0 ? (errorTotal / spanTotal) * 100 : 0;
-        const share = totalErrors > 0 ? (errorTotal / totalErrors) * 100 : 0;
         return (
           <div className="apm-error-board-row" key={`${service.namespace}:${service.service}`}>
             <div className="apm-error-board-head">
@@ -1017,19 +1037,16 @@ function ServiceErrorBoard({
               <em className={errorTotal > 0 ? 'is-hot' : undefined}>{formatPercent(rate)}</em>
             </div>
             <div className="apm-error-board-track">
-              <i className="apm-error-board-share" style={{ width: `${Math.max(share, errorTotal > 0 ? 4 : 0)}%` }} />
               <div className="apm-error-board-bars">
                 {labels.map((label, timeIdx) => {
                   const spans = service.spans[timeIdx] || 0;
                   const errors = service.errors[timeIdx] || 0;
-                  const height = errors <= 0 ? 3 : Math.max(6, (errors / maxBucketErrors) * 26);
                   const active = hoverCell?.svcIdx === svcIdx && hoverCell?.timeIdx === timeIdx;
                   return (
                     <button
                       key={`${label}:${timeIdx}`}
                       type="button"
                       className={`apm-error-board-bar ${heatmapTone(spans, errors)} ${active ? 'active' : ''}`}
-                      style={{ height }}
                       onMouseEnter={() => setHoverCell({ svcIdx, timeIdx })}
                       onMouseMove={event => {
                         const container = containerRef.current;
@@ -1116,17 +1133,31 @@ function ChartOverlay({ loading, empty, t }: { loading: boolean; empty: boolean;
 }
 
 function ChartGrid({ layout, maxValue, unit }: { layout: ChartLayout; maxValue: number; unit: 'latency' | 'count' | 'percent' }) {
-  const rows = [1, 0.5, 0];
+  const rows = [
+    { frac: 1, label: true },
+    { frac: 0.75, label: false },
+    { frac: 0.5, label: true },
+    { frac: 0.25, label: false },
+    { frac: 0, label: true },
+  ];
   return (
     <g>
       {rows.map(row => {
-        const y = layout.top + (1 - row) * (layout.height - layout.top - layout.bottom);
+        const y = layout.top + (1 - row.frac) * (layout.height - layout.top - layout.bottom);
         return (
-          <g key={row}>
-            <line x1={layout.left} y1={y} x2={layout.width - layout.right} y2={y} className="apm-grid-line" />
-            <text x={layout.left - 8} y={y + 4} textAnchor="end" className="apm-axis-text">
-              {formatMetric(maxValue * row, unit)}
-            </text>
+          <g key={row.frac}>
+            <line
+              x1={layout.left}
+              y1={y}
+              x2={layout.width - layout.right}
+              y2={y}
+              className={row.label ? 'apm-grid-line' : 'apm-grid-line apm-grid-line-minor'}
+            />
+            {row.label && (
+              <text x={layout.left - 8} y={y + 4} textAnchor="end" className="apm-axis-text">
+                {formatMetric(maxValue * row.frac, unit)}
+              </text>
+            )}
           </g>
         );
       })}
@@ -1321,6 +1352,15 @@ function smoothLinePath(points: { x: number; y: number }[]) {
     path += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
   }
   return path;
+}
+
+function seriesBandPath(
+  upper: { x: number; y: number }[],
+  lower: { x: number; y: number }[],
+) {
+  if (upper.length < 2 || lower.length < 2) return '';
+  const closing = linePath([...lower].reverse()).replace(/^M/, 'L');
+  return `${smoothLinePath(upper)} ${closing} Z`;
 }
 
 function areaPath(points: { x: number; y: number }[], layout: ChartLayout) {

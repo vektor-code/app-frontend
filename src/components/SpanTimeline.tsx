@@ -129,11 +129,11 @@ interface SpanTimelineProps {
 }
 
 const KIND_LABELS: Record<string, { label: string; color: string }> = {
-  SERVER: { label: 'SVR', color: '#6366f1' },
-  CLIENT: { label: 'CLI', color: '#2563eb' },
-  PRODUCER: { label: 'PUB', color: '#22c55e' },
-  CONSUMER: { label: 'SUB', color: '#f97316' },
-  INTERNAL: { label: 'INT', color: '#64748b' },
+  SERVER: { label: 'SVR', color: 'var(--accent-indigo)' },
+  CLIENT: { label: 'CLI', color: 'var(--accent-cyan)' },
+  PRODUCER: { label: 'PUB', color: 'var(--chart-green)' },
+  CONSUMER: { label: 'SUB', color: 'var(--chart-amber)' },
+  INTERNAL: { label: 'INT', color: 'var(--text-muted)' },
 };
 
 const LABEL_COL = 'minmax(280px, 36%)';

@@ -78,16 +78,16 @@ input:not([type='checkbox']):not([type='radio']):focus,
 }
 
 .header-dropdown-menu {
-  background: #ffffff;
-  background-color: #ffffff;
+  background: var(--bg-elevated);
+  background-color: var(--bg-elevated);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
 body.dark-theme .header-dropdown-menu,
 body.dark-theme .header-dropdown-menu.is-attached {
-  background: #222a38;
-  background-color: #222a38;
+  background: var(--bg-elevated);
+  background-color: var(--bg-elevated);
 }
 
 body.dark-theme .header-filter.open {

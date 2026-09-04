@@ -1,19 +1,19 @@
 .apm-node-card {
-  --nc-ok: #1a9d6c;
-  --nc-ok-bg: #e8f7f0;
-  --nc-ok-text: #0f7a52;
-  --nc-warning: #d97e0a;
-  --nc-warning-bg: #fdf0dc;
-  --nc-warning-text: #a35e05;
-  --nc-critical: #d43f3f;
-  --nc-critical-bg: #fbe8e8;
-  --nc-critical-text: #b02a2a;
+  --nc-ok: var(--chart-green);
+  --nc-ok-bg: color-mix(in srgb, var(--accent-emerald) 12%, transparent);
+  --nc-ok-text: var(--accent-emerald);
+  --nc-warning: var(--chart-amber);
+  --nc-warning-bg: color-mix(in srgb, var(--accent-amber) 14%, transparent);
+  --nc-warning-text: var(--accent-amber);
+  --nc-critical: var(--chart-rose);
+  --nc-critical-bg: color-mix(in srgb, var(--accent-rose) 12%, transparent);
+  --nc-critical-text: var(--accent-rose);
   --nc-surface: var(--bg-secondary, #ffffff);
-  --nc-surface-muted: var(--bg-tertiary, #f6f7f9);
-  --nc-border: var(--border-primary, #e3e5ea);
-  --nc-text-primary: var(--text-primary, #16181d);
-  --nc-text-secondary: var(--text-secondary, #5b6170);
-  --nc-text-muted: var(--text-muted, #8b91a0);
+  --nc-surface-muted: var(--bg-tertiary, #f6f7fb);
+  --nc-border: var(--border-primary, #d1d5e0);
+  --nc-text-primary: var(--text-primary, #1f2328);
+  --nc-text-secondary: var(--text-secondary, #59636e);
+  --nc-text-muted: var(--text-muted, #8b8d98);
 
   display: flex;
   height: 100%;
@@ -37,11 +37,11 @@ body.dark-theme .apm-node-card {
 
 body.dark-theme .apm-node-card {
   --nc-ok-bg: color-mix(in srgb, var(--nc-ok) 16%, transparent);
-  --nc-ok-text: #34d399;
+  --nc-ok-text: var(--accent-emerald);
   --nc-warning-bg: color-mix(in srgb, var(--nc-warning) 16%, transparent);
-  --nc-warning-text: #fbbf24;
+  --nc-warning-text: var(--accent-amber);
   --nc-critical-bg: color-mix(in srgb, var(--nc-critical) 18%, transparent);
-  --nc-critical-text: #fb7185;
+  --nc-critical-text: var(--accent-rose);
 }
 
 .apm-node-card__accent {

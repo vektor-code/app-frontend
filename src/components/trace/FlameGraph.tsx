@@ -4,6 +4,7 @@ import { isSpanError as isSpanError } from '../../utils/spanStatus';
 import { getSpanOperationLabel } from '../../utils/spanLabels';
 import { buildSpanForest } from '../../utils/spanTree';
 import { formatDuration as formatDuration, getContrastColor as getContrastColor, getSvcColor as getSvcColor } from '../../utils/traceDisplay';
+import { cssColorToRgba, readChartCanvasTheme } from '../../utils/chartTheme';
 import { TraceDetailIcon } from './TraceDetailIcon';
 
 interface SpanNode {
@@ -159,11 +160,13 @@ export function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan 
     ctx.clearRect(0, 0, rect.width, canvasHeight);
 
     const isDark = document.body.classList.contains('dark-theme');
+    const canvasTheme = readChartCanvasTheme(isDark);
+    const errorColor = canvasTheme.critical;
 
     // 1. Draw Minimap Box
     ctx.save();
-    ctx.fillStyle = isDark ? 'rgba(30, 41, 59, 0.4)' : 'rgba(241, 245, 249, 0.6)';
-    ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+    ctx.fillStyle = cssColorToRgba(canvasTheme.elevated, isDark ? 0.45 : 0.7);
+    ctx.strokeStyle = cssColorToRgba(canvasTheme.textMuted, 0.22);
     ctx.lineWidth = 1;
     ctx.beginPath();
     if (ctx.roundRect) {
@@ -188,14 +191,14 @@ export function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan 
     const vx = viewStart * rect.width;
     const vw = (viewEnd - viewStart) * rect.width;
     ctx.save();
-    ctx.fillStyle = isDark ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.08)';
-    ctx.strokeStyle = 'var(--accent-indigo)';
+    ctx.fillStyle = cssColorToRgba(canvasTheme.indigo, isDark ? 0.16 : 0.1);
+    ctx.strokeStyle = canvasTheme.indigo;
     ctx.lineWidth = 1.5;
     ctx.fillRect(vx, my, vw, mh);
     ctx.strokeRect(vx, my, vw, mh);
 
     // Viewport handles (lines/rects on edges)
-    ctx.fillStyle = 'var(--accent-indigo)';
+    ctx.fillStyle = canvasTheme.indigo;
     ctx.fillRect(vx, my, 4, mh);
     ctx.fillRect(vx + vw - 4, my, 4, mh);
 
@@ -211,9 +214,9 @@ export function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan 
 
     // 2. Draw Time Grid / Rulers (Zoom-Aware)
     ctx.save();
-    ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
+    ctx.strokeStyle = canvasTheme.gridDot;
     ctx.lineWidth = 1;
-    ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
+    ctx.fillStyle = canvasTheme.textMuted;
     ctx.font = '500 10px "Plus Jakarta Sans", sans-serif';
     ctx.textAlign = 'center';
 
@@ -281,7 +284,7 @@ export function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan 
       }
 
       ctx.save();
-      const baseColor = hasError ? '#e11d48' : getSvcColor(item.span.serviceName);
+      const baseColor = hasError ? errorColor : getSvcColor(item.span.serviceName);
       ctx.fillStyle = isHovered ? adjustColorBrightness(baseColor, 18) : baseColor;
       ctx.globalAlpha = matches ? (isHovered ? 1 : 0.92) : 0.22;
 
@@ -334,7 +337,7 @@ export function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan 
         ctx.lineWidth = 2.5;
         ctx.strokeRect(rx + 1, ry + 1, Math.max(1, rw - 2), barHeight - 2);
       } else if (hasError) {
-        ctx.strokeStyle = '#f43f5e';
+        ctx.strokeStyle = errorColor;
         ctx.lineWidth = 1.5;
         ctx.strokeRect(rx + 0.5, ry + 0.5, Math.max(1, rw - 1), barHeight - 1);
       }
@@ -728,7 +731,7 @@ export function FlameGraph({ spans, traceStartTime, traceDuration, onSelectSpan 
             Duration: {formatDuration(hoveredSpan.span.durationMs)} ({(hoveredSpan.span.durationMs / traceDuration * 100).toFixed(1)}%)
           </div>
           {isSpanError(hoveredSpan.span) && (
-            <div style={{ color: '#f43f5e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+            <div style={{ color: 'var(--chart-rose)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
               Execution Failed
             </div>
           )}

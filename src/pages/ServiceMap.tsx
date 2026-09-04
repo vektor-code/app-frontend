@@ -14,7 +14,7 @@ import IconPack from '../components/IconPack';
 import { KpiCard } from '../components/KpiCard';
 import { HealthFilterBar } from '../components/HealthFilterBar';
 import { useTranslation } from '../utils/i18n';
-import { traceListDisplayName } from '../utils/operationName';
+import { cssColorToRgba, readChartCanvasTheme, type ChartCanvasTheme } from '../utils/chartTheme';
 
 interface ServiceMapProps {
   namespace: string;
@@ -151,9 +151,9 @@ const trimCanvasText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: n
   return `${next}...`;
 };
 
-const getMapNodeTone = (node: ServiceStats, isInternet: boolean, isInfra: boolean) => {
+const getMapNodeTone = (node: ServiceStats, isInternet: boolean, isInfra: boolean, theme: ChartCanvasTheme) => {
   if (isInternet) {
-    return { color: '#64748b', label: 'Ext' };
+    return { color: theme.idle, label: 'Ext' };
   }
 
   const requestCount = node.requestCount || 0;
@@ -165,15 +165,15 @@ const getMapNodeTone = (node: ServiceStats, isInternet: boolean, isInfra: boolea
   const status = (node.status || '').toLowerCase();
 
   if (requestCount <= 0) {
-    return { color: '#94a3b8', label: 'Idle' };
+    return { color: theme.idle, label: 'Idle' };
   }
   if (node.errorCount > 0 || errorRate >= 2 || status === 'critical') {
-    return { color: '#e11d48', label: 'Critical' };
+    return { color: theme.critical, label: 'Critical' };
   }
   if (node.p95Ms >= 1000 || status === 'degraded') {
-    return { color: '#d97706', label: 'Degraded' };
+    return { color: theme.degraded, label: 'Degraded' };
   }
-  return { color: isInfra ? '#d97706' : '#4f46e5', label: 'Healthy' };
+  return { color: isInfra ? theme.healthyInfra : theme.healthy, label: 'Healthy' };
 };
 
 const formatMapLatency = (ms: number) => {
@@ -650,20 +650,20 @@ const drawInfraIcon = (
 
 
 // Colors for column namespace zones (DrawSQL-style)
-const getColumnTheme = (name: string, _index: number, isDark: boolean) => {
+const getColumnTheme = (name: string, _index: number, theme: ChartCanvasTheme) => {
   const slate = {
-    bg: isDark ? 'rgba(148, 163, 184, 0.04)' : 'rgba(15, 23, 42, 0.025)',
-    border: isDark ? 'rgba(148, 163, 184, 0.16)' : 'rgba(15, 23, 42, 0.1)',
-    headerBg: isDark ? 'rgba(148, 163, 184, 0.07)' : 'rgba(15, 23, 42, 0.04)',
-    text: isDark ? '#94a3b8' : '#475569',
+    bg: cssColorToRgba(theme.textMuted, 0.04),
+    border: cssColorToRgba(theme.textMuted, 0.16),
+    headerBg: cssColorToRgba(theme.textMuted, 0.07),
+    text: theme.textMuted,
   };
 
   if (name === 'Infrastructure') {
     return {
-      bg: isDark ? 'rgba(217, 119, 6, 0.05)' : 'rgba(217, 119, 6, 0.04)',
-      border: isDark ? 'rgba(217, 119, 6, 0.22)' : 'rgba(217, 119, 6, 0.14)',
-      headerBg: isDark ? 'rgba(217, 119, 6, 0.1)' : 'rgba(217, 119, 6, 0.06)',
-      text: isDark ? '#fbbf24' : '#b45309',
+      bg: cssColorToRgba(theme.healthyInfra, 0.06),
+      border: cssColorToRgba(theme.healthyInfra, 0.22),
+      headerBg: cssColorToRgba(theme.healthyInfra, 0.1),
+      text: theme.healthyInfra,
     };
   }
 
@@ -1497,9 +1497,10 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
       ctx.clearRect(0, 0, width, height);
 
       const isDark = document.body.classList.contains('dark-theme');
+      const canvasTheme = readChartCanvasTheme(isDark);
 
       // Background
-      ctx.fillStyle = isDark ? '#0b1120' : '#ffffff';
+      ctx.fillStyle = canvasTheme.canvas;
       ctx.fillRect(0, 0, width, height);
 
       // Apply zoom and pan transforms
@@ -1520,7 +1521,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         for (let y = gridStartY; y <= worldBottom; y += gridSize) {
           ctx.beginPath();
           ctx.arc(x, y, 1 / currentZoom, 0, Math.PI * 2);
-          ctx.fillStyle = isDark ? 'rgba(100, 116, 139, 0.22)' : 'rgba(148, 163, 184, 0.30)';
+          ctx.fillStyle = canvasTheme.gridDot;
           ctx.fill();
         }
       }
@@ -1635,7 +1636,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
         zoneHeadersRef.current.set(col.name, { zx, zy, zw, zh, colName: col.name });
 
-        const theme = getColumnTheme(col.name, c, isDark);
+        const theme = getColumnTheme(col.name, c, canvasTheme);
 
         // Draw zone bounding box background
         ctx.fillStyle = theme.bg;
@@ -1761,10 +1762,10 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.globalAlpha = shouldDim ? 0.05 : 1.0;
 
         ctx.strokeStyle = isError
-          ? (isDark ? 'rgba(244, 63, 94, 0.55)' : 'rgba(225, 29, 72, 0.45)')
+          ? cssColorToRgba(canvasTheme.critical, isDark ? 0.55 : 0.45)
           : isCritical
-            ? (isDark ? 'rgba(245, 158, 11, 0.5)' : 'rgba(217, 119, 6, 0.4)')
-            : (isDark ? 'rgba(148, 163, 184, 0.32)' : 'rgba(100, 116, 139, 0.28)');
+            ? cssColorToRgba(canvasTheme.degraded, isDark ? 0.5 : 0.4)
+            : canvasTheme.edgeMuted;
 
         ctx.lineWidth = Math.min(2.25, 1 + (contributionPercent / 100) * 1.25);
 
@@ -1781,10 +1782,10 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.lineTo(midPoint.x, midPoint.y);
         ctx.lineTo(midPoint.x + arrowLen * Math.cos(midPoint.angle + Math.PI / 6), midPoint.y + arrowLen * Math.sin(midPoint.angle + Math.PI / 6));
         ctx.strokeStyle = isError
-          ? (isDark ? 'rgba(244, 63, 94, 0.8)' : 'rgba(225, 29, 72, 0.7)')
+          ? cssColorToRgba(canvasTheme.critical, isDark ? 0.8 : 0.7)
           : isCritical
-            ? (isDark ? 'rgba(245, 158, 11, 0.75)' : 'rgba(217, 119, 6, 0.7)')
-            : (isDark ? 'rgba(148, 163, 184, 0.55)' : 'rgba(71, 85, 105, 0.45)');
+            ? cssColorToRgba(canvasTheme.degraded, isDark ? 0.75 : 0.7)
+            : canvasTheme.edgeMuted;
         ctx.lineWidth = 1.25;
         ctx.stroke();
 
@@ -1807,7 +1808,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         ctx.fill();
         ctx.stroke();
 
-        ctx.fillStyle = isError ? (isDark ? '#fb7185' : '#e11d48') : isCritical ? (isDark ? '#fbbf24' : '#b45309') : (isDark ? '#cbd5e1' : '#334155');
+        ctx.fillStyle = isError ? canvasTheme.critical : isCritical ? canvasTheme.degraded : canvasTheme.textSecondary;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(badgeText, midPoint.x, by + badgeHeight / 2);
@@ -1841,7 +1842,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         // Glowing dot
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, particle.isError ? 3.25 : 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = particle.isError ? '#f43f5e' : (isDark ? '#818cf8' : '#4338ca');
+        ctx.fillStyle = particle.isError ? canvasTheme.critical : canvasTheme.indigo;
         ctx.fill();
 
         // Floating operation label
@@ -1858,7 +1859,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           const lh = 14;
 
           // Label background pill
-          ctx.fillStyle = isDark ? 'rgba(15, 23, 42, 0.88)' : 'rgba(255, 255, 255, 0.92)';
+          ctx.fillStyle = isDark ? cssColorToRgba(canvasTheme.canvas, 0.92) : cssColorToRgba(canvasTheme.elevated, 0.96);
           ctx.beginPath();
           if (ctx.roundRect) {
             ctx.roundRect(lx, ly, lw, lh, 3);
@@ -1869,22 +1870,20 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
           // Label border
           ctx.strokeStyle = particle.isError
-            ? 'rgba(244, 63, 94, 0.5)'
-            : 'rgba(16, 185, 129, 0.5)';
+            ? cssColorToRgba(canvasTheme.critical, 0.5)
+            : cssColorToRgba(canvasTheme.indigo, 0.45);
           ctx.lineWidth = 0.5;
           ctx.stroke();
 
           // Label text
-          ctx.fillStyle = particle.isError
-            ? (isDark ? '#fb7185' : '#e11d48')
-            : (isDark ? '#cbd5e1' : '#334155');
+          ctx.fillStyle = particle.isError ? canvasTheme.critical : canvasTheme.textSecondary;
           ctx.textAlign = 'center';
           ctx.fillText(labelText, pos.x, ly + 10);
 
           // Trace ID micro-label
           if (particle.traceIdShort) {
             ctx.font = `500 7px ${MAP_MONO}`;
-            ctx.fillStyle = isDark ? 'rgba(148, 163, 184, 0.6)' : 'rgba(100, 116, 139, 0.6)';
+            ctx.fillStyle = isDark ? cssColorToRgba(canvasTheme.textMuted, 0.6) : cssColorToRgba(canvasTheme.textMuted, 0.7);
             ctx.fillText(particle.traceIdShort, pos.x, ly + lh + 8);
           }
         }
@@ -1904,7 +1903,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
         const hasErrors = node.errorCount > 0;
         const errRate = node.errorRate;
         const reqCount = node.requestCount;
-        const nodeTone = getMapNodeTone(node, isInternet, isInfra);
+        const nodeTone = getMapNodeTone(node, isInternet, isInfra, canvasTheme);
 
         // Highlight/dim logic
         const hs = highlightedServiceRef.current;
@@ -1922,14 +1921,12 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
         ctx.save();
 
-        ctx.fillStyle = isDark
-          ? (isInfra ? '#1a2330' : '#151c28')
-          : '#ffffff';
+        ctx.fillStyle = canvasTheme.elevated;
         ctx.strokeStyle = shouldDim
-          ? (isDark ? '#334155' : '#d0d7de')
+          ? cssColorToRgba(canvasTheme.textMuted, 0.35)
           : hasErrors
             ? nodeTone.color
-            : (isDark ? '#2a3544' : '#d0d7de');
+            : cssColorToRgba(canvasTheme.textMuted, 0.38);
         ctx.lineWidth = 1;
         ctx.setLineDash([]);
 
@@ -1988,8 +1985,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
             ctx.font = `600 11px ${MAP_SANS}`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = isDark ? '#fbbf24' : '#d97706';
-            const labelMaxW = Math.max(28, w - (iconX + logoW + 5 - rx) - 58);
+            ctx.fillStyle = canvasTheme.healthyInfra;
             ctx.fillText(trimCanvasText(ctx, 'MYGOV', labelMaxW), iconX + logoW + 5, iconY + iconSize / 2);
           } else {
             // Draw the custom icon at (iconX, iconY) with size (iconSize, iconSize)
@@ -1999,7 +1995,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
             ctx.font = `600 11px ${MAP_SANS}`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = isDark ? '#fbbf24' : '#d97706'; // Amber accent for infra system name
+            ctx.fillStyle = canvasTheme.healthyInfra;
             const systemName = parsed.system.toUpperCase();
             ctx.fillText(trimCanvasText(ctx, systemName, w - 98), rx + 38, iconY + iconSize / 2);
           }
@@ -2015,7 +2011,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
           // Draw body lines (Host/Detail)
           ctx.font = `500 10px ${MAP_MONO}`;
-          ctx.fillStyle = isDark ? '#cbd5e1' : '#334155';
+          ctx.fillStyle = canvasTheme.textSecondary;
           bodyLines.forEach((line, index) => {
             const lineY = ry + 42 + index * 12;
             const displayLine = trimCanvasText(ctx, line, w - 28);
@@ -2028,12 +2024,12 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           if (errRate > 0) {
             statsText += ` / ${errRate.toFixed(1)}% err`;
           }
-          ctx.fillStyle = errRate > 5 ? '#f43f5e' : (isDark ? '#94a3b8' : '#64748b');
+          ctx.fillStyle = errRate > 5 ? canvasTheme.critical : canvasTheme.textMuted;
           ctx.fillText(trimCanvasText(ctx, statsText, w - 88), rx + 12, ry + h - 11);
 
           const latencyText = `p95 ${formatMapLatency(node.p95Ms)}`;
           ctx.textAlign = 'right';
-          ctx.fillStyle = isDark ? '#e2e8f0' : '#1e293b';
+          ctx.fillStyle = canvasTheme.text;
           ctx.fillText(latencyText, rx + w - 12, ry + h - 11);
           ctx.textAlign = 'left';
         } else {
@@ -2075,7 +2071,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           ctx.font = `600 11px ${MAP_SANS}`;
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
-          ctx.fillStyle = isDark ? '#f1f5f9' : '#0f172a';
+          ctx.fillStyle = canvasTheme.text;
           const displayName = trimCanvasText(ctx, node.serviceName, nameMaxWidth);
           ctx.fillText(displayName, textX, ry + 21);
 
@@ -2086,11 +2082,11 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
             statsText += ` / ${errRate.toFixed(1)}% err`;
           }
 
-          ctx.fillStyle = errRate > 5 ? '#f43f5e' : (isDark ? '#94a3b8' : '#64748b');
+          ctx.fillStyle = errRate > 5 ? canvasTheme.critical : canvasTheme.textMuted;
           ctx.fillText(trimCanvasText(ctx, statsText, metricMaxWidth), textX, ry + 39);
 
           ctx.font = `500 9px ${MAP_SANS}`;
-          ctx.fillStyle = isDark ? '#e2e8f0' : '#1e293b';
+          ctx.fillStyle = canvasTheme.text;
           ctx.textAlign = 'right';
           ctx.fillText(`p95 ${formatMapLatency(node.p95Ms)}`, rx + w - 12, ry + h - 10);
           ctx.textAlign = 'left';
@@ -2098,7 +2094,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
 
         // Draw Resize Handle for Infra nodes
         if (isInfra) {
-          ctx.strokeStyle = isDark ? 'rgba(251, 191, 36, 0.6)' : 'rgba(217, 119, 6, 0.6)';
+          ctx.strokeStyle = cssColorToRgba(canvasTheme.healthyInfra, 0.55);
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(rx + w - 8, ry + h - 2);
@@ -2192,10 +2188,8 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
               const isInfra = isInfraNode(node);
               
               minimapCtx.fillStyle = isInternet
-                ? '#38bdf8'
-                : isInfra
-                  ? '#f59e0b'
-                  : node.errorCount > 0 ? '#f43f5e' : '#6366f1';
+                ? canvasTheme.idle
+                : getMapNodeTone(node, isInternet, isInfra, canvasTheme).color;
               
               const nX = (pos.x - w / 2) * scale + offsetX;
               const nY = (pos.y - h / 2) * scale + offsetY;
@@ -2217,8 +2211,8 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           const vpw = (vpRight - vpLeft) * scale;
           const vph = (vpBottom - vpTop) * scale;
 
-          minimapCtx.fillStyle = isDark ? 'rgba(99, 102, 241, 0.08)' : 'rgba(99, 102, 241, 0.05)';
-          minimapCtx.strokeStyle = 'rgba(99, 102, 241, 0.6)';
+          minimapCtx.fillStyle = cssColorToRgba(canvasTheme.indigo, isDark ? 0.1 : 0.06);
+          minimapCtx.strokeStyle = cssColorToRgba(canvasTheme.indigo, 0.55);
           minimapCtx.lineWidth = 1;
           minimapCtx.fillRect(vpx, vpy, vpw, vph);
           minimapCtx.strokeRect(vpx, vpy, vpw, vph);
@@ -2349,6 +2343,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
   };
 
   const isDarkTheme = document.body.classList.contains('dark-theme');
+  const mapChromeTheme = readChartCanvasTheme(isDarkTheme);
   const applicationNodes = activeNodes.filter(node => node.serviceName !== 'Internet' && !isInfraNode(node));
   const totalRequests = activeNodes.reduce((sum, node) => sum + node.requestCount, 0);
   const totalErrors = activeNodes.reduce((sum, node) => sum + node.errorCount, 0);
@@ -2551,7 +2546,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
                 {selectedNamespaces.length === filterableNamespaces.length ? t('Clear All') : t('Select All')}
               </button>
               {filterableNamespaces.map((ns, idx) => {
-                const theme = getColumnTheme(ns, idx, isDarkTheme);
+                const theme = getColumnTheme(ns, idx, mapChromeTheme);
                 const isSelected = selectedNamespaces.includes(ns);
                 return (
                   <button

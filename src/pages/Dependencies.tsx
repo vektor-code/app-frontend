@@ -27,6 +27,7 @@ import { techLogoFor } from '../components/TechIcon';
 import IconPack from '../components/IconPack';
 import { useColumnResize } from '../utils/useColumnResize';
 import { KpiCard } from '../components/KpiCard';
+import { SERIES_COLORS, STATUS_COLORS } from '../utils/chartTheme';
 
 interface DependenciesProps {
   namespace: string;
@@ -116,8 +117,8 @@ const Sparkline = React.memo(function Sparkline({ data, color }: { data: number[
 
   return (
     <svg className="dependency-sparkline" width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-      <path d={areaD} fill={color} opacity="0.10" />
-      <path d={pathD} fill="none" stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={areaD} fill={color} opacity="0.16" />
+      <path d={pathD} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 });
@@ -1076,9 +1077,9 @@ export default function Dependencies({ namespace }: DependenciesProps) {
                       <em>{selectedDependency.lastSeen ? new Date(selectedDependency.lastSeen).toLocaleString() : t('Last seen unavailable')}</em>
                     </div>
                     <div className="dependency-drawer-trends">
-                      <DependencyTrend label={t('Latency')} value={formatDependencyLatency(selectedDependency.avgDurationMs)} data={selectedDependency.latencyHistory} color="#3b82f6" />
-                      <DependencyTrend label={t('Traffic')} value={`${(selectedDependency.isActive ? selectedDependency.requestCount / 60 : 0).toFixed(1)} tpm`} data={selectedDependency.throughputHistory} color="#10b981" />
-                      <DependencyTrend label={t('Errors')} value={formatDependencyRate(selectedDependency.errorRate)} data={selectedDependency.errorsHistory} color="#ef4444" />
+                      <DependencyTrend label={t('Latency')} value={formatDependencyLatency(selectedDependency.avgDurationMs)} data={selectedDependency.latencyHistory} color="var(--chart-blue)" />
+                      <DependencyTrend label={t('Traffic')} value={`${(selectedDependency.isActive ? selectedDependency.requestCount / 60 : 0).toFixed(1)} tpm`} data={selectedDependency.throughputHistory} color="var(--chart-green)" />
+                      <DependencyTrend label={t('Errors')} value={formatDependencyRate(selectedDependency.errorRate)} data={selectedDependency.errorsHistory} color="var(--chart-rose)" />
                     </div>
                   </section>
 
@@ -1181,10 +1182,10 @@ function DependencyHealthChart({
   t: (k: string) => string;
 }) {
   const segments = [
-    { label: t('Healthy'), value: counts.healthy, color: '#10b981' },
-    { label: t('Watch'), value: counts.warning, color: '#f59e0b' },
-    { label: t('Critical'), value: counts.critical, color: '#f43f5e' },
-    { label: t('Inactive'), value: counts.idle, color: '#cbd5e1' },
+    { label: t('Healthy'), value: counts.healthy, color: STATUS_COLORS.healthy },
+    { label: t('Watch'), value: counts.warning, color: STATUS_COLORS.warning },
+    { label: t('Critical'), value: counts.critical, color: STATUS_COLORS.critical },
+    { label: t('Inactive'), value: counts.idle, color: STATUS_COLORS.idle },
   ];
 
   return (
@@ -1244,7 +1245,7 @@ function DependencyTrafficChart({
   loading?: boolean;
   t: (k: string) => string;
 }) {
-  const colors = ['#3157f6', '#7558ff', '#19beea', '#10b981', '#f59e0b'];
+  const colors = SERIES_COLORS;
   const maxCalls = Math.max(1, ...items.map(item => item.requestCount));
 
   return (
@@ -1432,7 +1433,7 @@ function DependencyRow({
       </div>
 
       <div className="dependency-cell metric">
-        <Sparkline data={item.latencyHistory} color="#3b82f6" />
+        <Sparkline data={item.latencyHistory} color="var(--chart-blue)" />
         <div>
           <strong>{formatDependencyLatency(item.avgDurationMs)}</strong>
           <span>{t('avg')}</span>
@@ -1440,7 +1441,7 @@ function DependencyRow({
       </div>
 
       <div className="dependency-cell metric">
-        <Sparkline data={item.throughputHistory} color="#10b981" />
+        <Sparkline data={item.throughputHistory} color="var(--chart-green)" />
         <div>
           <strong>{tpmVal.toFixed(1)}</strong>
           <span>{t('tpm')}</span>
@@ -1448,7 +1449,7 @@ function DependencyRow({
       </div>
 
       <div className="dependency-cell metric">
-        <Sparkline data={item.errorsHistory} color="#ef4444" />
+        <Sparkline data={item.errorsHistory} color="var(--chart-rose)" />
         <div>
           <strong className={item.errorRate > 0 ? 'danger' : ''}>{formatDependencyRate(item.errorRate)}</strong>
           <span>{formatDependencyNumber(item.errorCount)} {t('errors')}</span>

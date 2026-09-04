@@ -1,18 +1,4 @@
-/** Jaeger/Tempo-style palette: no rose/red so success bars never look like errors. */
-const SERVICE_PALETTE = [
-  '#4338ca',
-  '#2563eb',
-  '#0d9488',
-  '#7c3aed',
-  '#0891b2',
-  '#059669',
-  '#4f46e5',
-  '#0284c7',
-  '#6d28d9',
-  '#0f766e',
-  '#1d4ed8',
-  '#ca8a04',
-];
+import { SERVICE_PALETTE } from './chartTheme';
 
 function hashServiceName(name: string): number {
   let hash = 0;

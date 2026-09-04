@@ -6,6 +6,7 @@ import { getSpanDestination as getSpanDestination } from '../SpanTimeline';
 import { LANG_ICONS, stackIconKey } from '../LanguageIcon';
 import { TECH_LOGOS } from '../TechIcon';
 import { formatDuration as formatDuration, getSvcColor as getSvcColor } from '../../utils/traceDisplay';
+import { SERVICE_PALETTE } from '../../utils/chartTheme';
 import { TraceDetailIcon } from './TraceDetailIcon';
 
 // --- Trace Topology View Component ---
@@ -93,22 +94,11 @@ const getTopoIconKey = (name: string, spans: Span[] = []): string => {
 };
 
 const getNamespaceColor = (namespace: string): string => {
-  const colors = [
-    '#6366f1', // Indigo
-    '#10b981', // Emerald
-    '#f59e0b', // Amber
-    '#ec4899', // Pink
-    '#8b5cf6', // Violet
-    '#818cf8', // Periwinkle
-    '#f43f5e', // Rose
-    '#3b82f6', // Blue
-  ];
   let hash = 0;
   for (let i = 0; i < namespace.length; i++) {
     hash = namespace.charCodeAt(i) + ((hash << 5) - hash);
   }
-  const index = Math.abs(hash) % colors.length;
-  return colors[index];
+  return SERVICE_PALETTE[Math.abs(hash) % SERVICE_PALETTE.length];
 };
 
 export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelectSpan: (span: Span) => void }) {
@@ -415,10 +405,10 @@ export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelect
             <circle cx="2" cy="2" r="1" className="trace-topology-grid-dot" />
           </pattern>
           <marker id="topo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 2 L 10 5 L 0 8 z" fill="#6366f1" opacity="0.8" />
+            <path d="M 0 2 L 10 5 L 0 8 z" fill="var(--accent-indigo)" opacity="0.8" />
           </marker>
           <marker id="topo-arrow-err" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 2 L 10 5 L 0 8 z" fill="#f43f5e" />
+            <path d="M 0 2 L 10 5 L 0 8 z" fill="var(--chart-rose)" />
           </marker>
           <filter id="glow-err">
             <feGaussianBlur stdDeviation="3" result="blur" />
@@ -493,13 +483,13 @@ export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelect
                 <path d={pathD} stroke="transparent" strokeWidth="14" fill="none" style={{ cursor: 'pointer' }} />
                 <path
                   d={pathD}
-                  stroke={edge.hasError ? '#f43f5e' : isHov ? '#818cf8' : 'rgba(148, 163, 184, 0.25)'}
+                  stroke={edge.hasError ? 'var(--chart-rose)' : isHov ? 'var(--accent-indigo)' : 'color-mix(in srgb, var(--text-muted) 28%, transparent)'}
                   strokeWidth={isHov || edge.hasError ? 2.5 : 1.5}
                   fill="none"
                   style={{ transition: 'stroke 0.2s, stroke-width 0.2s' }}
                   markerEnd={edge.hasError ? 'url(#topo-arrow-err)' : 'url(#topo-arrow)'}
                 />
-                <circle r="3" fill={edge.hasError ? '#f43f5e' : '#818cf8'} opacity="0.8">
+                <circle r="3" fill={edge.hasError ? 'var(--chart-rose)' : 'var(--accent-indigo)'} opacity="0.8">
                   <animateMotion dur="3s" repeatCount="indefinite" path={pathD} />
                 </circle>
                 <foreignObject x={mx - 50} y={(y1 + y2) / 2 - 11} width="100" height="22" style={{ pointerEvents: 'none' }}>
@@ -516,9 +506,9 @@ export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelect
             const hasErr = node.errorCount > 0;
             const isHov = hoveredNode?.id === node.id;
             const serviceColor = getSvcColor(node.name);
-            const nodeCol = hasErr ? '#e11d48' : node.durationMs >= 1000 ? '#d97706' : serviceColor;
+            const nodeCol = hasErr ? 'var(--chart-rose)' : node.durationMs >= 1000 ? 'var(--chart-amber)' : serviceColor;
             const nodeStatus = hasErr ? 'ERR' : node.durationMs >= 1000 ? 'SLOW' : 'OK';
-            const borderCol = hasErr ? '#e11d48' : isHov ? serviceColor : 'var(--border-primary)';
+            const borderCol = hasErr ? 'var(--chart-rose)' : isHov ? serviceColor : 'var(--border-primary)';
 
             return (
               <g key={node.id} transform={`translate(${node.x}, ${node.y})`}
@@ -542,9 +532,9 @@ export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelect
                   style={{ transition: 'stroke 0.2s, stroke-width 0.2s, fill 0.2s' }}
                 />
                 <rect x="-74" y="-28" width="4" height="56" rx="2" ry="2" fill={nodeCol} />
-                <rect x="-64" y="8" width="128" height="1" fill="rgba(148, 163, 184, 0.14)" />
+                <rect x="-64" y="8" width="128" height="1" fill="color-mix(in srgb, var(--text-muted) 18%, transparent)" />
                 <g transform="translate(43, -21)" style={{ pointerEvents: 'none' }}>
-                  <rect width="26" height="14" rx="7" fill={`${nodeCol}22`} stroke={`${nodeCol}55`} />
+                  <rect width="26" height="14" rx="7" fill={`color-mix(in srgb, ${nodeCol} 14%, transparent)`} stroke={`color-mix(in srgb, ${nodeCol} 36%, transparent)`} />
                   <text x="13" y="9.5" textAnchor="middle" style={{ fill: nodeCol, fontSize: '6.5px', fontWeight: 800, fontFamily: 'var(--font-sans)' }}>
                     {nodeStatus}
                   </text>
@@ -555,7 +545,7 @@ export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelect
                   const iconUrl = iconKey ? TOPO_ICONS[iconKey] : '';
                   return iconUrl ? (
                     <foreignObject x="-62" y="-15" width="30" height="30">
-                      <div style={{ width: '30px', height: '30px', borderRadius: '8px', border: `1px solid ${nodeCol}44`, background: `${nodeCol}16`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ width: '30px', height: '30px', borderRadius: '8px', border: `1px solid color-mix(in srgb, ${nodeCol} 28%, transparent)`, background: `color-mix(in srgb, ${nodeCol} 10%, transparent)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <img src={iconUrl} alt={node.name} style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
                       </div>
                     </foreignObject>
@@ -570,13 +560,13 @@ export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelect
                   {node.name.length > 13 ? `${node.name.slice(0, 10)}...` : node.name}
                 </text>
                 {/* Duration */}
-                <text x={node.iconKey || getTopoIconKey(node.name, spans) ? "-24" : "-34"} y="13" style={{ fontSize: '9.5px', fontWeight: 600, fill: hasErr ? '#fb7185' : '#94a3b8', fontFamily: 'var(--font-mono)', pointerEvents: 'none' }}>
+                <text x={node.iconKey || getTopoIconKey(node.name, spans) ? "-24" : "-34"} y="13" style={{ fontSize: '9.5px', fontWeight: 600, fill: hasErr ? 'var(--chart-rose)' : 'var(--text-muted)', fontFamily: 'var(--font-mono)', pointerEvents: 'none' }}>
                   {formatDuration(node.durationMs)} / x{node.callCount}
                 </text>
                 {/* Error badge */}
                 {hasErr && (
                   <g transform="translate(60, -18)" style={{ pointerEvents: 'none' }}>
-                    <circle r="8" fill="#f43f5e" />
+                    <circle r="8" fill="var(--chart-rose)" />
                     <text x="0" y="3.5" textAnchor="middle" style={{ fill: '#fff', fontSize: '9px', fontWeight: 700 }}>!</text>
                   </g>
                 )}
@@ -607,7 +597,7 @@ export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelect
             <div>Avg Duration: <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{formatDuration(hoveredNode.durationMs)}</span></div>
           </div>
           {hoveredNode.errorCount > 0 && (
-            <div style={{ color: '#f43f5e', fontWeight: 700, marginTop: '6px', borderTop: '1px solid rgba(244, 63, 94, 0.2)', paddingTop: '6px' }}>
+            <div style={{ color: 'var(--chart-rose)', fontWeight: 700, marginTop: '6px', borderTop: '1px solid color-mix(in srgb, var(--chart-rose) 22%, transparent)', paddingTop: '6px' }}>
               {hoveredNode.errorCount} error(s) detected here
             </div>
           )}
@@ -623,7 +613,7 @@ export function TraceTopology({ spans, onSelectSpan }: { spans: Span[]; onSelect
             <div>Avg Latency: <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{formatDuration(hoveredEdge.avgDurationMs)}</span></div>
           </div>
           {hoveredEdge.hasError && (
-            <div style={{ color: '#f43f5e', fontWeight: 700, marginTop: '4px' }}>Errors on this path</div>
+            <div style={{ color: 'var(--chart-rose)', fontWeight: 700, marginTop: '4px' }}>Errors on this path</div>
           )}
         </div>,
         document.body

@@ -15,6 +15,7 @@ import IconPack from '../components/IconPack';
 import { NodeHealthCard } from '../components/NodeHealthCard';
 import type { HealthLevel } from '../components/NodeHealthCard.types';
 import { useColumnResize } from '../utils/useColumnResize';
+import { HEAT_SCALE, SERIES_COLORS, STATUS_COLORS } from '../utils/chartTheme';
 
 interface InfrastructureProps {
   namespace: string;
@@ -383,10 +384,10 @@ function UsageBar({ pct, label, compact = false }: { pct: number; label: string;
 }
 
 function gaugeStroke(tone: InfraTone | 'info'): string {
-  if (tone === 'critical') return '#f43f5e';
-  if (tone === 'warning') return '#d97706';
-  if (tone === 'ok') return '#059669';
-  return '#4338ca';
+  if (tone === 'critical') return STATUS_COLORS.critical;
+  if (tone === 'warning') return STATUS_COLORS.warning;
+  if (tone === 'ok') return STATUS_COLORS.healthy;
+  return STATUS_COLORS.info;
 }
 
 function RadialGauge({
@@ -1155,9 +1156,9 @@ function healthSegments(
   t: (k: string) => string,
 ): InfraDistributionSegment[] {
   return [
-    { label: t('Healthy'), value: counts.healthy, color: '#10b981' },
-    { label: t('Attention'), value: counts.warning, color: '#f59e0b' },
-    { label: t('Critical'), value: counts.critical, color: '#f43f5e' },
+    { label: t('Healthy'), value: counts.healthy, color: STATUS_COLORS.healthy },
+    { label: t('Attention'), value: counts.warning, color: STATUS_COLORS.warning },
+    { label: t('Critical'), value: counts.critical, color: STATUS_COLORS.critical },
   ];
 }
 
@@ -1195,9 +1196,9 @@ function InfraCapacityChart({
   t: (k: string) => string;
 }) {
   const metrics = [
-    { label: t('CPU'), value: cpu, valueLabel: formatPercent(cpu), color: '#3157f6' },
-    { label: t('Memory'), value: memory, valueLabel: formatPercent(memory), color: '#7558ff' },
-    { label: t('Pods'), value: pods, valueLabel: podLabel, color: '#19beea' },
+    { label: t('CPU'), value: cpu, valueLabel: formatPercent(cpu), color: SERIES_COLORS[0] },
+    { label: t('Memory'), value: memory, valueLabel: formatPercent(memory), color: SERIES_COLORS[2] },
+    { label: t('Pods'), value: pods, valueLabel: podLabel, color: SERIES_COLORS[1] },
   ];
   const peak = Math.max(cpu, memory, pods);
 
@@ -1456,9 +1457,9 @@ function InfraNodeMatrix({
                   <span>{nodeRole(node) === 'master' ? t('Master') : t('Worker')} · {formatCompact(node.pods)} {t('pods')}</span>
                 </div>
               </div>
-              <InfraHeatCell value={cpu} detail={formatCpu(nodeCpuLoad(node))} color="#3157f6" />
-              <InfraHeatCell value={memory} detail={formatMem(nodeMemLoad(node))} color="#7558ff" />
-              <InfraHeatCell value={podsUsed} detail={formatCompact(node.pods)} color="#19beea" />
+              <InfraHeatCell value={cpu} detail={formatCpu(nodeCpuLoad(node))} color={SERIES_COLORS[0]} />
+              <InfraHeatCell value={memory} detail={formatMem(nodeMemLoad(node))} color={SERIES_COLORS[2]} />
+              <InfraHeatCell value={podsUsed} detail={formatCompact(node.pods)} color={SERIES_COLORS[1]} />
               <div className="infra-node-health-cell">
                 <span className={`infra-status-chip ${tone}`}>
                   <IconPack src={statusIconForTone(tone)} size={12} />
@@ -1544,11 +1545,11 @@ function InfraNamespaceFootprint({
 
 function InfraPressureHistogram({ values, t }: { values: number[]; t: (k: string) => string }) {
   const buckets = [
-    { label: '0–25%', min: 0, max: 25, color: '#3157f6' },
-    { label: '25–50%', min: 25, max: 50, color: '#19beea' },
-    { label: '50–75%', min: 50, max: 75, color: '#10b981' },
-    { label: '75–90%', min: 75, max: 90, color: '#f59e0b' },
-    { label: '90%+', min: 90, max: Number.POSITIVE_INFINITY, color: '#f43f5e' },
+    { label: '0–25%', min: 0, max: 25, color: HEAT_SCALE[0] },
+    { label: '25–50%', min: 25, max: 50, color: HEAT_SCALE[1] },
+    { label: '50–75%', min: 50, max: 75, color: HEAT_SCALE[2] },
+    { label: '75–90%', min: 75, max: 90, color: HEAT_SCALE[3] },
+    { label: '90%+', min: 90, max: Number.POSITIVE_INFINITY, color: HEAT_SCALE[4] },
   ].map(bucket => ({
     ...bucket,
     count: values.filter(value => value >= bucket.min && value < bucket.max).length,

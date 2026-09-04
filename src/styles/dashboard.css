@@ -171,6 +171,12 @@
   color: var(--text-tertiary);
 }
 
+.dashboard-page .apm-chart-legend i {
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+}
+
 .dashboard-page .apm-chart-stage {
   height: 220px;
   overflow: visible;
@@ -264,15 +270,11 @@
 
 .dashboard-page .apm-error-board-track {
   position: relative;
-  height: 28px;
+  height: 16px;
 }
 
 .dashboard-page .apm-error-board-share {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--critical-rose) 12%, transparent);
-  pointer-events: none;
+  display: none;
 }
 
 .dashboard-page .apm-error-board-bars {
@@ -280,37 +282,38 @@
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(var(--error-buckets, 12), minmax(0, 1fr));
-  gap: 3px;
-  align-items: end;
+  gap: 2px;
+  align-items: stretch;
   width: 100%;
   height: 100%;
 }
 
 .dashboard-page .apm-error-board-bar {
   width: 100%;
-  min-height: 3px;
+  height: 100%;
+  min-height: 0;
   padding: 0;
   border: 0;
-  border-radius: 2px 2px 1px 1px;
-  background: color-mix(in srgb, var(--neutral-muted) 28%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-muted) 12%, var(--bg-tertiary));
   cursor: pointer;
 }
 
 .dashboard-page .apm-error-board-bar.healthy,
 .dashboard-page .apm-error-board-bar.empty {
-  background: color-mix(in srgb, var(--neutral-muted) 22%, transparent);
+  background: color-mix(in srgb, var(--text-muted) 12%, var(--bg-tertiary));
 }
 
 .dashboard-page .apm-error-board-bar.minor {
-  background: color-mix(in srgb, var(--critical-rose) 48%, transparent);
+  background: color-mix(in srgb, var(--chart-rose) 38%, var(--bg-secondary));
 }
 
 .dashboard-page .apm-error-board-bar.warning {
-  background: color-mix(in srgb, var(--critical-rose) 78%, var(--bg-secondary));
+  background: color-mix(in srgb, var(--chart-rose) 68%, var(--bg-secondary));
 }
 
 .dashboard-page .apm-error-board-bar.critical {
-  background: var(--critical-rose);
+  background: var(--chart-rose);
   box-shadow: none;
 }
 
