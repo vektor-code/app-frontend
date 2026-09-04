@@ -180,11 +180,9 @@
 }
 
 .span-drawer-header {
-  padding: 16px 20px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent-indigo) 18%, var(--border-primary));
-  background:
-    radial-gradient(420px 80px at 100% 0%, color-mix(in srgb, var(--accent-cyan) 12%, transparent), transparent 70%),
-    linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 70%, var(--accent-indigo) 8%), var(--bg-secondary));
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
 }
 
 .span-drawer-title-row {
@@ -215,6 +213,13 @@
 .span-drawer-heading {
   min-width: 0;
   flex: 1;
+}
+
+.span-drawer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 .span-drawer-kicker {

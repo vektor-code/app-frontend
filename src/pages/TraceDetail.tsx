@@ -205,8 +205,6 @@ export default function TraceDetail() {
   const [selectedSpan, setSelectedSpan] = useState<Span | null>(null);
   const navigate = useNavigate();
 
-  const [sidebarWidth, setSidebarWidth] = useState(540);
-
   // Trace ID copy animation
   const [copiedTraceId, setCopiedTraceId] = useState(false);
 
@@ -733,8 +731,8 @@ export default function TraceDetail() {
         <SideDrawer
           open={Boolean(selectedSpan)}
           onClose={() => setSelectedSpan(null)}
-          width={sidebarWidth}
-          onWidthChange={setSidebarWidth}
+          persistKey="span"
+          defaultWidth={540}
           minWidth={360}
           ariaLabel={t('Span details')}
         >

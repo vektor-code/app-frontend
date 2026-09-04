@@ -23,6 +23,7 @@ import type { Span } from '../../entities';
 import { getSpanDestination as getSpanDestination } from '../SpanTimeline';
 import { isHttpMethodAttribute, isHttpStatusAttribute, isValidHttpStatus, normalizeHttpMethod, preferHttpStatusTag, readHttpStatus } from '../../utils/httpTelemetry';
 import { useTranslation } from '../../utils/i18n';
+import { DrawerDockControls } from '../SideDrawer';
 import { displayOperationName as displayOperationName } from '../../utils/operationName';
 import { isMissingHttpResponse, isSpanError as isSpanError } from '../../utils/spanStatus';
 import { getSpanDependency, getQuerySummary, getQueryText } from '../../utils/dependency';
@@ -371,9 +372,12 @@ export function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerCo
               {span.namespace || 'default'}
             </p>
           </div>
-          <button type="button" className="span-drawer-close" onClick={onClose} title={t('Close details')}>
-            <X size={15} strokeWidth={2.3} />
-          </button>
+          <div className="span-drawer-header-actions">
+            <DrawerDockControls />
+            <button type="button" className="span-drawer-close" onClick={onClose} title={t('Close details')}>
+              <X size={15} strokeWidth={2.3} />
+            </button>
+          </div>
         </div>
         <div className="span-drawer-chips">
           <span className={`span-drawer-chip ${hasError ? 'is-error' : 'is-ok'}`}>

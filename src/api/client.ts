@@ -33,6 +33,8 @@ import {
   mockInfrastructure,
   mockLatencyDistribution,
   mockNamespaces,
+  mockNamespaceStatuses,
+  mockServiceMap,
   mockStats,
   mockTimeseries,
   mockTopEndpoints,
@@ -288,6 +290,7 @@ class ApiClient {
     return this.request<{ success: boolean }>(`/admin/permission-templates/${encodeURIComponent(name)}`, { method: 'DELETE' });
   }
   getNamespaceStatuses(cluster?: string) {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockNamespaceStatuses());
     const qs = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
     return this.get<{ cluster?: string; enabled: string[]; disabled: string[] }>(`/admin/namespaces${qs}`);
   }
@@ -391,6 +394,7 @@ class ApiClient {
     return this.get<{ services: ServiceStats[] }>(`/services${qs}`);
   }
   getServiceMap(namespace?: string) {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockServiceMap(namespace));
     const qs = namespace ? `?namespace=${namespace}` : '';
     return this.get<ServiceMapData>(`/servicemap${qs}`);
   }

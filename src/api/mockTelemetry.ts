@@ -7,6 +7,7 @@ import type {
   LatencyDistribution,
   NamespaceStats,
   ServiceErrorSeries,
+  ServiceMapData,
   ServiceStats,
   Span,
   TimeseriesBucket,
@@ -850,4 +851,72 @@ export function mockTraceInvestigation(id: string): TraceInvestigation {
     skipReason: 'Live Kubernetes verification is not available in the local mock session',
     conclusion: 'Use the span timeline and error events on this trace.',
   };
+}
+
+export function mockNamespaceStatuses() {
+  const names = [...new Set(SERVICES.map((service) => service.namespace))];
+  return { enabled: names, disabled: [] as string[] };
+}
+
+export function mockServiceMap(namespace?: string): ServiceMapData {
+  const apps = scopedServices(namespace);
+  const internet: ServiceStats = {
+    serviceName: 'Internet',
+    namespace: 'Internet',
+    requestCount: 0,
+    errorCount: 0,
+    errorRate: 0,
+    p50Ms: 0,
+    p95Ms: 0,
+    p99Ms: 0,
+    healthScore: 100,
+    status: 'healthy',
+    lastSeen: new Date().toISOString(),
+  };
+  const postgres: ServiceStats = {
+    serviceName: 'PostgreSQL',
+    namespace: namespace || 'production',
+    cluster: 'eu-west-1',
+    requestCount: 12640,
+    errorCount: 18,
+    errorRate: 0.14,
+    p50Ms: 6,
+    p95Ms: 22,
+    p99Ms: 54,
+    healthScore: 94,
+    status: 'healthy',
+    language: 'go',
+    isInfrastructure: true,
+    lastSeen: new Date().toISOString(),
+  };
+  const nodes = namespace === 'staging'
+    ? [internet, ...apps]
+    : [internet, ...apps, postgres];
+
+  const edge = (
+    source: string,
+    target: string,
+    callCount: number,
+    errorCount: number,
+    avgDurationMs: number,
+    sourceNamespace = 'production',
+    targetNamespace = sourceNamespace,
+  ) => ({ source, target, sourceNamespace, targetNamespace, callCount, errorCount, avgDurationMs });
+
+  const edges = [
+    edge('Internet', 'gateway', 41280, 38, 12, 'Internet', 'production'),
+    edge('gateway', 'checkout-api', 18420, 214, 38),
+    edge('gateway', 'identity', 22140, 6, 8),
+    edge('gateway', 'cart-service', 15680, 44, 22),
+    edge('checkout-api', 'payments', 9340, 312, 86),
+    edge('checkout-api', 'PostgreSQL', 8420, 12, 48),
+    edge('cart-service', 'PostgreSQL', 4220, 6, 18),
+    edge('identity', 'PostgreSQL', 3180, 0, 9),
+    edge('checkout-api', 'notifications', 860, 2, 24, 'production', 'staging'),
+  ].filter((item) => {
+    if (!namespace) return true;
+    return item.sourceNamespace === namespace || item.targetNamespace === namespace || item.source === 'Internet';
+  });
+
+  return { namespace: namespace || 'all', nodes, edges };
 }

@@ -441,18 +441,30 @@
   cursor: pointer;
 }
 
-.services-filter-group button i {
+.services-filter-group button i,
+.apm-dashboard .services-filter-group button > i {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: currentColor;
+  background: var(--accent-indigo);
 }
 
-.services-filter-group button.healthy { color: var(--accent-emerald); }
-.services-filter-group button.warning { color: var(--accent-amber); }
-.services-filter-group button.critical { color: var(--accent-rose); }
+.services-filter-group button.healthy,
+.apm-dashboard .services-filter-group button.healthy { color: var(--accent-emerald); }
+.services-filter-group button.warning,
+.apm-dashboard .services-filter-group button.warning { color: var(--accent-amber); }
+.services-filter-group button.critical,
+.apm-dashboard .services-filter-group button.critical { color: var(--accent-rose); }
 
-.services-filter-group button.active {
+.services-filter-group button.healthy i,
+.apm-dashboard .services-filter-group button.healthy > i { background: var(--accent-emerald); }
+.services-filter-group button.warning i,
+.apm-dashboard .services-filter-group button.warning > i { background: var(--accent-amber); }
+.services-filter-group button.critical i,
+.apm-dashboard .services-filter-group button.critical > i { background: var(--accent-rose); }
+
+.services-filter-group button.active,
+.apm-dashboard .services-filter-group button.active {
   background: color-mix(in srgb, var(--accent-indigo) 10%, transparent);
   border-color: color-mix(in srgb, var(--accent-indigo) 28%, var(--border-primary));
   color: var(--text-primary);
@@ -1122,8 +1134,15 @@
   background: transparent;
 }
 
+.service-map-page.apm-dashboard {
+  max-width: none;
+  min-height: calc(100dvh - 88px);
+  gap: 12px;
+  padding-bottom: 12px;
+}
+
 .service-map-page .apm-dashboard-header {
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 
 .service-map-page .service-map-kpi-grid,
@@ -1137,10 +1156,10 @@
 
 .service-map-page .service-map-toolbar {
   margin: 0 0 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--border-primary);
+  padding: 8px 10px;
+  border: 1px solid var(--obs-panel-border);
   border-radius: 10px;
-  background: var(--bg-secondary);
+  background: var(--obs-panel-bg);
   box-shadow: none;
 }
 
@@ -1203,12 +1222,74 @@
   font-weight: 550;
 }
 
+.service-map-page .service-map-workbench {
+  flex: 1 1 auto;
+  min-height: max(680px, calc(100dvh - 340px));
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+}
+
 .service-map-page .service-map-shell,
 .service-map-page .service-map-panel {
-  border: 1px solid var(--border-primary);
+  overflow: hidden;
+  border: 1px solid var(--obs-panel-border);
   border-radius: 10px;
-  background: var(--bg-secondary);
+  background: var(--obs-panel-bg);
   box-shadow: none;
+}
+
+.service-map-page .service-map-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.service-map-page .service-map-shell-header {
+  flex: 0 0 auto;
+}
+
+.service-map-page .service-map-canvas-area {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: max(620px, calc(100dvh - 400px));
+  height: 100%;
+  background: var(--obs-panel-bg);
+}
+
+.service-map-page .service-map-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.service-map-page .service-map-insights-rail {
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.service-map-page .service-map-insights-rail .service-map-panel {
+  min-height: 0;
+  padding: 0;
+}
+
+@media (max-width: 1180px) {
+  .service-map-page .service-map-workbench {
+    grid-template-columns: 1fr;
+    min-height: max(640px, 70vh);
+  }
+
+  .service-map-page .service-map-canvas-area {
+    min-height: max(640px, 70vh);
+  }
+
+  .service-map-page .service-map-insights-rail {
+    height: auto;
+  }
 }
 
 .service-map-page .service-map-shell-header,
@@ -1250,34 +1331,55 @@
 .service-map-page .service-map-path-card,
 .service-map-page .service-map-connection-card,
 .service-map-page .service-map-trace-card {
-  padding: 8px 10px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
+  --signal-card-color: var(--neutral-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--obs-panel-border);
+  border-radius: 10px;
+  background-color: var(--obs-panel-bg);
+  background-image: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--signal-card-color) 9%, var(--obs-panel-bg)) 0%,
+    var(--obs-panel-bg) 62%
+  );
   box-shadow: none;
   transform: none;
+  text-align: left;
+}
+
+.service-map-page .service-map-node-card.healthy,
+.service-map-page .service-map-path-card.healthy,
+.service-map-page .service-map-connection-card.healthy {
+  --signal-card-color: var(--success-emerald);
+}
+
+.service-map-page .service-map-node-card.warning,
+.service-map-page .service-map-path-card.warning,
+.service-map-page .service-map-connection-card.warning {
+  --signal-card-color: var(--warning-amber);
+}
+
+.service-map-page .service-map-node-card.critical,
+.service-map-page .service-map-path-card.critical,
+.service-map-page .service-map-connection-card.critical {
+  --signal-card-color: var(--critical-rose);
 }
 
 .service-map-page .service-map-node-card:hover,
 .service-map-page .service-map-path-card:hover,
 .service-map-page .service-map-connection-card:hover,
 .service-map-page .service-map-trace-card:hover {
-  border-color: transparent;
-  background: var(--bg-hover);
+  border-color: var(--border-secondary);
+  background-image: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--signal-card-color) 13%, var(--obs-panel-bg)) 0%,
+    var(--obs-panel-bg) 66%
+  );
   box-shadow: none;
   transform: none;
-}
-
-.service-map-page .service-map-node-card.healthy,
-.service-map-page .service-map-path-card.healthy,
-.service-map-page .service-map-connection-card.healthy,
-.service-map-page .service-map-node-card.warning,
-.service-map-page .service-map-path-card.warning,
-.service-map-page .service-map-connection-card.warning,
-.service-map-page .service-map-node-card.critical,
-.service-map-page .service-map-path-card.critical,
-.service-map-page .service-map-connection-card.critical {
-  border-left-color: transparent;
 }
 
 .service-map-page .service-map-node-card-top {
@@ -1297,33 +1399,57 @@
 
 .service-map-page .service-map-node-card-top em,
 .service-map-page .service-map-connection-card span {
+  display: block;
+  margin-top: 2px;
   color: var(--text-muted);
   font-size: 12px;
   font-style: normal;
   font-weight: 500;
 }
 
-.service-map-page .service-map-node-card-metrics,
-.service-map-page .service-map-path-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 8px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
+.service-map-page .service-map-node-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
 }
 
-.service-map-page .service-map-node-card-metrics span,
-.service-map-page .service-map-path-metrics span {
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  font-size: 11px;
-  font-weight: 500;
+.service-map-page .service-map-node-kpis > span {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+
+.service-map-page .service-map-node-kpis em {
+  display: block;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 550;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.service-map-page .service-map-node-kpis strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.service-map-page .service-map-node-kpis > span.warning strong {
+  color: var(--warning-amber);
+}
+
+.service-map-page .service-map-node-kpis > span.critical strong {
+  color: var(--critical-rose);
 }
 
 .service-map-page .service-map-path-main {
@@ -1346,8 +1472,10 @@
 .service-map-page .service-map-node-list,
 .service-map-page .service-map-path-list,
 .service-map-page .service-map-connection-list {
-  gap: 2px;
-  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
 }
 
 .service-map-page .service-map-metric-box {

@@ -319,11 +319,6 @@ export default function Services({ namespace }: ServicesProps) {
           <h1>{t('Services')}</h1>
         </div>
         <div className="apm-header-meta">
-          <div className="apm-health-chips" aria-label={t('Service health')}>
-            <span className="healthy">{summary.healthy} {t('healthy')}</span>
-            <span className="warning">{summary.degraded} {t('degraded')}</span>
-            <span className="critical">{summary.critical} {t('critical')}</span>
-          </div>
           <div className="apm-live-pill">
             <span />
             {t('Live')}

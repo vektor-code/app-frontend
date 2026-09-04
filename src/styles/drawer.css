@@ -2,24 +2,10 @@
   z-index: var(--z-drawer);
 }
 
-.side-drawer-backdrop {
-  background:
-    radial-gradient(1200px 480px at 100% 0%, color-mix(in srgb, var(--accent-indigo) 16%, transparent), transparent 55%),
-    rgba(8, 12, 22, 0.52);
-}
-
-.side-drawer-panel {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 88%, var(--accent-indigo) 12%), var(--bg-primary) 28%);
-  border-left: 1px solid color-mix(in srgb, var(--accent-indigo) 28%, var(--border-primary));
-}
-
 .span-drawer-header,
 .span-drawer-tabs,
 .trace-quicklook-header {
-  background:
-    radial-gradient(420px 90px at 100% 0%, color-mix(in srgb, var(--accent-cyan) 12%, transparent), transparent 70%),
-    linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 70%, var(--accent-indigo) 8%), var(--bg-secondary));
+  background: var(--bg-secondary);
 }
 
 .span-drawer-kind-tile {
@@ -27,40 +13,27 @@
 }
 
 .span-drawer-tabs button.active {
-  border-bottom-color: var(--accent-cyan);
+  border-bottom-color: var(--accent-indigo);
   color: var(--accent-indigo);
-  text-shadow: 0 0 18px var(--apm-glow);
 }
 
-.span-drawer-metrics article,
-.trace-drawer-metric {
+.span-drawer-metrics article {
   position: relative;
   overflow: hidden;
-  border-color: color-mix(in srgb, var(--accent-indigo) 16%, var(--border-primary));
-  background: color-mix(in srgb, var(--bg-tertiary) 72%, transparent);
-}
-
-.span-drawer-metrics article::before,
-.trace-drawer-metric::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto auto 0;
-  width: 100%;
-  height: 2px;
-  background: linear-gradient(90deg, var(--accent-cyan), transparent 72%);
+  border-color: var(--obs-panel-border, var(--border-primary));
+  background: var(--obs-panel-bg, var(--bg-secondary));
 }
 
 .span-drawer-pre.is-code,
 .payload-code-block,
 .query-code-block {
-  background: linear-gradient(180deg, color-mix(in srgb, #070b12 88%, var(--accent-indigo)), #070b12);
-  border: 1px solid color-mix(in srgb, var(--accent-cyan) 16%, var(--border-primary));
-  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.25);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
 }
 
 .span-drawer-search input:focus,
 .waterfall-search:focus,
 .trace-flame-search input:focus {
-  border-color: color-mix(in srgb, var(--accent-cyan) 55%, var(--border-primary));
-  box-shadow: 0 0 0 3px var(--apm-glow);
+  border-color: color-mix(in srgb, var(--accent-indigo) 45%, var(--border-primary));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-indigo) 16%, transparent);
 }

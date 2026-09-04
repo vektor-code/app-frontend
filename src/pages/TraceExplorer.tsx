@@ -26,13 +26,23 @@ import type { EndpointStat, TimeseriesData, TraceListItem } from '../entities';
 import { NoDataState } from '../components/DataState';
 import CustomSelect from '../components/CustomSelect';
 import LanguageIcon from '../components/LanguageIcon';
-import IconPack from '../components/IconPack';
 import { KpiCard } from '../components/KpiCard';
 import { useTranslation } from '../utils/i18n';
 import { displayOperationName, traceListDisplayName } from '../utils/operationName';
 import { useColumnResize } from '../utils/useColumnResize';
-import SideDrawer from '../components/SideDrawer';
+import SideDrawer, { DrawerDockControls } from '../components/SideDrawer';
 import { formatDuration, getServiceColor as getServiceColor } from '../utils/traceDisplay';
+import {
+  ArrowRight as FlowArrow,
+  CheckCircle,
+  Stack,
+  Timer,
+  TreeStructure,
+  Warning,
+  WarningCircle,
+  X as PhosphorX,
+  type Icon,
+} from '@phosphor-icons/react';
 
 interface TraceExplorerProps {
   namespace: string;
@@ -82,13 +92,13 @@ const traceColumnMinimums: Record<TraceColumn, number> = {
 const endpointColumnOrder: EndpointColumn[] = ['transaction', 'latency', 'throughput', 'errors', 'impact'];
 const traceColumnOrder: TraceColumn[] = ['trace', 'status', 'flow', 'duration', 'spans'];
 
-const TRACE_DRAWER_ICONS = {
-  duration: '/observability-icons/clock-bolt.svg',
-  spans: '/observability-icons/route.svg',
-  status: '/observability-icons/shield-check.svg',
-  services: '/observability-icons/sitemap.svg',
-  alert: '/observability-icons/alert-triangle.svg'
-} as const;
+const TRACE_DRAWER_ICONS: Record<'duration' | 'spans' | 'status' | 'services' | 'alert', Icon> = {
+  duration: Timer,
+  spans: TreeStructure,
+  status: CheckCircle,
+  services: Stack,
+  alert: WarningCircle,
+};
 
 export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps) {
   const { t } = useTranslation();
@@ -963,7 +973,7 @@ function TraceQuickLook({
   const serviceCount = new Set([trace.serviceName, ...flow].filter(Boolean)).size;
 
   return (
-    <SideDrawer open onClose={onClose} width={480} ariaLabel={t('Trace detail')}>
+    <SideDrawer open onClose={onClose} persistKey="trace" defaultWidth={480} minWidth={360} ariaLabel={t('Trace detail')}>
       <aside className={`trace-quicklook ${statusTone}`}>
         <header className="trace-quicklook-header">
           <div className="trace-quicklook-title">
@@ -977,7 +987,12 @@ function TraceQuickLook({
               <span className={`trace-status ${statusTone}`}>{statusText}</span>
             </div>
           </div>
-          <button className="modal-close trace-drawer-close" onClick={onClose}>x</button>
+          <div className="trace-quicklook-header-actions">
+            <DrawerDockControls />
+            <button type="button" className="trace-drawer-close" onClick={onClose} title={t('Close')}>
+              <PhosphorX size={16} weight="regular" />
+            </button>
+          </div>
         </header>
 
         <div className="trace-quicklook-body">
@@ -1032,7 +1047,11 @@ function TraceQuickLook({
               <div className="trace-flow expanded trace-drawer-flow">
                 {flow.map((service, idx) => (
                   <React.Fragment key={`${service}:${idx}`}>
-                    {idx > 0 && <span className="trace-flow-arrow">{'->'}</span>}
+                    {idx > 0 && (
+                      <span className="trace-flow-arrow" aria-hidden="true">
+                        <FlowArrow size={12} weight="bold" />
+                      </span>
+                    )}
                     <em style={{ color: getServiceColor(service), background: `${getServiceColor(service)}18` }}>{service}</em>
                   </React.Fragment>
                 ))}
@@ -1042,7 +1061,7 @@ function TraceQuickLook({
 
           {trace.hasError && trace.errorSummary && (
             <section className="trace-quicklook-error">
-              <IconPack src={TRACE_DRAWER_ICONS.alert} className="trace-drawer-error-icon" />
+              <Warning size={18} weight="fill" className="trace-drawer-error-icon" />
               <div>
                 <strong>{trace.errorType || t('Error')}</strong>
                 <span>{trace.errorSummary}</span>
@@ -1073,14 +1092,15 @@ function TraceDrawerMetric({
   detail: string;
   tone: Tone;
 }) {
+  const MetricIcon = icon === 'alert' ? WarningCircle : TRACE_DRAWER_ICONS[icon];
   return (
-    <div className={`trace-drawer-metric ${tone}`}>
-      <IconPack src={TRACE_DRAWER_ICONS[icon]} className="trace-drawer-metric-icon" />
-      <div>
+    <div className={`trace-drawer-kpi ${tone}`}>
+      <div className="trace-drawer-kpi-topline">
         <span>{label}</span>
-        <strong>{value}</strong>
-        <em>{detail}</em>
+        <MetricIcon size={16} weight="regular" />
       </div>
+      <strong>{value}</strong>
+      <p>{detail}</p>
     </div>
   );
 }
