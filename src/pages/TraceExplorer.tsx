@@ -12,7 +12,10 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
+  Clock,
   GripVertical,
+  Hash,
+  LayoutList,
   RefreshCw,
   RotateCcw,
   Search,
@@ -538,11 +541,21 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
       <section className="traces-workbench">
         <div className="traces-toolbar">
           <div className="traces-tabs" role="tablist" aria-label={t('Trace views')}>
-            <button role="tab" aria-selected={activeTab === 'top'} className={activeTab === 'top' ? 'active' : ''} onClick={() => setActiveTab('top')} type="button">{t('Top transactions')}</button>
-            <button role="tab" aria-selected={activeTab === 'explorer'} className={activeTab === 'explorer' ? 'active' : ''} onClick={() => setActiveTab('explorer')} type="button">{t('Explorer')}</button>
+            <button role="tab" aria-selected={activeTab === 'top'} className={activeTab === 'top' ? 'active' : ''} onClick={() => setActiveTab('top')} type="button">
+              <LayoutList size={15} strokeWidth={1.8} aria-hidden />
+              {t('Top transactions')}
+            </button>
+            <button role="tab" aria-selected={activeTab === 'explorer'} className={activeTab === 'explorer' ? 'active' : ''} onClick={() => setActiveTab('explorer')} type="button">
+              <Search size={15} strokeWidth={1.8} aria-hidden />
+              {t('Explorer')}
+            </button>
+          </div>
+          <div className="traces-query-bar">
+            <FilterInput compact icon="search" label={t('Operation')} value={operationFilter} onChange={value => setFilterVal('operation', value)} placeholder={t('Search operations, routes…')} />
+            <FilterInput compact icon="id" label={t('Trace ID')} value={traceIdFilter} onChange={value => setFilterVal('traceId', value)} placeholder={t('Paste a trace ID')} />
           </div>
           <div className="traces-toolbar-actions">
-            <FilterSelect label={t('Window')} value={timeRangeFilter} onChange={value => setFilterVal('timeRange', value)} options={[
+            <FilterSelect compact icon={<Clock size={14} strokeWidth={1.8} aria-hidden />} label={t('Window')} value={timeRangeFilter} onChange={value => setFilterVal('timeRange', value)} options={[
               { value: '15m', label: t('15m') },
               { value: '1h', label: t('1h') },
               { value: '24h', label: t('24h') },
@@ -552,6 +565,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
               { value: 'all', label: t('All') },
             ]} />
             <FilterSelect
+              compact
               label={t('Sort')}
               value={sortBy}
               onChange={value => {
@@ -560,34 +574,31 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
               }}
               options={sortOptions}
             />
-            <button type="button" className="traces-refresh-btn" onClick={() => { void loadTraces(); }}>
-              <RefreshCw size={14} />
-              {t('Refresh')}
+            <button type="button" className={`traces-refresh-btn ${loading ? 'is-busy' : ''}`} onClick={() => { void loadTraces(); }} title={t('Refresh')} aria-label={t('Refresh')} aria-busy={loading}>
+              <RefreshCw size={15} strokeWidth={1.8} />
             </button>
           </div>
         </div>
 
-        <div className="traces-filter-grid">
-          <FilterInput icon="search" label={t('Operation')} value={operationFilter} onChange={value => setFilterVal('operation', value)} placeholder={t('Search operations, routes…')} />
-          <FilterInput icon="id" label={t('Trace ID')} value={traceIdFilter} onChange={value => setFilterVal('traceId', value)} placeholder={t('Paste a trace ID')} />
-          <FilterSelect label={t('Service')} value={serviceFilter} onChange={value => setFilterVal('service', value)} options={[
+        <div className="traces-facet-bar">
+          <FilterSelect compact label={t('Service')} value={serviceFilter} onChange={value => setFilterVal('service', value)} options={[
             { value: '', label: t('All services') },
             ...services.map(service => ({ value: service, label: service })),
           ]} />
-          <FilterSelect label={t('Status')} value={errorFilter} onChange={value => setFilterVal('hasError', value)} options={[
+          <FilterSelect compact label={t('Status')} value={errorFilter} onChange={value => setFilterVal('hasError', value)} options={[
             { value: '', label: t('All status') },
             { value: 'true', label: t('Errors') },
             { value: 'false', label: t('OK') },
           ]} />
-          <FilterSelect label={t('Body')} value={hasBodyFilter} onChange={value => setFilterVal('hasBody', value)} options={[
+          <FilterSelect compact label={t('Body')} value={hasBodyFilter} onChange={value => setFilterVal('hasBody', value)} options={[
             { value: '', label: t('Any body') },
             { value: 'true', label: t('Has body') },
           ]} />
-          <FilterSelect label={t('Probes')} value={showProbes ? 'show' : ''} onChange={value => setFilterVal('excludeProbes', value === 'show' ? 'false' : '')} options={[
+          <FilterSelect compact label={t('Probes')} value={showProbes ? 'show' : ''} onChange={value => setFilterVal('excludeProbes', value === 'show' ? 'false' : '')} options={[
             { value: '', label: t('Hide probes') },
             { value: 'show', label: t('Show probes') },
           ]} />
-          <FilterSelect label={t('Min spans')} value={minSpans} onChange={value => setFilterVal('minSpans', value)} options={[
+          <FilterSelect compact label={t('Min spans')} value={minSpans} onChange={value => setFilterVal('minSpans', value)} options={[
             { value: '0', label: t('All') },
             { value: '2', label: t('2+') },
             { value: '3', label: t('3+') },
@@ -595,6 +606,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
             { value: '10', label: t('10+') },
           ]} />
           <FilterRange
+            compact
             label={t('Latency (ms)')}
             min={minDuration}
             max={maxDuration}
@@ -623,7 +635,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
       </section>
 
       {activeTab === 'top' ? (
-        <section className="trace-results-panel">
+        <section key="top" className={`trace-results-panel ${awaitingResults ? 'is-loading' : ''}`}>
           <ResultsHeader
             title={t('Top transactions')}
             count={awaitingResults ? null : topTraces.length}
@@ -675,7 +687,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
           {topTraces.length > 0 && <Pagination page={topPage} totalPages={topTotalPages} onPage={setPage} />}
         </section>
       ) : (
-        <section className="trace-results-panel">
+        <section key="explorer" className={`trace-results-panel ${awaitingResults ? 'is-loading' : ''}`}>
           <ResultsHeader
             title={t('Trace explorer')}
             count={awaitingResults ? null : traces.length}
@@ -1077,7 +1089,7 @@ function TraceTableSkeleton({ rows = 8 }: { rows?: number }) {
   return (
     <div className="apm-skeleton-table" aria-busy="true" aria-label="Loading">
       {Array.from({ length: rows }, (_, index) => (
-        <div key={index} className="apm-skeleton-row">
+        <div key={index} className="apm-skeleton-row" style={{ '--row': index } as CSSProperties}>
           <span className="apm-skeleton" style={{ width: `${58 + (index % 4) * 8}%` }} />
           <span className="apm-skeleton" style={{ width: 72 }} />
           <span className="apm-skeleton" style={{ width: 96 }} />
@@ -1219,36 +1231,84 @@ function TraceMetric({ label, value, detail, tone, meter }: { label: string; val
   );
 }
 
-function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: { value: string; label: string }[]; onChange: (value: string) => void }) {
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+  compact = false,
+  icon,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+  compact?: boolean;
+  icon?: React.ReactNode;
+}) {
   return (
-    <label className="trace-filter-field">
-      <span>{label}</span>
-      <CustomSelect
-        ariaLabel={label}
-        value={value}
-        onChange={onChange}
-        options={options}
-      />
+    <label className={`trace-filter-field ${compact ? 'is-compact' : ''} ${icon ? 'has-icon' : ''}`}>
+      <span className="trace-filter-label">{label}</span>
+      <span className="traces-filter-control">
+        {icon}
+        <CustomSelect
+          ariaLabel={label}
+          value={value}
+          onChange={onChange}
+          options={options}
+        />
+      </span>
     </label>
   );
 }
 
-function FilterInput({ label, value, onChange, placeholder, type = 'text', icon }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string; icon?: 'search' | 'id' }) {
+function FilterInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = 'text',
+  icon,
+  compact = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: string;
+  icon?: 'search' | 'id';
+  compact?: boolean;
+}) {
   return (
-    <label className={`trace-filter-field ${icon ? `is-${icon}` : ''}`}>
-      <span>{label}</span>
+    <label className={`trace-filter-field ${compact ? 'is-compact' : ''} ${icon ? `is-${icon}` : ''}`}>
+      <span className="trace-filter-label">{label}</span>
       <span className="traces-filter-input-wrap">
-        {icon === 'search' && <Search size={14} aria-hidden />}
+        {icon === 'search' && <Search size={15} strokeWidth={1.8} aria-hidden />}
+        {icon === 'id' && <Hash size={15} strokeWidth={1.8} aria-hidden />}
         <input type={type} value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} />
       </span>
     </label>
   );
 }
 
-function FilterRange({ label, min, max, onMin, onMax }: { label: string; min: string; max: string; onMin: (value: string) => void; onMax: (value: string) => void }) {
+function FilterRange({
+  label,
+  min,
+  max,
+  onMin,
+  onMax,
+  compact = false,
+}: {
+  label: string;
+  min: string;
+  max: string;
+  onMin: (value: string) => void;
+  onMax: (value: string) => void;
+  compact?: boolean;
+}) {
   return (
-    <fieldset className="trace-filter-field traces-filter-range">
-      <legend>{label}</legend>
+    <fieldset className={`trace-filter-field traces-filter-range ${compact ? 'is-compact' : ''}`}>
+      <legend className="trace-filter-label">{label}</legend>
       <div>
         <input type="number" min="0" value={min} onChange={event => onMin(event.target.value)} placeholder="Min" aria-label="Minimum latency ms" />
         <span aria-hidden="true">–</span>

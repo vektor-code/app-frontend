@@ -35,6 +35,10 @@ import {
   mockNamespaces,
   mockStats,
   mockTimeseries,
+  mockTopEndpoints,
+  mockTrace,
+  mockTraceInvestigation,
+  mockTraces,
 } from './mockTelemetry';
 
 const API_BASE = '/api';
@@ -341,19 +345,38 @@ class ApiClient {
   }
 
   getTraces(params?: Record<string, string>) {
+    if (shouldUseMockTelemetry()) {
+      return new Promise<{ traces: TraceListItem[]; total: number }>(resolve => {
+        window.setTimeout(() => resolve(mockTraces(params)), 280);
+      });
+    }
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
     return this.get<{ traces: TraceListItem[]; total: number }>(`/traces${qs}`);
   }
 
   getTopEndpoints(params?: Record<string, string>) {
+    if (shouldUseMockTelemetry()) {
+      return new Promise<{ endpoints: EndpointStat[]; total: number }>(resolve => {
+        window.setTimeout(() => resolve(mockTopEndpoints(params)), 280);
+      });
+    }
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
     return this.get<{ endpoints: EndpointStat[]; total: number }>(`/endpoints${qs}`);
   }
 
-  getTrace(id: string) { return this.get<Trace>(`/traces/${id}`); }
+  getTrace(id: string) {
+    if (shouldUseMockTelemetry()) return Promise.resolve().then(() => mockTrace(id));
+    return this.get<Trace>(`/traces/${id}`);
+  }
   getTraceDiagnostics(id: string) { return this.get<DiagnosticReport>(`/traces/${id}/diagnostics`); }
-  getTraceFailureDiagnosis(id: string) { return this.get<TraceFailureDiagnosis | { traceId: string; diagnosis: null }>(`/traces/${id}/failure-diagnosis`); }
-  getTraceInvestigation(id: string) { return this.get<TraceInvestigation>(`/traces/${id}/investigation`); }
+  getTraceFailureDiagnosis(id: string) {
+    if (shouldUseMockTelemetry()) return Promise.resolve({ traceId: id, diagnosis: null });
+    return this.get<TraceFailureDiagnosis | { traceId: string; diagnosis: null }>(`/traces/${id}/failure-diagnosis`);
+  }
+  getTraceInvestigation(id: string) {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockTraceInvestigation(id));
+    return this.get<TraceInvestigation>(`/traces/${id}/investigation`);
+  }
   getDatabaseMetrics(namespace?: string) {
     if (shouldUseMockTelemetry()) return Promise.resolve(mockDatabaseMetrics(namespace));
     const qs = namespace ? `?namespace=${namespace}` : '';

@@ -22,7 +22,7 @@
   position: relative;
   max-width: 1400px;
   margin: 0 auto;
-  font-family: 'DM Sans', var(--font-sans);
+  font-family: var(--font-sans);
 }
 
 .traces-page h1,
@@ -268,7 +268,7 @@ body.dark-theme .trace-detail-page {
 .trace-detail-eyebrow,
 .trace-detail-panel-title > span,
 .traces-page .trace-metric-box > span,
-.traces-page .trace-filter-field > span,
+.traces-page .trace-filter-field > .trace-filter-label,
 .traces-page .trace-results-header p {
   display: inline-block;
   font-family: var(--font-mono);
@@ -295,8 +295,8 @@ html[lang="az"] .trace-detail-panel-title > span,
 html[lang="tr"] .trace-detail-panel-title > span,
 html[lang="az"] .traces-page .trace-metric-box > span,
 html[lang="tr"] .traces-page .trace-metric-box > span,
-html[lang="az"] .traces-page .trace-filter-field > span,
-html[lang="tr"] .traces-page .trace-filter-field > span,
+html[lang="az"] .traces-page .trace-filter-field > .trace-filter-label,
+html[lang="tr"] .traces-page .trace-filter-field > .trace-filter-label,
 html[lang="az"] .traces-page .trace-results-header p,
 html[lang="tr"] .traces-page .trace-results-header p {
   text-transform: none;

@@ -1,5 +1,6 @@
 import type {
   DatabaseQueryMetric,
+  EndpointStat,
   InfraNode,
   InfraPod,
   InfrastructureMetrics,
@@ -7,8 +8,12 @@ import type {
   NamespaceStats,
   ServiceErrorSeries,
   ServiceStats,
+  Span,
   TimeseriesBucket,
   TimeseriesData,
+  Trace,
+  TraceInvestigation,
+  TraceListItem,
 } from '../entities';
 
 const WINDOW_MINUTES = 60;
@@ -379,5 +384,470 @@ export function mockInfrastructure(namespace?: string): InfrastructureMetrics {
     namespaces,
     nodes,
     pods: scoped,
+  };
+}
+
+type MockTraceRow = TraceListItem & {
+  cluster: string;
+  hasBody?: boolean;
+  isProbe?: boolean;
+};
+
+function minutesAgo(minutes: number): string {
+  return new Date(Date.now() - minutes * 60_000).toISOString();
+}
+
+function mockTraceCatalog(): MockTraceRow[] {
+  return [
+    {
+      traceId: '4f8a2c91e0b67d3a15c84e92a7b0d1f6',
+      serviceName: 'checkout-api',
+      namespace: 'production',
+      namespaces: ['production'],
+      cluster: 'eu-west-1',
+      rootName: 'POST /checkout',
+      transactionName: 'POST /checkout',
+      startTime: minutesAgo(2),
+      durationMs: 1480,
+      spanCount: 12,
+      hasError: true,
+      services: ['gateway', 'checkout-api', 'identity', 'payments'],
+      serviceFlow: ['gateway', 'checkout-api', 'payments'],
+      errorType: 'StatusError',
+      errorSummary: 'payments returned 503 from charge',
+      hasBody: true,
+    },
+    {
+      traceId: 'a19c7e44b2d5803f6e91c0aa4d77b812',
+      serviceName: 'checkout-api',
+      namespace: 'production',
+      namespaces: ['production'],
+      cluster: 'eu-west-1',
+      rootName: 'POST /checkout',
+      transactionName: 'POST /checkout',
+      startTime: minutesAgo(6),
+      durationMs: 312,
+      spanCount: 9,
+      hasError: false,
+      services: ['gateway', 'checkout-api', 'cart-service', 'payments'],
+      serviceFlow: ['gateway', 'checkout-api', 'payments'],
+      hasBody: true,
+    },
+    {
+      traceId: 'c0e3b5187a924d6f11b8e4c09f35a267',
+      serviceName: 'gateway',
+      namespace: 'production',
+      namespaces: ['production'],
+      cluster: 'eu-west-1',
+      rootName: 'GET /catalog',
+      transactionName: 'GET /catalog',
+      startTime: minutesAgo(4),
+      durationMs: 48,
+      spanCount: 4,
+      hasError: false,
+      services: ['gateway', 'checkout-api'],
+      serviceFlow: ['gateway', 'checkout-api'],
+    },
+    {
+      traceId: '91d6f0aa3c28e147b5c9d8320e64f1ab',
+      serviceName: 'identity',
+      namespace: 'production',
+      namespaces: ['production'],
+      cluster: 'eu-west-1',
+      rootName: 'POST /oauth/token',
+      transactionName: 'POST /oauth/token',
+      startTime: minutesAgo(8),
+      durationMs: 21,
+      spanCount: 3,
+      hasError: false,
+      services: ['gateway', 'identity'],
+      serviceFlow: ['gateway', 'identity'],
+      hasBody: true,
+    },
+    {
+      traceId: '7b2e9c10d4a65f83c1e80b47a92d3f06',
+      serviceName: 'cart-service',
+      namespace: 'production',
+      namespaces: ['production'],
+      cluster: 'eu-west-1',
+      rootName: 'GET /cart/{id}',
+      transactionName: 'GET /cart/{id}',
+      startTime: minutesAgo(11),
+      durationMs: 64,
+      spanCount: 5,
+      hasError: false,
+      services: ['gateway', 'cart-service'],
+      serviceFlow: ['gateway', 'cart-service'],
+    },
+    {
+      traceId: 'e5a81c36f09b4d27a6c3e814b0d9527f',
+      serviceName: 'payments',
+      namespace: 'production',
+      namespaces: ['production'],
+      cluster: 'eu-west-1',
+      rootName: 'POST /charge',
+      transactionName: 'POST /charge',
+      startTime: minutesAgo(3),
+      durationMs: 1620,
+      spanCount: 8,
+      hasError: true,
+      services: ['checkout-api', 'payments'],
+      serviceFlow: ['checkout-api', 'payments'],
+      errorType: 'Timeout',
+      errorSummary: 'card issuer timed out after 1500ms',
+      hasBody: true,
+    },
+    {
+      traceId: '2d4c8e91a7b03f56c1e94a80d3b67512',
+      serviceName: 'payments',
+      namespace: 'production',
+      namespaces: ['production'],
+      cluster: 'eu-west-1',
+      rootName: 'POST /refund',
+      transactionName: 'POST /refund',
+      startTime: minutesAgo(18),
+      durationMs: 410,
+      spanCount: 6,
+      hasError: false,
+      services: ['checkout-api', 'payments'],
+      serviceFlow: ['checkout-api', 'payments'],
+      hasBody: true,
+    },
+    {
+      traceId: 'b8f1a0c45e297d63a1c84e09f7b2d350',
+      serviceName: 'checkout-api',
+      namespace: 'production',
+      namespaces: ['production'],
+      cluster: 'eu-west-1',
+      rootName: 'GET /orders/{id}',
+      transactionName: 'GET /orders/{id}',
+      startTime: minutesAgo(14),
+      durationMs: 96,
+      spanCount: 7,
+      hasError: false,
+      services: ['gateway', 'checkout-api', 'identity'],
+      serviceFlow: ['gateway', 'checkout-api'],
+    },
+    {
+      traceId: '6a0e3d92c18b475fa9c2e104d87b5a31',
+      serviceName: 'gateway',
+      namespace: 'production',
+      namespaces: ['production'],
+      cluster: 'eu-west-1',
+      rootName: 'GET /healthz',
+      transactionName: 'GET /healthz',
+      startTime: minutesAgo(1),
+      durationMs: 4,
+      spanCount: 1,
+      hasError: false,
+      services: ['gateway'],
+      serviceFlow: ['gateway'],
+      isProbe: true,
+    },
+    {
+      traceId: 'd17b9e04c5a8326f0e41a98c2d75b4e8',
+      serviceName: 'notifications',
+      namespace: 'staging',
+      namespaces: ['staging'],
+      cluster: 'eu-west-1',
+      rootName: 'POST /notify',
+      transactionName: 'POST /notify',
+      startTime: minutesAgo(9),
+      durationMs: 54,
+      spanCount: 4,
+      hasError: false,
+      services: ['notifications'],
+      serviceFlow: ['notifications'],
+      hasBody: true,
+    },
+    {
+      traceId: 'f3c28a10e64d9b75a1c0e4928d37b6a5',
+      serviceName: 'identity',
+      namespace: 'production',
+      namespaces: ['production'],
+      cluster: 'eu-west-1',
+      rootName: 'GET /session',
+      transactionName: 'GET /session',
+      startTime: minutesAgo(22),
+      durationMs: 12,
+      spanCount: 2,
+      hasError: false,
+      services: ['gateway', 'identity'],
+      serviceFlow: ['gateway', 'identity'],
+    },
+    {
+      traceId: '0c9a4e27b1d85360f8e2c194a7b5d03e',
+      serviceName: 'cart-service',
+      namespace: 'production',
+      namespaces: ['production'],
+      cluster: 'eu-west-1',
+      rootName: 'PUT /cart/{id}',
+      transactionName: 'PUT /cart/{id}',
+      startTime: minutesAgo(27),
+      durationMs: 188,
+      spanCount: 6,
+      hasError: true,
+      services: ['gateway', 'cart-service'],
+      serviceFlow: ['gateway', 'cart-service'],
+      errorType: 'StatusError',
+      errorSummary: 'inventory returned 409 conflict',
+      hasBody: true,
+    },
+    {
+      traceId: '5e81b2d0a47c396f1c9e04a8d6b37520',
+      serviceName: 'checkout-api',
+      namespace: 'production',
+      namespaces: ['production'],
+      cluster: 'eu-west-1',
+      rootName: 'POST /checkout',
+      transactionName: 'POST /checkout',
+      startTime: minutesAgo(41),
+      durationMs: 220,
+      spanCount: 10,
+      hasError: false,
+      services: ['gateway', 'checkout-api', 'payments', 'notifications'],
+      serviceFlow: ['gateway', 'checkout-api', 'payments'],
+      hasBody: true,
+    },
+    {
+      traceId: '8a4d1c70e2b5963f0c9e84a1d5b37f12',
+      serviceName: 'gateway',
+      namespace: 'production',
+      namespaces: ['production'],
+      cluster: 'eu-west-1',
+      rootName: 'GET /readyz',
+      transactionName: 'GET /readyz',
+      startTime: minutesAgo(5),
+      durationMs: 3,
+      spanCount: 1,
+      hasError: false,
+      services: ['gateway'],
+      serviceFlow: ['gateway'],
+      isProbe: true,
+    },
+    {
+      traceId: '1b7e0c94a5d2638f4e91c0a2d8b47653',
+      serviceName: 'notifications',
+      namespace: 'staging',
+      namespaces: ['staging'],
+      cluster: 'eu-west-1',
+      rootName: 'POST /notify',
+      transactionName: 'POST /notify',
+      startTime: minutesAgo(33),
+      durationMs: 410,
+      spanCount: 5,
+      hasError: true,
+      services: ['notifications'],
+      serviceFlow: ['notifications'],
+      errorType: 'StatusError',
+      errorSummary: 'SMTP upstream 550 mailbox unavailable',
+      hasBody: true,
+    },
+    {
+      traceId: 'c4e9a1b07d285f36a0c8e4921b75d3a6',
+      serviceName: 'checkout-api',
+      namespace: 'production',
+      namespaces: ['production'],
+      cluster: 'eu-west-1',
+      rootName: 'GET /orders',
+      transactionName: 'GET /orders',
+      startTime: minutesAgo(52),
+      durationMs: 74,
+      spanCount: 5,
+      hasError: false,
+      services: ['gateway', 'checkout-api'],
+      serviceFlow: ['gateway', 'checkout-api'],
+    },
+  ];
+}
+
+function publicTrace(row: MockTraceRow): TraceListItem {
+  const { cluster: _cluster, hasBody: _hasBody, isProbe: _isProbe, ...item } = row;
+  return item;
+}
+
+function matchesTraceParams(row: MockTraceRow, params?: Record<string, string>): boolean {
+  if (!params) return !row.isProbe;
+  if (params.namespace && row.namespace !== params.namespace) return false;
+  if (params.cluster && row.cluster !== params.cluster) return false;
+  if (params.service && row.serviceName !== params.service && !(row.services || []).includes(params.service)) {
+    return false;
+  }
+  if (params.hasError === 'true' && !row.hasError) return false;
+  if (params.hasError === 'false' && row.hasError) return false;
+  if (params.operation) {
+    const query = params.operation.toLowerCase();
+    const haystack = `${row.rootName} ${row.transactionName || ''} ${row.serviceName}`.toLowerCase();
+    if (!haystack.includes(query)) return false;
+  }
+  if (params.traceId) {
+    const needle = params.traceId.replace(/-/g, '').toLowerCase();
+    if (!row.traceId.toLowerCase().includes(needle)) return false;
+  }
+  const minSpans = Number.parseInt(params.minSpans || '0', 10);
+  if (Number.isFinite(minSpans) && minSpans > 0 && row.spanCount < minSpans) return false;
+  const minDuration = Number.parseFloat(params.minDuration || '');
+  if (Number.isFinite(minDuration) && minDuration > 0 && row.durationMs < minDuration) return false;
+  const maxDuration = Number.parseFloat(params.maxDuration || '');
+  if (Number.isFinite(maxDuration) && maxDuration > 0 && row.durationMs > maxDuration) return false;
+  if (params.hasBody === 'true' && !row.hasBody) return false;
+  if (params.excludeProbes !== 'false' && row.isProbe) return false;
+  if (params.startTime && new Date(row.startTime).getTime() < new Date(params.startTime).getTime()) return false;
+  return true;
+}
+
+export function mockTraces(params?: Record<string, string>): { traces: TraceListItem[]; total: number } {
+  const filtered = mockTraceCatalog().filter((row) => matchesTraceParams(row, params));
+  const offset = Math.max(0, Number.parseInt(params?.offset || '0', 10) || 0);
+  const limit = Math.max(1, Number.parseInt(params?.limit || '25', 10) || 25);
+  return {
+    traces: filtered.slice(offset, offset + limit).map(publicTrace),
+    total: filtered.length,
+  };
+}
+
+export function mockTopEndpoints(params?: Record<string, string>): { endpoints: EndpointStat[]; total: number } {
+  const rows = mockTraceCatalog().filter((row) => matchesTraceParams(row, params));
+  const grouped = new Map<string, EndpointStat>();
+  for (const row of rows) {
+    const operationName = row.transactionName || row.rootName;
+    const key = `${row.namespace}:${row.serviceName}:${operationName}`;
+    const current = grouped.get(key) || {
+      serviceName: row.serviceName,
+      namespace: row.namespace,
+      operationName,
+      count: 0,
+      errorCount: 0,
+      avgDurationMs: 0,
+      p95DurationMs: 0,
+      sampledCount: 0,
+    };
+    const nextCount = current.count + 1;
+    current.avgDurationMs = (current.avgDurationMs * current.count + row.durationMs) / nextCount;
+    current.p95DurationMs = Math.max(current.p95DurationMs, row.durationMs);
+    current.count = nextCount;
+    current.sampledCount = nextCount;
+    if (row.hasError) current.errorCount += 1;
+    grouped.set(key, current);
+  }
+
+  const scale: Record<string, number> = {
+    'GET /catalog': 1840,
+    'POST /checkout': 620,
+    'GET /orders/{id}': 410,
+    'GET /orders': 280,
+    'POST /oauth/token': 960,
+    'GET /session': 1540,
+    'GET /cart/{id}': 720,
+    'PUT /cart/{id}': 190,
+    'POST /charge': 310,
+    'POST /refund': 48,
+    'POST /notify': 86,
+  };
+
+  const endpoints = [...grouped.values()].map((endpoint) => {
+    const traffic = scale[endpoint.operationName] ?? Math.max(endpoint.count * 40, endpoint.count);
+    const ratio = endpoint.count > 0 ? traffic / endpoint.count : 1;
+    return {
+      ...endpoint,
+      count: Math.round(traffic),
+      errorCount: Math.round(endpoint.errorCount * ratio),
+      sampledCount: endpoint.count,
+      avgDurationMs: Math.round(endpoint.avgDurationMs),
+      p95DurationMs: Math.round(endpoint.p95DurationMs),
+    };
+  });
+
+  return { endpoints, total: endpoints.length };
+}
+
+function padSpanId(index: number): string {
+  return index.toString(16).padStart(16, '0');
+}
+
+export function mockTrace(id: string): Trace {
+  const row = mockTraceCatalog().find((item) => item.traceId === id);
+  if (!row) {
+    throw new Error('Trace not found');
+  }
+  const start = new Date(row.startTime).getTime();
+  const hops = row.serviceFlow?.length ? row.serviceFlow : [row.serviceName];
+  const method = (row.transactionName || row.rootName).split(' ')[0] || 'GET';
+  const path = (row.transactionName || row.rootName).split(' ')[1] || '/';
+  const spans: Span[] = [];
+
+  hops.forEach((service, index) => {
+    const duration = Math.max(6, Math.round(row.durationMs * (1 - index * 0.16)));
+    const t0 = start + index * 8;
+    const isLast = index === hops.length - 1;
+    const error = Boolean(row.hasError && isLast);
+    spans.push({
+      traceId: row.traceId,
+      spanId: padSpanId(index + 1),
+      parentSpanId: index === 0 ? undefined : padSpanId(index),
+      name: index === 0 ? (row.transactionName || row.rootName) : `${method} ${path}`,
+      serviceName: service,
+      namespace: row.namespace,
+      podName: `${service}-6f9d8c7b4-${(index + 11).toString(16)}`,
+      startTime: new Date(t0).toISOString(),
+      endTime: new Date(t0 + duration).toISOString(),
+      durationMs: duration,
+      status: error ? 'ERROR' : 'OK',
+      statusCode: error ? 503 : 200,
+      kind: index === 0 ? 'SERVER' : 'CLIENT',
+      attributes: {
+        'http.request.method': method,
+        'url.path': path,
+        'http.response.status_code': String(error ? 503 : 200),
+      },
+      error: error ? row.errorSummary : undefined,
+      events: error
+        ? [{ name: 'exception', timestamp: new Date(t0 + duration).toISOString(), attributes: { 'exception.message': row.errorSummary || 'request failed' } }]
+        : undefined,
+    });
+  });
+
+  while (spans.length < row.spanCount) {
+    const index = spans.length;
+    const parent = spans[Math.max(0, hops.length - 1)];
+    const t0 = start + 12 + index * 3;
+    const duration = Math.max(4, Math.round(row.durationMs / (index + 4)));
+    spans.push({
+      traceId: row.traceId,
+      spanId: padSpanId(index + 1),
+      parentSpanId: parent.spanId,
+      name: index % 2 === 0 ? 'SELECT orders' : 'internal',
+      serviceName: parent.serviceName,
+      namespace: row.namespace,
+      startTime: new Date(t0).toISOString(),
+      endTime: new Date(t0 + duration).toISOString(),
+      durationMs: duration,
+      status: 'OK',
+      kind: 'INTERNAL',
+      attributes: index % 2 === 0 ? { 'db.system': 'postgresql', 'db.operation': 'SELECT' } : undefined,
+    });
+  }
+
+  return {
+    traceId: row.traceId,
+    rootSpan: spans[0],
+    spans,
+    namespace: row.namespace,
+    serviceName: row.serviceName,
+    startTime: row.startTime,
+    endTime: new Date(start + row.durationMs).toISOString(),
+    durationMs: row.durationMs,
+    spanCount: spans.length,
+    hasError: row.hasError,
+  };
+}
+
+export function mockTraceInvestigation(id: string): TraceInvestigation {
+  return {
+    traceId: id,
+    status: 'skipped',
+    levelReached: 0,
+    skipReason: 'Live Kubernetes verification is not available in the local mock session',
+    conclusion: 'Use the span timeline and error events on this trace.',
   };
 }
