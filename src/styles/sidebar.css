@@ -2,9 +2,12 @@
 
 .app-layout {
   --sidebar-inset: 12px;
+  --chrome-radius: 10px;
+  --chrome-control-radius: 8px;
+  --chrome-item-radius: 6px;
   --apm-rail-width: 80px;
   --apm-flyout-width: 176px;
-  --sidebar-width: calc(var(--sidebar-inset) + var(--apm-rail-width) + 16px);
+  --sidebar-width: calc(var(--sidebar-inset) + var(--apm-rail-width));
   --primary-sidebar-width: var(--sidebar-width);
 }
 
@@ -30,7 +33,7 @@ body.dark-theme .app-sidebar.apm-sidebar {
   padding: 18px 0 16px;
   overflow: visible;
   border: 1px solid color-mix(in srgb, var(--border-primary) 88%, transparent);
-  border-radius: 22px;
+  border-radius: var(--chrome-radius) 0 var(--chrome-radius) var(--chrome-radius);
   background: color-mix(in srgb, var(--bg-secondary) 94%, transparent);
   box-shadow:
     0 18px 40px rgba(15, 23, 42, 0.08),
@@ -55,12 +58,12 @@ body.dark-theme .app-sidebar.apm-sidebar .apm-rail {
 body:not(.dark-theme) .app-layout .app-header,
 body.dark-theme .app-layout .app-header {
   min-height: 56px;
-  margin: var(--sidebar-inset) var(--sidebar-inset) 0 8px;
+  margin: var(--sidebar-inset) var(--sidebar-inset) 0 0;
   padding: 8px 14px;
   overflow: visible;
   border: 1px solid color-mix(in srgb, var(--border-primary) 88%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 88%, transparent);
-  border-radius: 22px;
+  border-left: 0;
+  border-radius: 0 var(--chrome-radius) var(--chrome-radius) 0;
   background: color-mix(in srgb, var(--bg-secondary) 94%, transparent);
   box-shadow:
     0 18px 40px rgba(15, 23, 42, 0.08),
@@ -97,19 +100,21 @@ body.dark-theme .app-layout .app-header {
   margin-bottom: 18px;
 }
 
-.apm-rail-avatar {
-  width: 38px;
-  height: 38px;
+.apm-rail-brand {
+  width: 100%;
+  height: 32px;
   display: grid;
   place-items: center;
   overflow: hidden;
-  border-radius: 999px;
-  background: linear-gradient(160deg, var(--accent-indigo-light), var(--accent-fill));
-  box-shadow: 0 0 0 1px color-mix(in srgb, #fff 10%, transparent);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 750;
-  letter-spacing: 0.04em;
+}
+
+.apm-rail-brand .cloudraft-mark,
+.apm-rail-brand .cloudraft-mark-img {
+  display: block;
+  height: 22px;
+  width: auto;
+  max-width: 64px;
+  object-fit: contain;
 }
 
 .apm-rail-section {
@@ -159,6 +164,21 @@ body.dark-theme .app-layout .app-header {
   overflow: visible;
 }
 
+.apm-rail-slot:hover,
+.apm-rail-slot:focus-within {
+  z-index: 4;
+}
+
+/* Hover bridge across the 12px gap, same idea as AZCON header li::before. */
+.apm-rail-slot::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 100%;
+  width: 16px;
+}
+
 .apm-rail-icon {
   position: relative;
   z-index: 1;
@@ -166,7 +186,7 @@ body.dark-theme .app-layout .app-header {
   height: 38px;
   display: grid;
   place-items: center;
-  border-radius: 9px;
+  border-radius: var(--chrome-control-radius);
   color: color-mix(in srgb, var(--text-primary) 62%, transparent);
   text-decoration: none;
   transition: background var(--transition-fast), color var(--transition-fast);
@@ -198,100 +218,63 @@ body.dark-theme .apm-rail-icon.is-active {
 
 .apm-rail-flyout {
   position: absolute;
-  top: 0;
-  left: calc(100% + 2px);
+  top: 50%;
+  left: calc(100% + 12px);
   z-index: 30;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   opacity: 0;
   pointer-events: none;
-  transform: translateX(-6px);
-  transition: opacity 160ms ease, transform 160ms ease;
-}
-
-.apm-rail-flyout.is-single {
-  top: 50%;
-  align-items: center;
-  transform: translate(-6px, -50%);
+  transform: translateY(-50%);
+  transition: opacity 0.5s cubic-bezier(0.52, 0.01, 0.16, 1);
 }
 
 .apm-rail-slot:hover .apm-rail-flyout,
 .apm-rail-slot:focus-within .apm-rail-flyout {
   opacity: 1;
   pointer-events: auto;
-  transform: none;
-}
-
-.apm-rail-slot:hover .apm-rail-flyout.is-single,
-.apm-rail-slot:focus-within .apm-rail-flyout.is-single {
-  transform: translateY(-50%);
-}
-
-.apm-rail-union {
-  display: block;
-  flex: 0 0 12px;
-  width: 12px;
-  height: auto;
-  min-height: 0;
-  margin-top: 0;
-  overflow: visible;
-  color: color-mix(in srgb, var(--text-primary) 28%, transparent);
-}
-
-.apm-rail-union-single {
-  min-height: 0;
-  height: 1px;
-  margin: 0;
-  align-self: center;
-  background: color-mix(in srgb, var(--text-primary) 28%, transparent);
 }
 
 .apm-rail-flyout-panel {
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
+  align-items: stretch;
   gap: 2px;
+  box-sizing: border-box;
+  width: var(--apm-flyout-width);
   min-width: var(--apm-flyout-width);
-  padding: 4px;
+  padding: 6px;
   isolation: isolate;
   border: 1px solid var(--border-primary);
-  border-radius: 10px;
-  background-color: var(--bg-elevated);
-  background: var(--bg-elevated);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
-}
-
-.apm-rail-flyout.is-branch .apm-rail-flyout-panel {
-  height: auto;
-  margin-top: 0;
-  padding: 4px;
-  justify-content: flex-start;
-}
-
-.apm-rail-flyout.is-branch .apm-rail-flyout-link {
-  min-height: 32px;
-  height: auto;
-  display: flex;
-  align-items: center;
+  border-radius: var(--chrome-radius);
+  background-color: #ffffff;
+  background: #ffffff;
+  box-shadow: 0 18px 40px -18px rgba(15, 23, 42, 0.35);
 }
 
 body.dark-theme .apm-rail-flyout-panel {
   border-color: color-mix(in srgb, #fff 10%, transparent);
-  background: var(--bg-elevated);
-  box-shadow: 0 16px 32px rgba(8, 10, 16, 0.48);
+  background: #222a38;
+  background-color: #222a38;
+  box-shadow: 0 20px 40px -12px rgba(8, 10, 16, 0.55);
 }
 
 .apm-rail-flyout-link {
-  display: block;
-  padding: 8px 10px;
-  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: var(--chrome-item-radius);
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
   line-height: 1.25;
   text-align: left;
   text-decoration: none;
-  transition: background-color 140ms ease, color 140ms ease;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background-color 160ms ease, color 160ms ease;
 }
 
 .apm-rail-flyout-link:hover {
@@ -314,8 +297,8 @@ body.dark-theme .apm-rail-flyout-link.is-active {
   .app-layout {
     --sidebar-inset: 8px;
     --apm-rail-width: 72px;
-    --apm-flyout-width: 160px;
-    --sidebar-width: calc(var(--sidebar-inset) + var(--apm-rail-width) + 16px);
+    --apm-flyout-width: 176px;
+    --sidebar-width: calc(var(--sidebar-inset) + var(--apm-rail-width));
   }
 }
 
@@ -333,4 +316,26 @@ body.dark-theme .apm-rail-flyout-link.is-active {
   .apm-rail-icon {
     transition: none;
   }
+}
+
+.app-layout .header-filter,
+.app-layout .header-filter.open,
+.app-layout .header-dropdown-trigger,
+.app-layout .header-session .apm-theme-icon,
+.app-layout .header-account-trigger {
+  border-radius: var(--chrome-control-radius);
+}
+
+.app-layout .header-dropdown-menu,
+.app-layout .header-dropdown-menu.is-attached {
+  border-radius: var(--chrome-radius);
+}
+
+.app-layout .header-dropdown-menu button,
+.app-layout .header-account-signout {
+  border-radius: var(--chrome-item-radius);
+}
+
+.app-layout .header-account-avatar {
+  border-radius: 8px;
 }

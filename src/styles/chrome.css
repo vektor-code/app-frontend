@@ -17,8 +17,8 @@
 
 .stat-card,
 .apm-signal-card {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--bg-tertiary) 35%, var(--bg-secondary)), var(--bg-secondary));
+  background-color: var(--bg-secondary);
+  background-image: var(--kpi-wash);
 }
 
 .btn {

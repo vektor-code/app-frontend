@@ -101,6 +101,11 @@
   --obs-chart-stroke: 1.6;
   --obs-area-top: 0.22;
   --obs-kpi-value-size: 28px;
+  --kpi-wash: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--accent-indigo) 7%, var(--bg-secondary)) 0%,
+    var(--bg-secondary) 56%
+  );
   --obs-tooltip-bg: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
   --obs-tooltip-border: color-mix(in srgb, var(--border-secondary) 70%, transparent);
   --obs-tooltip-blur: 12px;
@@ -179,4 +184,9 @@ body.dark-theme {
   --obs-tooltip-border: rgba(255, 255, 255, 0.08);
   --obs-tooltip-blur: 16px;
   --obs-tooltip-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --kpi-wash: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--accent-indigo) 12%, var(--bg-secondary)) 0%,
+    var(--bg-secondary) 58%
+  );
 }

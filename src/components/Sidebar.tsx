@@ -11,7 +11,8 @@ import {
   SquaresFour,
   type Icon,
 } from '@phosphor-icons/react';
-import SidebarUnion from './SidebarUnion';
+import { CloudraftMark } from './CloudraftMark';
+import SidebarFlyout from './SidebarFlyout';
 import { useTranslation } from '../utils/i18n';
 
 interface SidebarProps {
@@ -69,24 +70,14 @@ export default function Sidebar({
     [user?.role],
   );
 
-  const initials = useMemo(() => {
-    const displayName = user?.name || user?.displayName || user?.username || t('User');
-    return String(displayName)
-      .trim()
-      .split(/\s+/)
-      .slice(0, 2)
-      .map(word => word[0]?.toUpperCase() || '')
-      .join('') || 'AP';
-  }, [t, user?.displayName, user?.name, user?.username]);
-
   const dashboardFamilyActive = isDashboardFamily(pathname);
 
   return (
     <aside className="app-sidebar apm-sidebar" aria-label={t('Primary navigation')}>
       <div className="apm-rail">
         <div className="apm-rail-header">
-          <div className="apm-rail-avatar" title="APM" aria-label="APM">
-            {initials}
+          <div className="apm-rail-brand" aria-label="APM">
+            <CloudraftMark title="APM" />
           </div>
         </div>
 
@@ -106,31 +97,17 @@ export default function Sidebar({
                     to={item.to}
                     end={item.end}
                     className={`apm-rail-icon ${parentActive ? 'is-active' : ''}`}
-                    title={t(item.label)}
+                    aria-label={t(item.label)}
                   >
                     <Icon size={20} weight={iconWeight} />
                   </NavLink>
-                  <div className={`apm-rail-flyout ${links.length === 1 ? 'is-single' : 'is-branch'}`} role="group" aria-label={t(item.label)}>
-                    {links.length === 1 ? (
-                      <span className="apm-rail-union apm-rail-union-single" aria-hidden="true" />
-                    ) : (
-                      <SidebarUnion className="apm-rail-union" />
-                    )}
-                    <div className="apm-rail-flyout-panel">
-                      {links.map(link => (
-                        <NavLink
-                          key={link.to}
-                          to={link.to}
-                          end={link.end}
-                          className={({ isActive }) =>
-                            `apm-rail-flyout-link ${isActive ? 'is-active' : ''}`
-                          }
-                        >
-                          {t(link.label)}
-                        </NavLink>
-                      ))}
-                    </div>
-                  </div>
+                  <SidebarFlyout
+                    label={t(item.label)}
+                    links={links.map(link => ({
+                      ...link,
+                      label: t(link.label),
+                    }))}
+                  />
                 </div>
               );
             })}

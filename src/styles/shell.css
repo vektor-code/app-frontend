@@ -152,7 +152,12 @@
   overflow: hidden;
   border: 1px solid var(--obs-panel-border);
   border-radius: var(--obs-panel-radius);
-  background: var(--obs-panel-bg);
+  background-color: var(--obs-panel-bg);
+  background-image: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--signal-card-color, var(--accent-indigo)) 9%, var(--obs-panel-bg)) 0%,
+    var(--obs-panel-bg) 58%
+  );
   box-shadow: none;
   transform: none;
 }
@@ -168,6 +173,11 @@
 .apm-kpi-strip .apm-signal-card:hover {
   transform: none;
   border-color: var(--border-secondary);
+  background-image: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--signal-card-color, var(--accent-indigo)) 13%, var(--obs-panel-bg)) 0%,
+    var(--obs-panel-bg) 62%
+  );
   box-shadow: none;
 }
 
@@ -1654,12 +1664,19 @@
 .header-session .apm-theme-icon {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--chrome-control-radius, 8px);
+  transition: border-color 200ms ease, background-color 200ms ease, color 200ms ease;
 }
 
 .header-account {
   position: relative;
+  z-index: 1;
   flex: 0 0 auto;
+  overflow: visible;
+}
+
+.header-account.open {
+  z-index: 20;
 }
 
 .header-account-trigger {
@@ -1669,9 +1686,10 @@
   place-items: center;
   padding: 0;
   border: 1px solid var(--border-primary);
-  border-radius: 8px;
+  border-radius: var(--chrome-control-radius, 8px);
   background: var(--bg-secondary);
   cursor: pointer;
+  transition: border-color 200ms ease, background-color 200ms ease;
 }
 
 .header-account-trigger:hover,
@@ -1685,7 +1703,7 @@
   height: 28px;
   display: grid;
   place-items: center;
-  border-radius: 7px;
+  border-radius: 8px;
   background: var(--accent-indigo);
   color: #fff;
   font-size: 10px;
@@ -1696,15 +1714,20 @@
 .header-account-menu {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   padding: 8px;
+  left: auto;
+  right: 0;
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
 }
 
 .header-account-identity {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 8px 10px;
+  padding: 8px 10px 10px;
   border-bottom: 1px solid var(--border-primary);
 }
 
@@ -1738,14 +1761,15 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 0 10px;
+  padding: 0 12px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--chrome-item-radius, 6px);
   background: transparent;
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 550;
   cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
 }
 
 .header-account-signout:hover {
