@@ -15,6 +15,7 @@ import { KpiCard } from '../components/KpiCard';
 import { HealthFilterBar } from '../components/HealthFilterBar';
 import { useTranslation } from '../utils/i18n';
 import { cssColorToRgba, readChartCanvasTheme, type ChartCanvasTheme } from '../utils/chartTheme';
+import { traceListDisplayName } from '../utils/operationName';
 
 interface ServiceMapProps {
   namespace: string;
@@ -1986,6 +1987,7 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = canvasTheme.healthyInfra;
+            const labelMaxW = Math.max(32, pillX - (iconX + logoW + 5) - 6);
             ctx.fillText(trimCanvasText(ctx, 'MYGOV', labelMaxW), iconX + logoW + 5, iconY + iconSize / 2);
           } else {
             // Draw the custom icon at (iconX, iconY) with size (iconSize, iconSize)
