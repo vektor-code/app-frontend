@@ -853,9 +853,9 @@ export function mockTraceInvestigation(id: string): TraceInvestigation {
   };
 }
 
-export function mockNamespaceStatuses() {
+export function mockNamespaceStatuses(): { cluster?: string; enabled: string[]; disabled: string[] } {
   const names = [...new Set(SERVICES.map((service) => service.namespace))];
-  return { enabled: names, disabled: [] as string[] };
+  return { cluster: 'eu-west-1', enabled: names, disabled: [] as string[] };
 }
 
 export function mockServiceMap(namespace?: string): ServiceMapData {

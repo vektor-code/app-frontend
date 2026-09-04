@@ -289,7 +289,7 @@ class ApiClient {
   deletePermissionTemplate(name: string) {
     return this.request<{ success: boolean }>(`/admin/permission-templates/${encodeURIComponent(name)}`, { method: 'DELETE' });
   }
-  getNamespaceStatuses(cluster?: string) {
+  getNamespaceStatuses(cluster?: string): Promise<{ cluster?: string; enabled: string[]; disabled: string[] }> {
     if (shouldUseMockTelemetry()) return Promise.resolve(mockNamespaceStatuses());
     const qs = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
     return this.get<{ cluster?: string; enabled: string[]; disabled: string[] }>(`/admin/namespaces${qs}`);
