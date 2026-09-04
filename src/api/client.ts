@@ -5,6 +5,7 @@ import type {
   DatabaseQueryMetric,
   DiagnosticReport,
   EndpointStat,
+  ErrorGroup,
   NamespaceStats,
   PermissionTemplate,
   PodMetricInfo,
@@ -397,6 +398,13 @@ class ApiClient {
     if (shouldUseMockTelemetry()) return Promise.resolve(mockServiceMap(namespace));
     const qs = namespace ? `?namespace=${namespace}` : '';
     return this.get<ServiceMapData>(`/servicemap${qs}`);
+  }
+  getIssues(namespace?: string, windowMinutes = 60) {
+    if (shouldUseMockTelemetry()) return Promise.resolve({ issues: [] as ErrorGroup[] });
+    const params = new URLSearchParams();
+    if (namespace) params.set('namespace', namespace);
+    params.set('windowMinutes', String(windowMinutes));
+    return this.get<{ issues: ErrorGroup[] }>(`/issues?${params.toString()}`);
   }
   getPods(namespace?: string) {
     const qs = namespace ? `?namespace=${namespace}` : '';

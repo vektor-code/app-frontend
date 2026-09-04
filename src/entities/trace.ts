@@ -322,3 +322,16 @@ export interface DatabaseQueryMetric {
   totalDurationMs: number;
   recentErrors?: string[];
 }
+
+export interface ErrorGroup {
+  fingerprint: string;
+  namespace: string;
+  serviceName: string;
+  transactionName?: string;
+  exceptionType?: string;
+  exceptionMessage?: string;
+  dbFingerprint?: string;
+  exampleTraceId?: string;
+  count: number;
+  lastSeen: string;
+}
