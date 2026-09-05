@@ -15,6 +15,10 @@ import type {
   Trace,
   TraceInvestigation,
   TraceListItem,
+  ClusterApplication,
+  ClusterInventoryItem,
+  UserPermission,
+  PermissionTemplate,
 } from '../entities';
 
 const WINDOW_MINUTES = 60;
@@ -919,4 +923,231 @@ export function mockServiceMap(namespace?: string): ServiceMapData {
   });
 
   return { namespace: namespace || 'all', nodes, edges };
+}
+
+const MOCK_WORKLOAD_EXTRAS: Record<string, Partial<ClusterApplication>> = {
+  'checkout-api': {
+    kind: 'Deployment',
+    replicas: 2,
+    ready: 1,
+    language: 'java',
+    detectedLanguage: 'java',
+    instrumented: true,
+    details: 'Injected via annotation: instrumentation.opentelemetry.io/inject-java=trace-prod/java',
+  },
+  gateway: {
+    kind: 'Deployment',
+    replicas: 3,
+    ready: 3,
+    language: 'go',
+    detectedLanguage: 'go',
+    instrumented: true,
+    details: 'Injected via annotation: instrumentation.opentelemetry.io/inject-go=trace-prod/go',
+  },
+  identity: {
+    kind: 'Deployment',
+    replicas: 1,
+    ready: 1,
+    language: 'nodejs',
+    detectedLanguage: 'nodejs',
+    instrumented: true,
+    details: 'Injected via annotation: instrumentation.opentelemetry.io/inject-nodejs=trace-prod/nodejs',
+  },
+  'cart-service': {
+    kind: 'Deployment',
+    replicas: 2,
+    ready: 2,
+    language: 'python',
+    detectedLanguage: 'python',
+    instrumented: false,
+    details: '',
+  },
+  payments: {
+    kind: 'Deployment',
+    replicas: 1,
+    ready: 0,
+    language: 'unknown',
+    detectedLanguage: 'unknown',
+    instrumented: false,
+    details: '',
+  },
+};
+
+let mockWorkloads: ClusterApplication[] | null = null;
+
+function seedMockWorkloads(): ClusterApplication[] {
+  if (mockWorkloads) return mockWorkloads;
+  mockWorkloads = SERVICES.filter(service => !service.isInfrastructure).map(service => {
+    const extra = MOCK_WORKLOAD_EXTRAS[service.serviceName] || {};
+    return {
+      name: service.serviceName,
+      namespace: service.namespace,
+      kind: extra.kind || 'Deployment',
+      replicas: extra.replicas ?? 1,
+      ready: extra.ready ?? 1,
+      language: extra.language || service.language || 'unknown',
+      detectedLanguage: extra.detectedLanguage || service.language || 'unknown',
+      instrumented: extra.instrumented ?? false,
+      manualOverride: false,
+      details: extra.details || '',
+      cluster: service.cluster || 'eu-west-1',
+    };
+  });
+  return mockWorkloads;
+}
+
+export function mockClusterApplications(clusterId: string, namespace: string) {
+  const applications = seedMockWorkloads().filter(app => !namespace || app.namespace === namespace);
+  return { cluster: clusterId || 'eu-west-1', namespace, applications };
+}
+
+export function mockToggleApplicationInstrumentation(payload: {
+  clusterId: string;
+  namespace: string;
+  workloadName: string;
+  language?: string;
+  enabled: boolean;
+}) {
+  const apps = seedMockWorkloads();
+  const app = apps.find(item => item.name === payload.workloadName && item.namespace === payload.namespace);
+  if (app) {
+    app.instrumented = payload.enabled;
+    if (payload.language) {
+      app.language = payload.language;
+      app.manualOverride = payload.language !== 'unknown' && payload.language !== app.detectedLanguage;
+      if (payload.language === 'unknown') app.manualOverride = false;
+    }
+  }
+  return { success: true };
+}
+
+let mockInventory: ClusterInventoryItem[] = [
+  {
+    id: 'eu-west-1',
+    displayName: 'EU West 1',
+    token: '******',
+    status: 'Active',
+    credentialType: 'kubeconfig',
+    apiServer: 'https://k8s.eu-west-1.internal:6443',
+    agentNamespace: 'trace-prod',
+    hasCredentials: true,
+    managedByAgent: true,
+  },
+  {
+    id: 'prod-baku',
+    displayName: 'Prod Baku',
+    token: '******',
+    status: 'Active',
+    credentialType: 'service-account',
+    apiServer: 'https://k8s.prod.baku.internal:6443',
+    agentNamespace: 'trace-prod',
+    hasCredentials: true,
+    managedByAgent: false,
+  },
+  {
+    id: 'lab-dev',
+    displayName: 'Lab Dev',
+    token: '',
+    status: 'Inactive',
+    credentialType: 'kubeconfig',
+    apiServer: 'https://k8s.lab.internal:6443',
+    agentNamespace: 'trace-prod',
+    hasCredentials: false,
+    managedByAgent: false,
+  },
+];
+
+export function mockClusterInventory() {
+  return { inventory: mockInventory.map(item => ({ ...item })) };
+}
+
+export function mockSaveClusterInventory(inventory: ClusterInventoryItem[]) {
+  mockInventory = inventory.map(item => ({ ...item }));
+  return { success: true };
+}
+
+export function mockDeleteCluster(id: string) {
+  mockInventory = mockInventory.filter(item => item.id !== id);
+  return { success: true };
+}
+
+export function mockTestClusterConnection(payload: { id?: string }) {
+  const cluster = mockInventory.find(item => item.id === payload.id);
+  if (!cluster || cluster.status !== 'Active' || !cluster.hasCredentials) {
+    return {
+      success: false,
+      error: 'cluster unreachable',
+      message: 'No credentials or cluster is inactive in this mock session.',
+    };
+  }
+  return { success: true, serverVersion: 'v1.29.4' };
+}
+
+export function mockAdminInstrumentations() {
+  return {
+    instrumentations: [
+      {
+        name: 'production-instrumentation',
+        namespace: 'production',
+        endpoint: 'http://agent-backend.trace-prod.svc:4318',
+        sampler: 'parentbased_always_on',
+      },
+      {
+        name: 'staging-instrumentation',
+        namespace: 'staging',
+        endpoint: 'http://agent-backend.trace-prod.svc:4318',
+        sampler: 'parentbased_traceidratio',
+      },
+    ],
+  };
+}
+
+export function mockUsers() {
+  return {
+    users: [
+      {
+        username: 'admin',
+        displayName: 'Platform Admin',
+        email: 'admin@cloudraft.net',
+        role: 'admin',
+        namespaces: ['*'],
+        template: 'Platform',
+        lastLogin: new Date(Date.now() - 12 * 60_000).toISOString(),
+      },
+      {
+        username: 'kamal.p',
+        displayName: 'Kamal Pashayev',
+        email: 'kamal.p@cloudraft.net',
+        role: 'viewer',
+        namespaces: ['production', 'staging'],
+        template: 'Namespace viewer',
+        lastLogin: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+      },
+    ] satisfies UserPermission[],
+  };
+}
+
+export function mockPermissionTemplates() {
+  return {
+    templates: [
+      {
+        name: 'Platform',
+        description: 'Full admin access to every namespace and control-plane page.',
+        role: 'admin',
+        namespaces: ['*'],
+        isDefault: true,
+      },
+      {
+        name: 'Namespace viewer',
+        description: 'Read traces for assigned namespaces only.',
+        role: 'viewer',
+        namespaces: ['production', 'staging'],
+        isDefault: false,
+      },
+    ] satisfies PermissionTemplate[],
+  };
+}
+
+export function mockToggleNamespace() {
+  return { success: true };
 }

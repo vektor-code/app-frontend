@@ -35,6 +35,16 @@ import {
   mockLatencyDistribution,
   mockNamespaces,
   mockNamespaceStatuses,
+  mockClusterApplications,
+  mockToggleApplicationInstrumentation,
+  mockClusterInventory,
+  mockSaveClusterInventory,
+  mockDeleteCluster,
+  mockTestClusterConnection,
+  mockAdminInstrumentations,
+  mockUsers,
+  mockPermissionTemplates,
+  mockToggleNamespace,
   mockServiceMap,
   mockStats,
   mockTimeseries,
@@ -269,11 +279,29 @@ class ApiClient {
     if (shouldUseMockTelemetry()) return Promise.resolve(mockClusters());
     return this.get<{ clusters: Array<string | { name: string; displayName?: string; status?: string }> }>('/clusters');
   }
-  getAdminConfig() { return this.get<any>('/admin/config'); }
+  getAdminConfig() {
+    if (shouldUseMockTelemetry()) {
+      return Promise.resolve({
+        kafka: { brokers: 'kafka.internal:9092', topic: 'traces', group: '' },
+        clickhouse: { host: 'clickhouse.internal', port: '8123', database: 'kubetrace', username: 'default', password: '', scheme: 'http' },
+        minio: { endpoint: 'minio.internal:9000', bucket: 'traces', useSSL: 'false', accessKey: 'minio', secretKey: '' },
+        ldap: { enabled: 'false', url: '', bindDN: '', bindPassword: '', userBaseDN: '', userFilter: '' },
+        prometheus: { url: '', scrapeInterval: '15s', discoveryMode: 'kubernetes' },
+        elasticsearch: { url: '', indexPrefix: '', tlsVerify: 'false' },
+      });
+    }
+    return this.get<any>('/admin/config');
+  }
   updateAdminConfig(config: any) { return this.post<{ success: boolean }>('/admin/config', config); }
+  testAdminTool(tool: string, values: Record<string, unknown>) {
+    return this.post<{ ok: boolean; message: string }>(`/admin/config/${encodeURIComponent(tool)}/test`, values);
+  }
 
   // Users & access control
-  getUsers() { return this.get<{ users: UserPermission[] }>('/admin/users'); }
+  getUsers() {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockUsers());
+    return this.get<{ users: UserPermission[] }>('/admin/users');
+  }
   saveUser(user: UserPermission) {
     return this.request<{ success: boolean }>(`/admin/users/${encodeURIComponent(user.username)}`, {
       method: 'PUT',
@@ -283,7 +311,10 @@ class ApiClient {
   deleteUser(username: string) {
     return this.request<{ success: boolean }>(`/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
   }
-  getPermissionTemplates() { return this.get<{ templates: PermissionTemplate[] }>('/admin/permission-templates'); }
+  getPermissionTemplates() {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockPermissionTemplates());
+    return this.get<{ templates: PermissionTemplate[] }>('/admin/permission-templates');
+  }
   savePermissionTemplate(template: PermissionTemplate) {
     return this.post<{ success: boolean }>('/admin/permission-templates', template);
   }
@@ -296,9 +327,11 @@ class ApiClient {
     return this.get<{ cluster?: string; enabled: string[]; disabled: string[] }>(`/admin/namespaces${qs}`);
   }
   getAdminInstrumentations() {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockAdminInstrumentations());
     return this.get<{ instrumentations: { name: string; namespace: string; endpoint: string; sampler: string }[] }>('/admin/instrumentations');
   }
   toggleNamespace(namespace: string, disabled: boolean) {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockToggleNamespace());
     return this.post<{ success: boolean }>('/admin/namespaces/toggle', { namespace, disabled });
   }
   addNamespace(namespace: string) {
@@ -308,21 +341,26 @@ class ApiClient {
     return this.post<{ success: boolean }>('/admin/namespaces/delete', { namespace });
   }
   getClusterInventory() {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockClusterInventory());
     return this.get<{ inventory: ClusterInventoryItem[] }>('/admin/clusters/inventory');
   }
   saveClusterInventory(inventory: ClusterInventoryItem[]) {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockSaveClusterInventory(inventory));
     return this.post<{ success: boolean }>('/admin/clusters/inventory', { inventory });
   }
   testClusterConnection(payload: { id?: string; token: string; credentialType?: string; apiServer?: string }) {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockTestClusterConnection(payload));
     return this.post<{ success: boolean; serverVersion?: string; error?: string; message?: string }>('/admin/clusters/test', payload);
   }
   deleteCluster(id: string) {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockDeleteCluster(id));
     return this.request<{ success: boolean }>(`/admin/clusters/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
   getClusterNamespaces(clusterId: string) {
     return this.get<{ cluster: string; namespaces: ClusterNamespace[] }>(`/admin/clusters/${encodeURIComponent(clusterId)}/namespaces`);
   }
   getClusterApplications(clusterId: string, namespace: string) {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockClusterApplications(clusterId, namespace));
     return this.get<{ cluster: string; namespace: string; applications: ClusterApplication[] }>(
       `/admin/clusters/${encodeURIComponent(clusterId)}/namespaces/${encodeURIComponent(namespace)}/applications`
     );
@@ -335,6 +373,7 @@ class ApiClient {
     language?: string;
     enabled: boolean;
   }) {
+    if (shouldUseMockTelemetry()) return Promise.resolve(mockToggleApplicationInstrumentation(payload));
     return this.post<{ success: boolean }>('/admin/applications/instrumentation/toggle', payload);
   }
 

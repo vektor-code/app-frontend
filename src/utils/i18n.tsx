@@ -13,12 +13,13 @@ interface I18nContextType {
 const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
 function isLanguage(value: string | null | undefined): value is Language {
-  return value === 'en' || value === 'az' || value === 'ru' || value === 'tr';
+  return value === 'en' || value === 'az' || value === 'ru';
 }
 
 function detectLanguage(): Language {
   try {
     const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    if (stored === 'tr') return 'en';
     if (isLanguage(stored)) return stored;
   } catch {
     // localStorage may be unavailable

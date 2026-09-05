@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { api } from '../api/client';
 import type { ClusterApplication, ClusterInventoryItem } from '../entities';
 import AdminUsers from './AdminUsers';
+import WorkloadInstrumentationModal from '../components/WorkloadInstrumentationModal';
 import { useTranslation } from '../utils/i18n';
 
 type AdminIconName =
@@ -16,47 +17,6 @@ type AdminIconName =
   | 'settings'
   | 'shield'
   | 'users';
-
-const STACK_OPTIONS = [
-  { value: 'unknown', label: 'Auto', logo: null },
-  { value: 'go', label: 'Go', logo: '/logos/go.svg' },
-  { value: 'nodejs', label: 'Node.js', logo: '/logos/node.svg' },
-  { value: 'python', label: 'Python', logo: '/logos/python.svg' },
-  { value: 'java', label: 'Java', logo: '/logos/java.svg' },
-  { value: 'dotnet', label: '.NET', logo: '/logos/dotnet.svg' },
-  { value: 'php', label: 'PHP', logo: '/logos/php.svg' },
-] as const;
-
-function stackLabel(value?: string) {
-  const key = (value || 'unknown').toLowerCase();
-  return STACK_OPTIONS.find(option => option.value === key)?.label
-    || (key === 'nginx' ? 'nginx' : key === 'apache-httpd' ? 'Apache' : value || 'Unknown');
-}
-
-function isUnknownStack(value?: string) {
-  const key = (value || '').toLowerCase();
-  return !key || key === 'unknown' || key === 'auto';
-}
-
-function alreadyInstrumented(details?: string) {
-  if (!details) return false;
-  return /annotation:|otel_|java_tool_options|node_options|pythonpath/i.test(details)
-    && !/no otel injection/i.test(details);
-}
-
-function detectionCopy(app: ClusterApplication, t: (key: string) => string) {
-  const detected = app.detectedLanguage || (!app.manualOverride ? app.language : '');
-  const overridden = app.manualOverride && !isUnknownStack(app.language) && app.language !== detected;
-  if (overridden) {
-    return isUnknownStack(detected)
-      ? t('Overridden — cluster could not detect a stack')
-      : `${t('Overridden — cluster looks like')} ${stackLabel(detected)}`;
-  }
-  if (!isUnknownStack(detected)) {
-    return `${t('Auto-detected:')} ${stackLabel(detected)}`;
-  }
-  return t('Not detected — pick a stack before enabling');
-}
 
 function AdminIcon({ name }: { name: AdminIconName }) {
   const common = {
@@ -142,36 +102,6 @@ function AdminSegmented<T extends string>({
   );
 }
 
-function StackPicker({
-  value,
-  disabled,
-  onChange,
-}: {
-  value: string;
-  disabled?: boolean;
-  onChange: (value: string) => void;
-}) {
-  const current = value || 'unknown';
-
-  return (
-    <div className={`admin-stack-picker ${disabled ? 'disabled' : ''}`} onClick={(event) => event.stopPropagation()}>
-      {STACK_OPTIONS.map(option => (
-        <button
-          key={option.value}
-          type="button"
-          disabled={disabled}
-          className={current === option.value ? 'active' : ''}
-          onClick={() => onChange(option.value)}
-          title={option.label}
-        >
-          {option.logo ? <img src={option.logo} alt="" /> : <AdminIcon name="settings" />}
-          <span>{option.label}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 type InfraChipState = 'ready' | 'missing' | 'neutral';
 type InfraCardConfig = {
   key: string;
@@ -184,6 +114,18 @@ type InfraCardConfig = {
   wideLogo?: boolean;
   logoTheme?: 'dark';
 };
+
+const INFRA_MODAL_TITLES: Record<string, string> = {
+  kafka: 'Apache Kafka',
+  clickhouse: 'ClickHouse',
+  minio: 'MinIO',
+  ldap: 'Active Directory',
+  prometheus: 'Prometheus',
+  elasticsearch: 'Elasticsearch',
+  telegram: 'Telegram',
+};
+
+const INFRA_TEST_TOOLS = new Set(['kafka', 'clickhouse', 'minio', 'ldap', 'prometheus', 'elasticsearch']);
 
 function InfraResourceCard({
   title,
@@ -276,6 +218,8 @@ export default function Admin() {
   const [isEditingInfra, setIsEditingInfra] = useState(false);
   const [editableInfra, setEditableInfra] = useState<any>(null);
   const [openInfraModal, setOpenInfraModal] = useState<string | null>(null);
+  const [testingInfra, setTestingInfra] = useState(false);
+  const [infraTestResult, setInfraTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   // Clusters Tab States
   const [clusterInventory, setClusterInventory] = useState<ClusterInventoryItem[]>([]);
@@ -463,6 +407,7 @@ export default function Admin() {
       await api.updateAdminConfig(editableInfra);
       setInfraConfig(editableInfra);
       setOpenInfraModal(null);
+      setInfraTestResult(null);
       setActionSuccessMessage('Infrastructure configurations updated successfully!');
       setTimeout(() => setActionSuccessMessage(null), 3000);
       const configRes = await api.getAdminConfig();
@@ -471,6 +416,28 @@ export default function Admin() {
       setError(err.message || 'Failed to update configurations');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTestInfra = async () => {
+    if (!openInfraModal || !INFRA_TEST_TOOLS.has(openInfraModal)) return;
+    setTestingInfra(true);
+    setInfraTestResult(null);
+    try {
+      const values = (editableInfra?.[openInfraModal] || {}) as Record<string, unknown>;
+      const result = await api.testAdminTool(openInfraModal, values);
+      setInfraTestResult({
+        ok: Boolean(result?.ok),
+        message: result?.message
+          || (result?.ok ? t('Health check succeeded') : t('Health check failed')),
+      });
+    } catch (err: any) {
+      setInfraTestResult({
+        ok: false,
+        message: err.message || t('Health check failed'),
+      });
+    } finally {
+      setTestingInfra(false);
     }
   };
 
@@ -660,6 +627,7 @@ export default function Admin() {
   const openInfraConfig = (key: string) => {
     setEditableInfra(JSON.parse(JSON.stringify(infraConfig)));
     setOpenInfraModal(key);
+    setInfraTestResult(null);
   };
   const infraCards: InfraCardConfig[] = infraConfig ? [
     {
@@ -989,107 +957,18 @@ export default function Admin() {
             )}
           </div>
 
-          {/* Workload/Service manager modal */}
-          {openAppsModal && createPortal(
-            <div className="admin-modal-backdrop">
-              <div className="admin-modal-panel admin-workload-modal">
-                <div className="admin-modal-header">
-                  <div>
-                    <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
-                      {t('Workload Instrumentation')}
-                    </h3>
-                    <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{t('Namespace')}: <strong style={{ color: 'var(--text-primary)' }}>{openAppsModal}</strong></span>
-                  </div>
-                  <button type="button" className="btn btn-ghost" onClick={() => setOpenAppsModal(null)} style={{ fontSize: '20px', padding: '4px 8px', color: 'var(--text-secondary)' }}>✕</button>
-                </div>
-
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    type="text"
-                    placeholder={t('Filter workloads by name...')}
-                    className="form-input"
-                    value={appsSearch}
-                    onChange={(e) => setAppsSearch(e.target.value)}
-                    style={{ width: '100%', background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: '8px', color: 'var(--text-primary)', padding: '10px 14px', fontSize: '13px', outline: 'none' }}
-                  />
-                </div>
-
-                <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '4px' }}>
-                  {loadingApps ? (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
-                      {t('Loading workloads…')}
-                    </div>
-                  ) : (() => {
-                    const filtered = appsList.filter(app => app.name.toLowerCase().includes(appsSearch.toLowerCase()));
-                    if (filtered.length === 0) {
-                      return (
-                        <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)', fontSize: '13px' }}>
-                          {t('No matching workloads found in this namespace.')}
-                        </div>
-                      );
-                    }
-                    return filtered.map(app => (
-                      <div key={app.name} className="admin-workload-row">
-                        <div className="admin-workload-copy">
-                          <div className="admin-workload-title">
-                            <span>{app.name}</span>
-                            <span className="admin-workload-kind">{app.kind || 'Deployment'}</span>
-                            <span className={`admin-detect-badge ${app.manualOverride ? 'overridden' : isUnknownStack(app.detectedLanguage) ? 'unknown' : 'detected'}`}>
-                              {detectionCopy(app, t)}
-                            </span>
-                          </div>
-                          <div className="admin-workload-meta">
-                            <span>Pods: <strong>{app.ready}/{app.replicas} {t('Ready')}</strong></span>
-                            {alreadyInstrumented(app.details) && (
-                              <span className="admin-detect-note" title={app.details}>{app.details}</span>
-                            )}
-                          </div>
-                          <div className="admin-stack-field">
-                            <span>{t('Stack')}</span>
-                            <StackPicker
-                              value={app.language || 'unknown'}
-                              disabled={togglingApp === app.name}
-                              onChange={(nextStack) => handleLanguageChange(app, nextStack)}
-                            />
-                            {app.manualOverride && (
-                              <button
-                                type="button"
-                                className="admin-detect-reset"
-                                disabled={togglingApp === app.name}
-                                onClick={() => handleLanguageChange(app, 'unknown')}
-                              >
-                                {t('Use auto-detect')}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="admin-workload-actions">
-                          <span className={app.instrumented ? 'is-on' : 'is-off'}>
-                            {app.instrumented ? t('Active') : t('Disabled')}
-                          </span>
-                          {togglingApp === app.name ? (
-                            <div className="admin-workload-spinner" />
-                          ) : null}
-                          <AdminSwitch
-                            checked={app.instrumented}
-                            disabled={togglingApp === app.name || (!app.instrumented && isUnknownStack(app.language) && isUnknownStack(app.detectedLanguage))}
-                            onChange={() => handleToggleApp(app)}
-                          />
-                        </div>
-                      </div>
-                    ));
-                  })()}
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border-primary)', paddingTop: '16px' }}>
-                  <button type="button" className="btn btn-primary" onClick={() => setOpenAppsModal(null)} style={{ fontSize: '13px', padding: '10px 24px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-violet) 100%)', border: 'none', color: '#ffffff', cursor: 'pointer', fontWeight: 600 }}>
-                    {t('Done')}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body
+          {openAppsModal && (
+            <WorkloadInstrumentationModal
+              namespace={openAppsModal}
+              apps={appsList}
+              loading={loadingApps}
+              togglingApp={togglingApp}
+              search={appsSearch}
+              onSearch={setAppsSearch}
+              onClose={() => setOpenAppsModal(null)}
+              onToggle={handleToggleApp}
+              onLanguageChange={handleLanguageChange}
+            />
           )}
         </div>
       )}
@@ -1124,13 +1003,29 @@ export default function Admin() {
             <div className="admin-modal-backdrop">
               <div className="admin-modal-panel admin-infra-modal">
                 <div className="admin-modal-header">
-                  <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em', textTransform: 'capitalize' }}>
-                    {openInfraModal === 'clickhouse' ? 'ClickHouse Database Connection' : `${openInfraModal} Setup`}
+                  <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
+                    {INFRA_MODAL_TITLES[openInfraModal] || openInfraModal}
                   </h3>
-                  <button type="button" className="btn btn-ghost" onClick={() => setOpenInfraModal(null)} style={{ fontSize: '20px', padding: '4px 8px', color: 'var(--text-secondary)' }}>✕</button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setOpenInfraModal(null);
+                      setInfraTestResult(null);
+                    }}
+                    style={{ fontSize: '20px', padding: '4px 8px', color: 'var(--text-secondary)' }}
+                  >
+                    ✕
+                  </button>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', maxHeight: '420px', overflowY: 'auto', paddingRight: '4px' }}>
+                  {infraTestResult ? (
+                    <div className={`admin-infra-banner ${infraTestResult.ok ? 'ok' : 'bad'}`} role="status">
+                      {infraTestResult.ok ? <AdminIcon name="shield" /> : <AdminIcon name="alerts" />}
+                      <span>{infraTestResult.message}</span>
+                    </div>
+                  ) : null}
                   {openInfraModal === 'kafka' && (
                     <>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1382,19 +1277,37 @@ export default function Admin() {
                       className="btn btn-ghost"
                       style={{ fontSize: '13px', border: '1px solid var(--border-primary)', padding: '10px 16px', borderRadius: '8px', cursor: (!telegramToken || !telegramChatId) ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: (!telegramToken || !telegramChatId) ? 0.5 : 1 }}
                     >
-                      Test connection
+                      {t('Test connection')}
                     </button>
                   ) : (
-                    <div />
+                    <button
+                      type="button"
+                      onClick={handleTestInfra}
+                      disabled={testingInfra}
+                      className="btn btn-ghost"
+                      style={{ fontSize: '13px', border: '1px solid var(--border-primary)', padding: '10px 16px', borderRadius: '8px', cursor: testingInfra ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: testingInfra ? 0.5 : 1 }}
+                    >
+                      {testingInfra ? t('Testing…') : t('Test connection')}
+                    </button>
                   )}
                   <div style={{ display: 'flex', gap: '12px' }}>
-                    <button type="button" className="btn btn-ghost" onClick={() => setOpenInfraModal(null)} style={{ fontSize: '13px', fontWeight: 600 }}>Cancel</button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setOpenInfraModal(null);
+                        setInfraTestResult(null);
+                      }}
+                      style={{ fontSize: '13px', fontWeight: 600 }}
+                    >
+                      {t('Cancel')}
+                    </button>
                     {openInfraModal === 'telegram' ? (
                       <button type="button" className="btn btn-primary" onClick={handleSaveTelegram} style={{ fontSize: '13px', padding: '10px 20px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-violet) 100%)', border: 'none', color: '#ffffff', fontWeight: 600 }}>
                         {savingTelegram ? 'Saving…' : 'Save Integration'}
                       </button>
                     ) : (
-                      <button type="button" className="btn btn-primary" onClick={handleSaveInfra} style={{ fontSize: '13px', padding: '10px 20px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-violet) 100%)', border: 'none', color: '#ffffff', fontWeight: 600 }}>Save Changes</button>
+                      <button type="button" className="btn btn-primary" onClick={handleSaveInfra} style={{ fontSize: '13px', padding: '10px 20px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-violet) 100%)', border: 'none', color: '#ffffff', fontWeight: 600 }}>{t('Save Changes')}</button>
                     )}
                   </div>
                 </div>
