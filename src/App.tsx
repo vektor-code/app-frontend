@@ -21,6 +21,7 @@ const LicenseExpired = React.lazy(() => import('./pages/LicenseExpired'));
 const Dependencies = React.lazy(() => import('./pages/Dependencies'));
 const Admin = React.lazy(() => import('./pages/Admin'));
 const Alerts = React.lazy(() => import('./pages/Alerts'));
+const Issues = React.lazy(() => import('./pages/Issues'));
 const Infrastructure = React.lazy(() => import('./pages/Infrastructure'));
 const Services = React.lazy(() => import('./pages/Services'));
 
@@ -402,6 +403,7 @@ export default function App() {
               <Route path="/infrastructure" element={<Infrastructure namespace={selectedNamespace} />} />
               <Route path="/live" element={<LiveStream namespace={selectedNamespace} />} />
               <Route path="/alerts" element={<Alerts namespace={selectedNamespace} />} />
+              <Route path="/issues" element={<Issues namespace={selectedNamespace} />} />
               <Route path="/admin" element={user?.role === 'admin' ? <Admin /> : <Navigate to="/" replace />} />
             </Routes>
           </Suspense>

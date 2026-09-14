@@ -86,8 +86,85 @@ const silenceColumnMinimums: Record<SilenceColumn, number> = {
 
 const silenceColumnOrder: SilenceColumn[] = ['service', 'reason', 'startTime', 'endTime', 'status', 'actions'];
 
-// No default/demo rules or channels — everything the user sees is what they
-// actually configured, evaluated against real service telemetry.
+function parseCondition(condition: string): { operator: string; threshold: number } {
+  const match = condition.match(/([><=]+)\s*([0-9.]+)/);
+  if (!match) return { operator: '>', threshold: 0 };
+  return { operator: match[1], threshold: Number(match[2]) };
+}
+
+function formatCondition(metric: AlertRule['metric'], operator: string, threshold: number): string {
+  if (metric === 'Error Rate') return `${operator} ${threshold}%`;
+  return `${operator} ${threshold}ms`;
+}
+
+function fromServerRule(raw: any): AlertRule {
+  const metric = (raw.metric || 'Error Rate') as AlertRule['metric'];
+  const operator = raw.operator || '>';
+  const threshold = typeof raw.threshold === 'number' ? raw.threshold : 0;
+  return {
+    id: raw.id,
+    name: raw.name,
+    namespace: raw.namespace || '',
+    service: !raw.service || raw.service === 'all' ? 'all-services' : raw.service,
+    metric,
+    condition: formatCondition(metric, operator, threshold),
+    window: raw.window || '5m',
+    severity: (raw.severity || 'Warning') as AlertRule['severity'],
+    active: Boolean(raw.active),
+    channels: Array.isArray(raw.channels) ? raw.channels : [],
+  };
+}
+
+function toServerRule(rule: AlertRule) {
+  const { operator, threshold } = parseCondition(rule.condition);
+  const payload: Record<string, unknown> = {
+    name: rule.name,
+    namespace: rule.namespace,
+    service: rule.service === 'all-services' ? 'all' : rule.service,
+    metric: rule.metric,
+    operator,
+    threshold,
+    window: rule.window,
+    severity: rule.severity,
+    active: rule.active,
+    channels: rule.channels || [],
+  };
+  if (rule.id) payload.id = rule.id;
+  return payload;
+}
+
+function fromServerChannel(raw: any): NotificationChannel {
+  return {
+    id: raw.id,
+    name: raw.name,
+    type: (raw.type || 'Webhook') as NotificationChannel['type'],
+    target: raw.target,
+    status: 'Connected',
+  };
+}
+
+function fromServerActive(raw: any): ActiveAlert {
+  const firedAt = raw.firedAt ? new Date(raw.firedAt) : new Date();
+  const value =
+    typeof raw.value === 'number'
+      ? (raw.metric === 'Error Rate' ? `${raw.value.toFixed(1)}%` : `${Math.round(raw.value)}ms`)
+      : String(raw.value ?? '');
+  return {
+    id: raw.id,
+    ruleId: raw.ruleId,
+    ruleName: raw.ruleName,
+    service: raw.service,
+    namespace: raw.namespace,
+    condition: raw.condition || '',
+    value,
+    severity: (raw.severity || 'Warning') as ActiveAlert['severity'],
+    status: 'Firing',
+    duration: 'live',
+    timestamp: firedAt.toLocaleString(),
+  };
+}
+
+// Rules/channels persist on the API; silences/acks remain browser-local for now.
 
 export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
   const { t } = useTranslation();
@@ -99,17 +176,12 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
   const [selectedNamespace, setSelectedNamespace] = useState<string>(initialNamespace || '');
   const [servicesList, setServicesList] = useState<ServiceStats[]>([]);
   const [loadingServices, setLoadingServices] = useState(true);
+  const [loadingAlerts, setLoadingAlerts] = useState(true);
 
-  // Persistent user configs
-  const [rules, setRules] = useState<AlertRule[]>(() => {
-    const saved = localStorage.getItem('alert_rules');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [channels, setChannels] = useState<NotificationChannel[]>(() => {
-    const saved = localStorage.getItem('alert_channels');
-    return saved ? JSON.parse(saved) : [];
-  });
+  // Server-backed rules / channels / firings (silences+acks stay local for now)
+  const [rules, setRules] = useState<AlertRule[]>([]);
+  const [channels, setChannels] = useState<NotificationChannel[]>([]);
+  const [serverActive, setServerActive] = useState<ActiveAlert[]>([]);
 
   const [silences, setSilences] = useState<SilenceRule[]>(() => {
     const saved = localStorage.getItem('alert_silences');
@@ -134,27 +206,92 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
   // Add-channel modal state
   const [channelModalOpen, setChannelModalOpen] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
-  const [newChannelType, setNewChannelType] = useState<'Slack' | 'Email' | 'PagerDuty' | 'Webhook'>('Slack');
+  const [newChannelType, setNewChannelType] = useState<'Slack' | 'Email' | 'PagerDuty' | 'Webhook'>('Webhook');
   const [newChannelTarget, setNewChannelTarget] = useState('');
 
-  const handleAddChannel = (e: React.FormEvent) => {
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const refreshAlertConfig = useCallback(async () => {
+    const [rulesRes, channelsRes, activeRes] = await Promise.all([
+      api.getAlertRules(),
+      api.getAlertChannels(),
+      api.getActiveAlerts(),
+    ]);
+    setRules((rulesRes.rules || []).map(fromServerRule));
+    setChannels((channelsRes.channels || []).map(fromServerChannel));
+    setServerActive((activeRes.alerts || []).map(fromServerActive));
+  }, []);
+
+  // Load server alerts; one-time migrate browser-local rules/channels if server is empty.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoadingAlerts(true);
+      try {
+        await refreshAlertConfig();
+        if (cancelled) return;
+        const localRulesRaw = localStorage.getItem('alert_rules');
+        const localChannelsRaw = localStorage.getItem('alert_channels');
+        const localRules: AlertRule[] = localRulesRaw ? JSON.parse(localRulesRaw) : [];
+        const localChannels: NotificationChannel[] = localChannelsRaw ? JSON.parse(localChannelsRaw) : [];
+        const serverRules = (await api.getAlertRules()).rules || [];
+        const serverChannels = (await api.getAlertChannels()).channels || [];
+        if (serverRules.length === 0 && serverChannels.length === 0 && (localRules.length > 0 || localChannels.length > 0)) {
+          const idMap: Record<string, string> = {};
+          for (const ch of localChannels) {
+            const saved = await api.upsertAlertChannel({
+              name: ch.name,
+              type: ch.type,
+              target: ch.target,
+            });
+            if (ch.id && saved?.id) idMap[ch.id] = saved.id;
+          }
+          for (const rule of localRules) {
+            const payload = toServerRule({
+              ...rule,
+              channels: (rule.channels || []).map(id => idMap[id] || id),
+            });
+            delete (payload as { id?: string }).id;
+            await api.upsertAlertRule(payload);
+          }
+          localStorage.removeItem('alert_rules');
+          localStorage.removeItem('alert_channels');
+          await refreshAlertConfig();
+          if (!cancelled) showToast('Migrated local alert rules to the server.');
+        }
+      } catch {
+        if (!cancelled) showToast('Could not load server alerts.');
+      } finally {
+        if (!cancelled) setLoadingAlerts(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [refreshAlertConfig]);
+
+  const handleAddChannel = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newChannelName.trim() || !newChannelTarget.trim()) {
       showToast('Channel name and target are required.');
       return;
     }
-    setChannels(prev => [...prev, {
-      id: `ch-${Date.now()}`,
-      name: newChannelName.trim(),
-      type: newChannelType,
-      target: newChannelTarget.trim(),
-      status: 'Connected',
-    }]);
-    setChannelModalOpen(false);
-    setNewChannelName('');
-    setNewChannelTarget('');
-    setNewChannelType('Slack');
-    showToast('Notification channel added.');
+    try {
+      const saved = await api.upsertAlertChannel({
+        name: newChannelName.trim(),
+        type: newChannelType,
+        target: newChannelTarget.trim(),
+      });
+      setChannels(prev => [fromServerChannel(saved), ...prev.filter(c => c.id !== saved.id)]);
+      setChannelModalOpen(false);
+      setNewChannelName('');
+      setNewChannelTarget('');
+      setNewChannelType('Webhook');
+      showToast('Notification channel saved on server.');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to save channel.');
+    }
   };
 
   // New Rule Form Fields
@@ -166,15 +303,6 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
   const [newRuleWindow, setNewRuleWindow] = useState('5m');
   const [newRuleSeverity, setNewRuleSeverity] = useState<'Critical' | 'Warning' | 'Info'>('Critical');
   const [newRuleChannels, setNewRuleChannels] = useState<string[]>([]);
-
-  // Sync to localStorage
-  useEffect(() => {
-    localStorage.setItem('alert_rules', JSON.stringify(rules));
-  }, [rules]);
-
-  useEffect(() => {
-    localStorage.setItem('alert_channels', JSON.stringify(channels));
-  }, [channels]);
 
   useEffect(() => {
     localStorage.setItem('alert_silences', JSON.stringify(silences));
@@ -217,28 +345,42 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
     return () => clearInterval(interval);
   }, [loadServices]);
 
-  // Helper Toast notifier
-  const showToast = (message: string) => {
-    setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
+  // Server-side evaluation + refresh active firings
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        await api.evaluateAlerts();
+        const activeRes = await api.getActiveAlerts();
+        if (!cancelled) setServerActive((activeRes.alerts || []).map(fromServerActive));
+      } catch {
+        /* keep last known firings */
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   // Rule activation toggle
-  const handleToggleRule = (id: string) => {
-    setRules(prev =>
-      prev.map(rule => {
-        if (rule.id === id) {
-          const nextState = !rule.active;
-          showToast(`Rule "${rule.name}" is now ${nextState ? 'enabled' : 'disabled'}.`);
-          return { ...rule, active: nextState };
-        }
-        return rule;
-      })
-    );
+  const handleToggleRule = async (id: string) => {
+    const rule = rules.find(r => r.id === id);
+    if (!rule) return;
+    const next = { ...rule, active: !rule.active };
+    try {
+      const saved = await api.upsertAlertRule(toServerRule(next));
+      setRules(prev => prev.map(r => (r.id === id ? fromServerRule(saved) : r)));
+      showToast(`Rule "${rule.name}" is now ${next.active ? 'enabled' : 'disabled'}.`);
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to update rule.');
+    }
   };
 
   // Rule creation handler
-  const handleCreateRule = (e: React.FormEvent) => {
+  const handleCreateRule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRuleName.trim()) {
       showToast('Please enter a valid rule name.');
@@ -248,9 +390,13 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
       showToast('Please choose a target namespace.');
       return;
     }
+    if (newRuleMetric === 'CPU Usage') {
+      showToast('CPU Usage rules are not supported server-side yet. Use Error Rate or latency.');
+      return;
+    }
 
-    const newRule: AlertRule = {
-      id: `rule-${Date.now()}`,
+    const draft: AlertRule = {
+      id: '',
       name: newRuleName.trim().toLowerCase().replace(/\s+/g, '-'),
       namespace: newRuleNamespace,
       service: newRuleService,
@@ -259,22 +405,27 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
       window: newRuleWindow,
       severity: newRuleSeverity,
       active: true,
-      channels: newRuleChannels
+      channels: newRuleChannels,
     };
 
-    setRules(prev => [newRule, ...prev]);
-    setIsDrawerOpen(false);
-
-    // Reset Form fields
-    setNewRuleName('');
-    setNewRuleService('all-services');
-    setNewRuleMetric('Error Rate');
-    setNewRuleCondition('> 2.0%');
-    setNewRuleWindow('5m');
-    setNewRuleSeverity('Critical');
-    setNewRuleChannels([]);
-
-    showToast(`Alert policy "${newRule.name}" created successfully.`);
+    try {
+      const saved = await api.upsertAlertRule(toServerRule(draft));
+      setRules(prev => [fromServerRule(saved), ...prev]);
+      setIsDrawerOpen(false);
+      setNewRuleName('');
+      setNewRuleService('all-services');
+      setNewRuleMetric('Error Rate');
+      setNewRuleCondition('> 2.0%');
+      setNewRuleWindow('5m');
+      setNewRuleSeverity('Critical');
+      setNewRuleChannels([]);
+      showToast(`Alert policy "${saved.name}" saved on server.`);
+      await api.evaluateAlerts().catch(() => undefined);
+      const activeRes = await api.getActiveAlerts().catch(() => ({ alerts: [] }));
+      setServerActive((activeRes.alerts || []).map(fromServerActive));
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to create rule.');
+    }
   };
 
   // Open the creation drawer with sensible defaults
@@ -287,10 +438,24 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
   // Services available in the namespace picked inside the creation drawer
   const drawerServices = servicesList.filter(s => s.namespace === newRuleNamespace);
 
-  const handleDeleteRule = (id: string) => {
-    if (window.confirm('Delete this alert rule?')) {
+  const handleDeleteRule = async (id: string) => {
+    if (!window.confirm('Delete this alert rule?')) return;
+    try {
+      await api.deleteAlertRule(id);
       setRules(prev => prev.filter(r => r.id !== id));
       showToast('Alert rule deleted.');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to delete rule.');
+    }
+  };
+
+  const handleDeleteChannel = async (id: string) => {
+    try {
+      await api.deleteAlertChannel(id);
+      setChannels(prev => prev.filter(c => c.id !== id));
+      showToast('Channel removed.');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to delete channel.');
     }
   };
 
@@ -326,75 +491,15 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
     });
   };
 
-  // DYNAMIC RULE EVALUATION: Computes active alerts using real telemetry of active namespace services
-  const activeAlertsEvaluated: ActiveAlert[] = [];
-
-  if (!loadingServices) {
-    rules.forEach(rule => {
-      if (!rule.active) return;
-
-      // Rules are scoped to their namespace; legacy rules without one match anywhere
-      const targetServices = servicesList.filter(s =>
-        (!rule.namespace || s.namespace === rule.namespace) &&
-        (rule.service === 'all-services' || s.serviceName === rule.service)
-      );
-
-      targetServices.forEach(svc => {
-        let isViolated = false;
-        let currentValueString = '';
-        let thresholdValue = 0;
-
-        // Parse condition threshold (e.g. "> 2.0%" or "> 1200ms")
-        const thresholdMatch = rule.condition.match(/([><=]+)\s*([0-9.]+)/);
-        if (thresholdMatch) {
-          const operator = thresholdMatch[1];
-          const val = parseFloat(thresholdMatch[2]);
-          thresholdValue = val;
-
-          if (rule.metric === 'Error Rate') {
-            const errorRatePct = svc.errorRate * 100;
-            currentValueString = `${errorRatePct.toFixed(1)}%`;
-            if (operator === '>') isViolated = errorRatePct > val;
-            else if (operator === '<') isViolated = errorRatePct < val;
-          } else if (rule.metric === 'p95 Latency') {
-            const latency = svc.p95Ms;
-            currentValueString = `${latency}ms`;
-            if (operator === '>') isViolated = latency > val;
-            else if (operator === '<') isViolated = latency < val;
-          } else if (rule.metric === 'p99 Latency') {
-            const latency = svc.p99Ms;
-            currentValueString = `${latency}ms`;
-            if (operator === '>') isViolated = latency > val;
-            else if (operator === '<') isViolated = latency < val;
-          }
-        }
-
-        if (isViolated) {
-          const alertId = `alert-${rule.id}-${svc.serviceName}`;
-          const isSilenced = silences.some(s => s.service === svc.serviceName);
-          const isAcked = acknowledgedAlerts.includes(alertId);
-
-          let status: 'Firing' | 'Acknowledged' | 'Silenced' = 'Firing';
-          if (isSilenced) status = 'Silenced';
-          else if (isAcked) status = 'Acknowledged';
-
-          activeAlertsEvaluated.push({
-            id: alertId,
-            ruleId: rule.id,
-            ruleName: rule.name,
-            service: svc.serviceName,
-            namespace: svc.namespace,
-            condition: `${rule.metric} ${rule.condition}`,
-            value: currentValueString,
-            severity: rule.severity,
-            status,
-            duration: rule.window,
-            timestamp: 'Firing now'
-          });
-        }
-      });
-    });
-  }
+  // Merge server firings with local silence/ack overlays
+  const activeAlertsEvaluated: ActiveAlert[] = serverActive.map(alert => {
+    const isSilenced = silences.some(s => s.service === alert.service);
+    const isAcked = acknowledgedAlerts.includes(alert.id);
+    let status: 'Firing' | 'Acknowledged' | 'Silenced' = 'Firing';
+    if (isSilenced) status = 'Silenced';
+    else if (isAcked) status = 'Acknowledged';
+    return { ...alert, status };
+  });
 
   // Page-level namespace filter narrows the visible incidents
   const visibleAlerts = selectedNamespace
@@ -576,8 +681,8 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
         {/* Active Alerts Panel (Premium Grid of Incident Cards) */}
         {activeTab === 'active' && (
           <div>
-            {loadingServices ? (
-              <LoadingState height={220} label="Evaluating alert rules against live telemetry…" />
+            {loadingServices || loadingAlerts ? (
+              <LoadingState height={220} label="Loading server alert evaluation…" />
             ) : visibleAlerts.length === 0 ? (
               <div className="card" style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-secondary)', borderStyle: 'dashed', borderWidth: '1px' }}>
                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" style={{ marginBottom: '12px' }}>
@@ -905,8 +1010,7 @@ export default function Alerts({ namespace: initialNamespace }: AlertsProps) {
                     type="button"
                     onClick={() => {
                       if (window.confirm(`Remove channel "${channel.name}"?`)) {
-                        setChannels(prev => prev.filter(c => c.id !== channel.id));
-                        showToast(`Channel "${channel.name}" removed.`);
+                        handleDeleteChannel(channel.id);
                       }
                     }}
                     style={{

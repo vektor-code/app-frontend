@@ -445,6 +445,30 @@ class ApiClient {
     params.set('windowMinutes', String(windowMinutes));
     return this.get<{ issues: ErrorGroup[] }>(`/issues?${params.toString()}`);
   }
+  getAlertRules() {
+    return this.get<{ rules: any[] }>('/alerts/rules');
+  }
+  upsertAlertRule(rule: any) {
+    return this.post<any>('/alerts/rules', rule);
+  }
+  deleteAlertRule(id: string) {
+    return this.request<void>(`/alerts/rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  getAlertChannels() {
+    return this.get<{ channels: any[] }>('/alerts/channels');
+  }
+  upsertAlertChannel(channel: any) {
+    return this.post<any>('/alerts/channels', channel);
+  }
+  deleteAlertChannel(id: string) {
+    return this.request<void>(`/alerts/channels/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  getActiveAlerts() {
+    return this.get<{ alerts: any[] }>('/alerts/active');
+  }
+  evaluateAlerts() {
+    return this.post<{ alerts: any[]; count: number }>('/alerts/evaluate', {});
+  }
   getPods(namespace?: string) {
     const qs = namespace ? `?namespace=${namespace}` : '';
     return this.get<{ pods: PodMetricInfo[]; count: number }>(`/pods${qs}`);

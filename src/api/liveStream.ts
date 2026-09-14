@@ -7,8 +7,12 @@ export function connectLiveStream(
   onDisconnect?: () => void
 ): () => void {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const nsParam = namespace ? `?namespace=${namespace}` : '';
-  const ws = new WebSocket(`${protocol}//${window.location.host}/ws${nsParam}`);
+  const params = new URLSearchParams();
+  if (namespace) params.set('namespace', namespace);
+  const token = localStorage.getItem('token');
+  if (token) params.set('token', token);
+  const qs = params.toString();
+  const ws = new WebSocket(`${protocol}//${window.location.host}/ws${qs ? `?${qs}` : ''}`);
 
   ws.onopen = () => onConnect?.();
   ws.onclose = () => onDisconnect?.();

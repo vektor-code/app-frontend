@@ -9,6 +9,7 @@ import {
   Graph,
   HardDrives,
   SquaresFour,
+  Warning,
   type Icon,
 } from '@phosphor-icons/react';
 import { CloudraftMark } from './CloudraftMark';
@@ -36,6 +37,7 @@ const mainItems: NavItem[] = [
   { label: 'Infrastructure', to: '/infrastructure', icon: HardDrives },
   { label: 'Dependencies', to: '/dependencies', icon: GitFork },
   { label: 'Live Stream', to: '/live', icon: Broadcast },
+  { label: 'Issues', to: '/issues', icon: Warning },
   { label: 'Alerts', to: '/alerts', icon: Bell },
   { label: 'Admin', to: '/admin', icon: GearSix, adminOnly: true },
 ];
