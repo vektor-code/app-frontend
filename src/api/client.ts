@@ -473,6 +473,12 @@ class ApiClient {
     const qs = namespace ? `?namespace=${namespace}` : '';
     return this.get<{ pods: PodMetricInfo[]; count: number }>(`/pods${qs}`);
   }
+  getPlatformHealth(namespace?: string, tailLines = 200) {
+    const params = new URLSearchParams();
+    if (namespace) params.set('namespace', namespace);
+    params.set('tailLines', String(tailLines));
+    return this.get<any>(`/admin/platform/health?${params.toString()}`);
+  }
 }
 
 export const api = new ApiClient();

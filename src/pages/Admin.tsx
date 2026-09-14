@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { api } from '../api/client';
 import type { ClusterApplication, ClusterInventoryItem } from '../entities';
 import AdminUsers from './AdminUsers';
+import AdminPlatformHealth from './AdminPlatformHealth';
 import WorkloadInstrumentationModal from '../components/WorkloadInstrumentationModal';
 import { useTranslation } from '../utils/i18n';
 
@@ -11,6 +12,7 @@ type AdminIconName =
   | 'archive'
   | 'cluster'
   | 'database'
+  | 'health'
   | 'infrastructure'
   | 'namespace'
   | 'plug'
@@ -39,6 +41,8 @@ function AdminIcon({ name }: { name: AdminIconName }) {
       return <svg {...common}><path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3Z" /><path d="m4.5 8 7.5 4.2L19.5 8" /><path d="M12 21v-8.8" /></svg>;
     case 'database':
       return <svg {...common}><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 10c0 1.7 3.6 3 8 3s8-1.3 8-3" /></svg>;
+    case 'health':
+      return <svg {...common}><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>;
     case 'infrastructure':
       return <svg {...common}><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /><path d="M8 7v10" /><path d="M16 7v10" /></svg>;
     case 'namespace':
@@ -208,7 +212,7 @@ function SecretInput({ value, onChange }: { value: string; onChange: (v: string)
 
 export default function Admin() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'namespaces' | 'infrastructure' | 'clusters' | 'instrumentations' | 'retention' | 'integrations' | 'users'>('namespaces');
+  const [activeTab, setActiveTab] = useState<'namespaces' | 'infrastructure' | 'clusters' | 'instrumentations' | 'retention' | 'platform' | 'integrations' | 'users'>('namespaces');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -607,6 +611,7 @@ export default function Admin() {
     { key: 'clusters', label: t('Clusters'), icon: 'cluster', count: clusterInventory.length },
     { key: 'instrumentations', label: t('Auto-Instrumentation'), icon: 'settings', count: instrumentations.length },
     { key: 'retention', label: t('Storage'), icon: 'archive', count: retentionHours === 0 ? t('Forever') : `${retentionHours}h` },
+    { key: 'platform', label: t('Platform Health'), icon: 'health' },
     { key: 'users', label: t('Users'), icon: 'users' },
     { key: 'integrations', label: t('Integrations'), icon: 'plug', count: telegramEnabled ? t('On') : t('Off') },
   ];
@@ -1678,6 +1683,8 @@ export default function Admin() {
       )}
 
       {activeTab === 'users' && <AdminUsers />}
+
+      {activeTab === 'platform' && <AdminPlatformHealth />}
 
       {activeTab === 'integrations' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeIn 0.2s' }}>
