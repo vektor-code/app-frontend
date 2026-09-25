@@ -15,6 +15,8 @@ const STACK_OPTIONS = [
   { value: 'java', label: 'Java', logo: '/logos/java.svg' },
   { value: 'dotnet', label: '.NET', logo: '/logos/dotnet.svg' },
   { value: 'php', label: 'PHP', logo: '/logos/php.svg' },
+  { value: 'nginx', label: 'nginx', logo: '/logos/nginx.svg' },
+  { value: 'apache-httpd', label: 'Apache', logo: '/logos/nginx.svg' },
 ] as const;
 
 type StatusFilter = 'all' | 'active' | 'off';
