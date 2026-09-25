@@ -6,6 +6,11 @@ import LanguageIcon, { languageLogoFor } from './LanguageIcon';
 import { HealthFilterBar } from './HealthFilterBar';
 import { LoadingState, NoDataState } from './DataState';
 import { useTranslation } from '../utils/i18n';
+import {
+  activeBlockedCopy,
+  statusBlockerCopy,
+  WorkloadStatusReason,
+} from '../utils/workloadStatus';
 
 const STACK_OPTIONS = [
   { value: 'unknown', label: 'Auto', logo: null as string | null },
@@ -47,33 +52,15 @@ function detectionCopy(app: ClusterApplication, t: (key: string) => string) {
       : `${t('Overridden — cluster looks like')} ${stackLabel(detected)}`;
   }
   if (!isUnknownStack(detected)) {
+    if (app.statusReason && app.ready < app.replicas) {
+      return `${t('Last detected:')} ${stackLabel(detected)} ${t('(no Ready pod to re-inspect)')}`;
+    }
     return `${t('Auto-detected:')} ${stackLabel(detected)}`;
   }
   if (app.statusReason && app.ready < app.replicas) {
     return t('Not detected — no Ready pod to inspect');
   }
   return t('Not detected — pick a stack before enabling');
-}
-
-/** Short operator-facing explanation for common kube waiting reasons. */
-function statusBlockerCopy(reason: string, t: (key: string) => string): string {
-  switch (reason) {
-    case 'ImagePullBackOff':
-    case 'ErrImagePull':
-    case 'InvalidImageName':
-      return t('Cannot pull the container image — auto-detect and injection need a running pod.');
-    case 'CrashLoopBackOff':
-      return t('Container keeps crashing — fix the app start before injection can stick.');
-    case 'CreateContainerConfigError':
-    case 'CreateContainerError':
-      return t('Kubernetes cannot create the container (config or runtime error).');
-    case 'OOMKilled':
-      return t('Container was OOM-killed — raise memory limits or fix the leak.');
-    case 'Pending':
-      return t('Pod is still Pending — waiting on schedule or image pull.');
-    default:
-      return t('Workload is not Ready — auto-detect and live injection need a healthy pod.');
-  }
 }
 
 function podTone(ready: number, replicas: number) {
@@ -297,17 +284,17 @@ export default function WorkloadInstrumentationModal({
                           {app.ready}/{app.replicas} {t('Ready')}
                         </span>
                         {app.statusReason && app.ready < app.replicas ? (
-                          <span className="wl-status-reason" title={app.statusMessage || undefined}>
-                            {app.statusReason}
-                          </span>
+                          <WorkloadStatusReason reason={app.statusReason} message={app.statusMessage} />
                         ) : null}
                         <span className={`wl-detect ${app.manualOverride ? 'overridden' : needsStack ? 'unknown' : 'detected'}`}>
                           {detectionCopy(app, t)}
                         </span>
                       </div>
                       {app.statusReason && app.ready < app.replicas ? (
-                        <p className="wl-blocker">
-                          {statusBlockerCopy(app.statusReason, t)}
+                        <p className={`wl-blocker ${app.instrumented ? 'is-active-blocked' : ''}`}>
+                          {app.instrumented
+                            ? activeBlockedCopy(app.statusReason, t)
+                            : statusBlockerCopy(app.statusReason, t)}
                           {app.statusMessage ? (
                             <span className="wl-blocker-msg" title={app.statusMessage}>
                               {app.statusMessage}

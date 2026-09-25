@@ -6,6 +6,12 @@ import AdminUsers from './AdminUsers';
 import AdminPlatformHealth from './AdminPlatformHealth';
 import WorkloadInstrumentationModal from '../components/WorkloadInstrumentationModal';
 import { useTranslation } from '../utils/i18n';
+import {
+  mapWithConcurrency,
+  summarizeWorkloadStatus,
+  WorkloadStatusReasonSummary,
+  type NamespaceWorkloadStatus,
+} from '../utils/workloadStatus';
 
 type AdminIconName =
   | 'alerts'
@@ -273,6 +279,15 @@ export default function Admin() {
   const [loadingApps, setLoadingApps] = useState(false);
   const [appsSearch, setAppsSearch] = useState('');
   const [togglingApp, setTogglingApp] = useState<string | null>(null);
+  const [namespaceWorkloadStatus, setNamespaceWorkloadStatus] = useState<Record<string, NamespaceWorkloadStatus>>({});
+  const [loadingWorkloadStatus, setLoadingWorkloadStatus] = useState(false);
+
+  const cacheNamespaceWorkloadStatus = useCallback((namespace: string, apps: ClusterApplication[]) => {
+    setNamespaceWorkloadStatus(prev => ({
+      ...prev,
+      [namespace]: summarizeWorkloadStatus(apps),
+    }));
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -308,6 +323,36 @@ export default function Admin() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    const clusterId = currentClusterId || 'default';
+    const enabled = nsData.enabled || [];
+    if (activeTab !== 'namespaces' && activeTab !== 'instrumentations') return;
+    if (enabled.length === 0 || enabled.length >= 50) return;
+
+    let cancelled = false;
+
+    const prefetchWorkloadStatus = async () => {
+      setLoadingWorkloadStatus(true);
+      try {
+        await mapWithConcurrency(enabled, 4, async (namespace) => {
+          if (cancelled) return;
+          const res = await api.getClusterApplications(clusterId, namespace);
+          if (cancelled) return;
+          cacheNamespaceWorkloadStatus(namespace, res.applications || []);
+        });
+      } catch {
+        // Best-effort summary; modal opens still fetch on demand.
+      } finally {
+        if (!cancelled) setLoadingWorkloadStatus(false);
+      }
+    };
+
+    prefetchWorkloadStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, currentClusterId, nsData.enabled, cacheNamespaceWorkloadStatus]);
 
   const handleToggleNamespace = async (namespace: string, makeDisabled: boolean) => {
     setTogglingNs(namespace);
@@ -348,7 +393,9 @@ export default function Admin() {
     setAppsSearch('');
     try {
       const res = await api.getClusterApplications(currentClusterId || 'default', namespace);
-      setAppsList(res.applications || []);
+      const apps = res.applications || [];
+      setAppsList(apps);
+      cacheNamespaceWorkloadStatus(namespace, apps);
     } catch (err: any) {
       alert(err.message || 'Failed to fetch workloads');
     } finally {
@@ -370,7 +417,9 @@ export default function Admin() {
       });
       
       const res = await api.getClusterApplications(app.cluster || currentClusterId || 'default', app.namespace);
-      setAppsList(res.applications || []);
+      const apps = res.applications || [];
+      setAppsList(apps);
+      cacheNamespaceWorkloadStatus(app.namespace, apps);
       
       setActionSuccessMessage(`Successfully ${targetState ? 'enabled' : 'disabled'} instrumentation for workload "${app.name}"!`);
       setTimeout(() => setActionSuccessMessage(null), 3000);
@@ -394,7 +443,9 @@ export default function Admin() {
       });
       
       const res = await api.getClusterApplications(app.cluster || currentClusterId || 'default', app.namespace);
-      setAppsList(res.applications || []);
+      const apps = res.applications || [];
+      setAppsList(apps);
+      cacheNamespaceWorkloadStatus(app.namespace, apps);
       
       setActionSuccessMessage(`Successfully updated language to "${newLang}" for "${app.name}"!`);
       setTimeout(() => setActionSuccessMessage(null), 3000);
@@ -877,7 +928,12 @@ export default function Admin() {
           <div className="admin-section-heading">
             <div>
               <span>{t('Ingestion Control')}</span>
-              <h2>{t('Namespace Manager')}</h2>
+              <h2>
+                {t('Namespace Manager')}
+                {loadingWorkloadStatus ? (
+                  <em className="admin-workload-status-loading">{t('Refreshing workload status…')}</em>
+                ) : null}
+              </h2>
             </div>
           </div>
 
@@ -900,6 +956,9 @@ export default function Admin() {
                   <div className="admin-namespace-meta">
                     <span>{t('Collector')}</span>
                     <code>collector.{ns}.svc</code>
+                    {namespaceWorkloadStatus[ns] ? (
+                      <WorkloadStatusReasonSummary status={namespaceWorkloadStatus[ns]} />
+                    ) : null}
                   </div>
                 </div>
 
@@ -938,6 +997,9 @@ export default function Admin() {
                   <div className="admin-namespace-meta">
                     <span>{t('Instrumentation')}</span>
                     <code>{ns}-instrumentation</code>
+                    {namespaceWorkloadStatus[ns] ? (
+                      <WorkloadStatusReasonSummary status={namespaceWorkloadStatus[ns]} />
+                    ) : null}
                   </div>
                 </div>
 
@@ -964,20 +1026,6 @@ export default function Admin() {
               </div>
             )}
           </div>
-
-          {openAppsModal && (
-            <WorkloadInstrumentationModal
-              namespace={openAppsModal}
-              apps={appsList}
-              loading={loadingApps}
-              togglingApp={togglingApp}
-              search={appsSearch}
-              onSearch={setAppsSearch}
-              onClose={() => setOpenAppsModal(null)}
-              onToggle={handleToggleApp}
-              onLanguageChange={handleLanguageChange}
-            />
-          )}
         </div>
       )}
 
@@ -1567,7 +1615,12 @@ export default function Admin() {
           <div className="admin-section-heading">
             <div>
               <span>{t('OpenTelemetry')}</span>
-              <h2>{t('Auto-Instrumentation Rules')}</h2>
+              <h2>
+                {t('Auto-Instrumentation Rules')}
+                {loadingWorkloadStatus ? (
+                  <em className="admin-workload-status-loading">{t('Refreshing workload status…')}</em>
+                ) : null}
+              </h2>
             </div>
           </div>
           
@@ -1606,6 +1659,20 @@ export default function Admin() {
                     <span>Kubernetes resource</span>
                     <code>Instrumentation CRD</code>
                   </div>
+                </div>
+
+                {namespaceWorkloadStatus[inst.namespace] ? (
+                  <WorkloadStatusReasonSummary status={namespaceWorkloadStatus[inst.namespace]} />
+                ) : null}
+
+                <div className="admin-instrumentation-actions">
+                  <button
+                    type="button"
+                    className="admin-link-btn"
+                    onClick={() => handleManageApplications(inst.namespace)}
+                  >
+                    {t('View workloads')}
+                  </button>
                 </div>
               </div>
             ))}
@@ -1800,6 +1867,20 @@ export default function Admin() {
             </div>
           </div>
         </div>
+      )}
+
+      {openAppsModal && (
+        <WorkloadInstrumentationModal
+          namespace={openAppsModal}
+          apps={appsList}
+          loading={loadingApps}
+          togglingApp={togglingApp}
+          search={appsSearch}
+          onSearch={setAppsSearch}
+          onClose={() => setOpenAppsModal(null)}
+          onToggle={handleToggleApp}
+          onLanguageChange={handleLanguageChange}
+        />
       )}
     </div>
   );
