@@ -33,6 +33,10 @@ export interface ClusterApplication {
   /** Kube container waiting/terminated reason when Ready is below desired. */
   statusReason?: string;
   statusMessage?: string;
+  /** Present when language is nginx. */
+  nginxVersion?: string;
+  injectCompatible?: boolean;
+  injectBlockedReason?: string;
 }
 
 export interface ServiceStats {
