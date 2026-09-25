@@ -31,6 +31,7 @@ import { formatDuration as formatDuration, getSvcColor as getSvcColor } from '..
 import { explainSpanError as explainSpanError } from '../../utils/errorAnalysis';
 import { getErrorCategoryLabel, getSpanOperationLabel } from '../../utils/spanLabels';
 import { redactEvidenceList, redactSecretText } from '../../utils/secretRedact';
+import { resolveTraceparent } from '../../utils/traceparent';
 
 const SPAN_KIND_ICON: Record<string, LucideIcon> = {
   SERVER: Server,
@@ -120,6 +121,19 @@ interface PayloadDetails {
   };
 }
 
+function buildContextPropagation(
+  span: Span,
+  carrier: NonNullable<PayloadDetails['contextPropagation']>['carrier'],
+): NonNullable<PayloadDetails['contextPropagation']> {
+  const traceparent = resolveTraceparent(span);
+  return {
+    carrier,
+    currentSpanId: span.spanId,
+    ...(span.parentSpanId ? { parentSpanId: span.parentSpanId } : {}),
+    ...(traceparent ? { traceparent } : {}),
+  };
+}
+
 // getSpanPayloadDetails extracts ONLY real, captured telemetry from the span
 // attributes — no fabricated payloads. When instrumentation did not record a
 // body (the common case for auto-instrumentation), the UI says so honestly.
@@ -154,10 +168,7 @@ function getSpanPayloadDetails(span: Span, _traceDuration: number): PayloadDetai
         body: span.status === 'ERROR' && span.error ? { error: span.error } : null,
         result: rows ? `${rows} rows` : undefined,
       },
-      contextPropagation: {
-        carrier: 'none',
-        currentSpanId: span.spanId,
-      },
+      contextPropagation: buildContextPropagation(span, 'none'),
     };
   }
 
@@ -182,9 +193,11 @@ function getSpanPayloadDetails(span: Span, _traceDuration: number): PayloadDetai
   const reqSize = attrs['http.request.body.size'] || attrs['http.request_content_length'];
   if (reqSize && !reqHeaders['content-length']) reqHeaders['content-length'] = `${reqSize} bytes`;
 
-  // The W3C trace context this span actually carries/propagates.
-  const traceparent = `00-${span.traceId}-${span.spanId}-01`;
-  reqHeaders['traceparent'] = traceparent;
+  // Only back-fill traceparent when instrumentation did not capture the header.
+  if (!reqHeaders['traceparent']) {
+    const traceparent = resolveTraceparent(span);
+    if (traceparent) reqHeaders['traceparent'] = traceparent;
+  }
 
   // Bodies only when the instrumentation actually captured them (rare).
   const reqBody = parseMaybeJson(attrs['http.request.body'] || attrs['request.body']);
@@ -215,12 +228,7 @@ function getSpanPayloadDetails(span: Span, _traceDuration: number): PayloadDetai
       result: respSize ? `${respSize} bytes` : undefined,
       bodyOmitted: attrs['http.response.body.omitted'] || attrs['response.body.omitted'] || '',
     },
-    contextPropagation: {
-      carrier: 'headers',
-      traceparent,
-      parentSpanId: span.parentSpanId,
-      currentSpanId: span.spanId,
-    },
+    contextPropagation: buildContextPropagation(span, 'headers'),
   };
 }
 
@@ -255,6 +263,7 @@ export function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerCo
   const dest = getSpanDestination(span);
   const serviceColor = getSvcColor(span.serviceName);
   const shareOfTrace = traceDuration > 0 ? (span.durationMs / traceDuration) * 100 : 0;
+  const resolvedTraceparent = useMemo(() => resolveTraceparent(span), [span]);
 
   useEffect(() => {
     setActiveTab(prev => (prev === 'error' && !isSpanError(span) ? 'overview' : prev));
@@ -450,6 +459,14 @@ export function SpanDrawerContent({ span, traceDuration, onClose }: SpanDrawerCo
                 <DrawerKvRow label={t('Span ID')} value={span.spanId} copied={copiedKey === 'spanId'} onCopy={() => handleCopy('spanId', span.spanId)} />
                 {span.parentSpanId && (
                   <DrawerKvRow label={t('Parent ID')} value={span.parentSpanId} copied={copiedKey === 'parentSpanId'} onCopy={() => handleCopy('parentSpanId', span.parentSpanId!)} />
+                )}
+                {resolvedTraceparent && (
+                  <DrawerKvRow
+                    label="traceparent"
+                    value={resolvedTraceparent}
+                    copied={copiedKey === 'overviewTraceparent'}
+                    onCopy={() => handleCopy('overviewTraceparent', resolvedTraceparent)}
+                  />
                 )}
                 <DrawerKvRow label={t('Start')} value={formattedStartTime} mono={false} />
               </div>
