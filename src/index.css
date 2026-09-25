@@ -5205,6 +5205,39 @@ body.dark-theme .flowing-line {
 .wl-detect.detected { color: var(--accent-indigo); }
 .wl-detect.overridden { color: var(--accent-amber); }
 
+.wl-status-reason {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.01em;
+  color: var(--accent-rose);
+  background: color-mix(in srgb, var(--accent-rose) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-rose) 28%, transparent);
+}
+
+.wl-blocker {
+  margin: 6px 0 0;
+  max-width: 560px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--accent-rose);
+}
+
+.wl-blocker-msg {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .wl-inject {
   max-width: 520px;
 }

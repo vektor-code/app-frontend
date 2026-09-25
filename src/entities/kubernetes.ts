@@ -28,6 +28,9 @@ export interface ClusterApplication {
   manualOverride: boolean;
   details: string;
   cluster: string;
+  /** Kube container waiting/terminated reason when Ready is below desired. */
+  statusReason?: string;
+  statusMessage?: string;
 }
 
 export interface ServiceStats {
