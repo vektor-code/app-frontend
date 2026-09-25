@@ -654,30 +654,59 @@ export default function Admin() {
     alert(`Telegram connection test message dispatched!\nBot Token: ${telegramToken.slice(0, 6)}... \nChat ID: ${telegramChatId}`);
   };
 
-  const adminTabs: {
-    key: typeof activeTab;
+  type AdminTabKey = typeof activeTab;
+
+  const namespaceTotal = nsData.enabled.length + nsData.disabled.length;
+
+  const adminNavGroups: {
     label: string;
-    icon: AdminIconName;
-    count?: number | string;
+    items: {
+      key: AdminTabKey;
+      label: string;
+      icon: AdminIconName;
+      badge?: number;
+    }[];
   }[] = [
-    { key: 'namespaces', label: t('Namespace Manager'), icon: 'namespace', count: nsData.enabled.length + nsData.disabled.length },
-    { key: 'infrastructure', label: t('Infrastructure'), icon: 'infrastructure' },
-    { key: 'clusters', label: t('Clusters'), icon: 'cluster', count: clusterInventory.length },
-    { key: 'instrumentations', label: t('Auto-Instrumentation'), icon: 'settings', count: instrumentations.length },
-    { key: 'retention', label: t('Storage'), icon: 'archive', count: retentionHours === 0 ? t('Forever') : `${retentionHours}h` },
-    { key: 'platform', label: t('Platform Health'), icon: 'health' },
-    { key: 'users', label: t('Users'), icon: 'users' },
-    { key: 'integrations', label: t('Integrations'), icon: 'plug', count: telegramEnabled ? t('On') : t('Off') },
+    {
+      label: t('Workloads'),
+      items: [
+        { key: 'namespaces', label: t('Namespaces'), icon: 'namespace', badge: namespaceTotal || undefined },
+        { key: 'instrumentations', label: t('Instrumentation'), icon: 'settings', badge: instrumentations.length || undefined },
+      ],
+    },
+    {
+      label: t('Cluster'),
+      items: [
+        { key: 'clusters', label: t('Clusters'), icon: 'cluster', badge: clusterInventory.length || undefined },
+        { key: 'platform', label: t('Platform health'), icon: 'health' },
+      ],
+    },
+    {
+      label: t('Data'),
+      items: [
+        { key: 'infrastructure', label: t('Backends'), icon: 'infrastructure' },
+        { key: 'retention', label: t('Retention'), icon: 'archive' },
+      ],
+    },
+    {
+      label: t('Access'),
+      items: [
+        { key: 'users', label: t('Users'), icon: 'users' },
+        { key: 'integrations', label: t('Notifications'), icon: 'plug' },
+      ],
+    },
   ];
 
-  const configuredInfraCount = [
-    infraConfig?.kafka?.brokers,
-    infraConfig?.clickhouse?.host,
-    infraConfig?.minio?.endpoint,
-    infraConfig?.ldap?.enabled === 'true',
-    infraConfig?.prometheus?.url,
-    infraConfig?.elasticsearch?.url,
-  ].filter(Boolean).length;
+  const sectionMeta: Record<AdminTabKey, { title: string; desc: string }> = {
+    namespaces: { title: t('Namespaces'), desc: t('Turn tracing on/off per namespace') },
+    instrumentations: { title: t('Instrumentation'), desc: t('OTel inject configs') },
+    clusters: { title: t('Clusters'), desc: t('Agent access and inventory') },
+    platform: { title: t('Platform health'), desc: t('APM pod diagnostics') },
+    infrastructure: { title: t('Backends'), desc: t('Kafka, ClickHouse, MinIO…') },
+    retention: { title: t('Retention'), desc: t('How long traces are kept') },
+    users: { title: t('Users'), desc: t('LDAP identities and permission templates') },
+    integrations: { title: t('Notifications'), desc: t('Alert channels and delivery settings') },
+  };
   const retentionPolicyLabel = retentionHours === 0
     ? t('Forever')
     : retentionHours < 24
@@ -790,45 +819,10 @@ export default function Admin() {
     );
   }
 
+  const currentSection = sectionMeta[activeTab];
+
   return (
     <div className="admin-page animate-fade-in">
-      <section className="admin-hero">
-        <div>
-          <span className="admin-eyebrow">
-            <AdminIcon name="shield" />
-            {t('Control plane')}
-          </span>
-          <h1>{t('Admin')}</h1>
-        </div>
-        <button type="button" className="admin-refresh-btn" onClick={fetchData} disabled={loading}>
-          <AdminIcon name="settings" />
-          {loading ? t('Refreshing') : t('Refresh')}
-        </button>
-      </section>
-
-      <section className="admin-summary-grid">
-        <div className="admin-summary-card emerald">
-          <span>{t('Active Namespaces')}</span>
-          <strong>{nsData.enabled.length}</strong>
-          <em>{nsData.disabled.length} {t('disabled')}</em>
-        </div>
-        <div className="admin-summary-card indigo">
-          <span>{t('Clusters')}</span>
-          <strong>{clusterInventory.length}</strong>
-          <em>{clusterInventory.filter(c => c.status === 'Active').length} {t('active')}</em>
-        </div>
-        <div className="admin-summary-card cyan">
-          <span>{t('Infrastructure')}</span>
-          <strong>{configuredInfraCount}</strong>
-          <em>{t('configured')}</em>
-        </div>
-        <div className={`admin-summary-card ${telegramEnabled ? 'emerald' : 'neutral'}`}>
-          <span>{t('Notifications')}</span>
-          <strong>{telegramEnabled ? t('On') : t('Off')}</strong>
-          <em>{t('Telegram')}</em>
-        </div>
-      </section>
-
       {error && (
         <div style={{
           background: 'rgba(244, 63, 94, 0.1)',
@@ -904,39 +898,80 @@ export default function Admin() {
         document.body
       )}
 
-      <div className="admin-tab-rail">
-        {adminTabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => {
-              setActiveTab(tab.key as any);
-              setIsEditingClusters(false);
-            }}
-            className={activeTab === tab.key ? 'active' : ''}
-          >
-            <AdminIcon name={tab.icon} />
-            <span>{tab.label}</span>
-            {tab.count !== undefined && <em>{tab.count}</em>}
-          </button>
-        ))}
-      </div>
+      <div className="admin-shell">
+        <aside className="admin-shell-nav">
+          <div className="admin-shell-nav-brand">
+            <strong>{t('Settings')}</strong>
+            <span>{t('Control plane')}</span>
+          </div>
+          {adminNavGroups.map((group) => (
+            <div key={group.label} className="admin-shell-nav-group">
+              <span className="admin-shell-nav-group-label">{group.label}</span>
+              {group.items.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`admin-shell-nav-item${activeTab === item.key ? ' active' : ''}`}
+                  onClick={() => {
+                    setActiveTab(item.key);
+                    setIsEditingClusters(false);
+                  }}
+                >
+                  <span className="admin-shell-nav-item-label">
+                    <AdminIcon name={item.icon} />
+                    {item.label}
+                  </span>
+                  {item.badge !== undefined && (
+                    <em className="admin-shell-nav-badge">{item.badge}</em>
+                  )}
+                </button>
+              ))}
+            </div>
+          ))}
+        </aside>
+
+        <main className="admin-shell-main">
+          <header className="admin-shell-header">
+            <div>
+              <h1>{currentSection.title}</h1>
+              <p>{currentSection.desc}</p>
+              {(activeTab === 'namespaces' || activeTab === 'instrumentations') && loadingWorkloadStatus ? (
+                <em className="admin-workload-status-loading">{t('Refreshing workload status…')}</em>
+              ) : null}
+            </div>
+            <div className="admin-shell-header-actions">
+              {activeTab === 'clusters' && (
+                !isEditingClusters ? (
+                  <>
+                    <button type="button" className="btn btn-ghost" onClick={handleAddCluster}>Add Cluster</button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => {
+                        setEditableClusters(JSON.parse(JSON.stringify(clusterInventory)));
+                        setIsEditingClusters(true);
+                      }}
+                    >
+                      Edit Clusters
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" className="btn btn-ghost" onClick={() => setIsEditingClusters(false)}>Cancel</button>
+                    <button type="button" className="btn btn-primary" onClick={handleSaveClusters}>Save Inventory</button>
+                  </>
+                )
+              )}
+              <button type="button" className="admin-refresh-btn" onClick={fetchData} disabled={loading}>
+                <AdminIcon name="settings" />
+                {loading ? t('Refreshing') : t('Refresh')}
+              </button>
+            </div>
+          </header>
 
       {/* Tab Contents */}
       {activeTab === 'namespaces' && (
         <div>
-          <div className="admin-section-heading">
-            <div>
-              <span>{t('Ingestion Control')}</span>
-              <h2>
-                {t('Namespace Manager')}
-                {loadingWorkloadStatus ? (
-                  <em className="admin-workload-status-loading">{t('Refreshing workload status…')}</em>
-                ) : null}
-              </h2>
-            </div>
-          </div>
-
           <div className="admin-namespace-grid">
             {(nsData.enabled || []).map((ns) => (
               <div
@@ -1031,13 +1066,6 @@ export default function Admin() {
 
       {activeTab === 'infrastructure' && infraConfig && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeIn 0.2s' }}>
-          <div className="admin-section-heading">
-            <div>
-              <span>{t('Platform services')}</span>
-              <h2>{t('Infrastructure')}</h2>
-            </div>
-          </div>
-
           <div className="admin-infra-grid">
             {infraCards.map(resource => (
               <InfraResourceCard
@@ -1376,35 +1404,6 @@ export default function Admin() {
 
       {activeTab === 'clusters' && (
         <div style={{ animation: 'fadeIn 0.2s', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div className="admin-section-heading action">
-            <div>
-              <span>{t('Kubernetes')}</span>
-              <h2>{t('Cluster Inventory')}</h2>
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {!isEditingClusters ? (
-                <>
-                  <button type="button" className="btn btn-ghost" onClick={handleAddCluster}>Add Cluster</button>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => {
-                      setEditableClusters(JSON.parse(JSON.stringify(clusterInventory)));
-                      setIsEditingClusters(true);
-                    }}
-                  >
-                    Edit Clusters
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button type="button" className="btn btn-ghost" onClick={() => setIsEditingClusters(false)}>Cancel</button>
-                  <button type="button" className="btn btn-primary" onClick={handleSaveClusters}>Save Inventory</button>
-                </>
-              )}
-            </div>
-          </div>
-
           <div className="admin-cluster-grid">
             {(isEditingClusters ? editableClusters : clusterInventory).map((item, idx) => {
               // Agent clusters use in-cluster ClusterRole — no central kubeconfig is expected.
@@ -1612,18 +1611,6 @@ export default function Admin() {
 
       {activeTab === 'instrumentations' && (
         <div>
-          <div className="admin-section-heading">
-            <div>
-              <span>{t('OpenTelemetry')}</span>
-              <h2>
-                {t('Auto-Instrumentation Rules')}
-                {loadingWorkloadStatus ? (
-                  <em className="admin-workload-status-loading">{t('Refreshing workload status…')}</em>
-                ) : null}
-              </h2>
-            </div>
-          </div>
-          
           <div className="admin-instrumentation-grid">
             {instrumentations.map((inst) => (
               <div className="admin-instrumentation-card animate-fade-in" key={`${inst.namespace}/${inst.name}`}>
@@ -1688,13 +1675,6 @@ export default function Admin() {
 
       {activeTab === 'retention' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          <div className="admin-section-heading">
-            <div>
-              <span>{t('Storage')}</span>
-              <h2>{t('Storage & Retention')}</h2>
-            </div>
-          </div>
-
           <div className="admin-storage-grid">
             <div className="admin-storage-card primary policy">
               <div className="admin-storage-head">
@@ -1777,13 +1757,6 @@ export default function Admin() {
 
       {activeTab === 'integrations' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeIn 0.2s' }}>
-          <div className="admin-section-heading">
-            <div>
-              <span>{t('Alerts')}</span>
-              <h2>{t('Notification Integrations')}</h2>
-            </div>
-          </div>
-
           <div className="admin-integration-grid">
             <div
               role="button"
@@ -1868,6 +1841,9 @@ export default function Admin() {
           </div>
         </div>
       )}
+
+        </main>
+      </div>
 
       {openAppsModal && (
         <WorkloadInstrumentationModal

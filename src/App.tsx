@@ -8,22 +8,24 @@ import HeaderAccountMenu from './components/HeaderAccountMenu';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import Sidebar from './components/Sidebar';
 import { ThemeSwapper } from './components/ThemeSwapper';
+import RouteErrorBoundary from './components/RouteErrorBoundary';
 import { useTranslation } from './utils/i18n';
+import { lazyWithRetry } from './utils/lazyWithRetry';
 
-const Dashboard = React.lazy(() => import('./pages/Dashboard'));
-const TraceExplorer = React.lazy(() => import('./pages/TraceExplorer'));
-const TraceDetail = React.lazy(() => import('./pages/TraceDetail'));
-const ServiceMap = React.lazy(() => import('./pages/ServiceMap'));
-const DbAnalytics = React.lazy(() => import('./pages/DbAnalytics'));
-const LiveStream = React.lazy(() => import('./pages/LiveStream'));
-const Login = React.lazy(() => import('./pages/Login'));
-const LicenseExpired = React.lazy(() => import('./pages/LicenseExpired'));
-const Dependencies = React.lazy(() => import('./pages/Dependencies'));
-const Admin = React.lazy(() => import('./pages/Admin'));
-const Alerts = React.lazy(() => import('./pages/Alerts'));
-const Issues = React.lazy(() => import('./pages/Issues'));
-const Infrastructure = React.lazy(() => import('./pages/Infrastructure'));
-const Services = React.lazy(() => import('./pages/Services'));
+const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'));
+const TraceExplorer = lazyWithRetry(() => import('./pages/TraceExplorer'));
+const TraceDetail = lazyWithRetry(() => import('./pages/TraceDetail'));
+const ServiceMap = lazyWithRetry(() => import('./pages/ServiceMap'));
+const DbAnalytics = lazyWithRetry(() => import('./pages/DbAnalytics'));
+const LiveStream = lazyWithRetry(() => import('./pages/LiveStream'));
+const Login = lazyWithRetry(() => import('./pages/Login'));
+const LicenseExpired = lazyWithRetry(() => import('./pages/LicenseExpired'));
+const Dependencies = lazyWithRetry(() => import('./pages/Dependencies'));
+const Admin = lazyWithRetry(() => import('./pages/Admin'));
+const Alerts = lazyWithRetry(() => import('./pages/Alerts'));
+const Issues = lazyWithRetry(() => import('./pages/Issues'));
+const Infrastructure = lazyWithRetry(() => import('./pages/Infrastructure'));
+const Services = lazyWithRetry(() => import('./pages/Services'));
 
 function PageFallback() {
   return <div style={{ minHeight: '240px' }} />;
@@ -390,23 +392,25 @@ export default function App() {
           </div>
         </header>
         <main className="app-content">
-          <Suspense fallback={<PageFallback />}>
-            <Routes>
-              <Route path="/login" element={<Navigate to="/" replace />} />
-              <Route path="/" element={<Dashboard namespaces={namespaces} selectedNamespace={selectedNamespace} />} />
-              <Route path="/services" element={<Services namespace={selectedNamespace} />} />
-              <Route path="/traces" element={<TraceExplorer namespace={selectedNamespace} cluster={selectedCluster} />} />
-              <Route path="/traces/:traceId" element={<TraceDetail />} />
-              <Route path="/servicemap" element={<ServiceMap namespace={selectedNamespace} />} />
-              <Route path="/dependencies" element={<Dependencies namespace={selectedNamespace} />} />
-              <Route path="/database" element={<DbAnalytics namespace={selectedNamespace} />} />
-              <Route path="/infrastructure" element={<Infrastructure namespace={selectedNamespace} />} />
-              <Route path="/live" element={<LiveStream namespace={selectedNamespace} />} />
-              <Route path="/alerts" element={<Alerts namespace={selectedNamespace} />} />
-              <Route path="/issues" element={<Issues namespace={selectedNamespace} />} />
-              <Route path="/admin" element={user?.role === 'admin' ? <Admin /> : <Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
+          <RouteErrorBoundary label="Reload page">
+            <Suspense fallback={<PageFallback />}>
+              <Routes>
+                <Route path="/login" element={<Navigate to="/" replace />} />
+                <Route path="/" element={<Dashboard namespaces={namespaces} selectedNamespace={selectedNamespace} />} />
+                <Route path="/services" element={<Services namespace={selectedNamespace} />} />
+                <Route path="/traces" element={<TraceExplorer namespace={selectedNamespace} cluster={selectedCluster} />} />
+                <Route path="/traces/:traceId" element={<TraceDetail />} />
+                <Route path="/servicemap" element={<ServiceMap namespace={selectedNamespace} />} />
+                <Route path="/dependencies" element={<Dependencies namespace={selectedNamespace} />} />
+                <Route path="/database" element={<DbAnalytics namespace={selectedNamespace} />} />
+                <Route path="/infrastructure" element={<Infrastructure namespace={selectedNamespace} />} />
+                <Route path="/live" element={<LiveStream namespace={selectedNamespace} />} />
+                <Route path="/alerts" element={<Alerts namespace={selectedNamespace} />} />
+                <Route path="/issues" element={<Issues namespace={selectedNamespace} />} />
+                <Route path="/admin" element={user?.role === 'admin' ? <Admin /> : <Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </RouteErrorBoundary>
         </main>
       </div>
     </div>

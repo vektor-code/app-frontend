@@ -5,7 +5,7 @@ export type TranslateFn = (key: string) => string;
 
 export interface NamespaceWorkloadStatus {
   /** Count of workloads per kube waiting/terminated reason. */
-  reasons: Map<string, number>;
+  reasons: Record<string, number>;
   /** Workloads with ready < replicas. */
   notReady: number;
 }
@@ -38,14 +38,14 @@ export function activeBlockedCopy(reason: string, t: TranslateFn): string {
 }
 
 export function summarizeWorkloadStatus(apps: ClusterApplication[]): NamespaceWorkloadStatus {
-  const reasons = new Map<string, number>();
+  const reasons: Record<string, number> = {};
   let notReady = 0;
 
   for (const app of apps) {
     if (app.ready >= app.replicas) continue;
     notReady += 1;
     if (!app.statusReason) continue;
-    reasons.set(app.statusReason, (reasons.get(app.statusReason) || 0) + 1);
+    reasons[app.statusReason] = (reasons[app.statusReason] || 0) + 1;
   }
 
   return { reasons, notReady };
@@ -75,9 +75,8 @@ export function WorkloadStatusReasonSummary({
   status: NamespaceWorkloadStatus;
   className?: string;
 }) {
-  if (status.notReady <= 0 || status.reasons.size === 0) return null;
-
-  const entries = [...status.reasons.entries()].sort((a, b) => b[1] - a[1]);
+  const entries = Object.entries(status.reasons).sort((a, b) => b[1] - a[1]);
+  if (status.notReady <= 0 || entries.length === 0) return null;
 
   return (
     <div className={className || 'admin-workload-status-row'}>
