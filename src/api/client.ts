@@ -350,7 +350,7 @@ class ApiClient {
   }
   testClusterConnection(payload: { id?: string; token: string; credentialType?: string; apiServer?: string }) {
     if (shouldUseMockTelemetry()) return Promise.resolve(mockTestClusterConnection(payload));
-    return this.post<{ success: boolean; serverVersion?: string; error?: string; message?: string }>('/admin/clusters/test', payload);
+    return this.post<{ success: boolean; serverVersion?: string; error?: string; message?: string; mode?: string }>('/admin/clusters/test', payload);
   }
   deleteCluster(id: string) {
     if (shouldUseMockTelemetry()) return Promise.resolve(mockDeleteCluster(id));

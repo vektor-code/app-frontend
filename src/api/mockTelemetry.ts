@@ -1073,14 +1073,30 @@ export function mockDeleteCluster(id: string) {
 
 export function mockTestClusterConnection(payload: { id?: string }) {
   const cluster = mockInventory.find(item => item.id === payload.id);
-  if (!cluster || cluster.status !== 'Active' || !cluster.hasCredentials) {
+  if (!cluster || cluster.status !== 'Active') {
     return {
       success: false,
       error: 'cluster unreachable',
       message: 'No credentials or cluster is inactive in this mock session.',
     };
   }
-  return { success: true, serverVersion: 'v1.29.4' };
+  const agentOk = Boolean(cluster.managedByAgent || cluster.credentialType === 'agent');
+  if (!cluster.hasCredentials && !agentOk) {
+    return {
+      success: false,
+      error: 'cluster unreachable',
+      message: 'No credentials or cluster is inactive in this mock session.',
+    };
+  }
+  if (agentOk && !cluster.hasCredentials) {
+    return {
+      success: true,
+      serverVersion: 'agent',
+      mode: 'agent',
+      message: 'Agent heartbeat healthy (in-cluster ClusterRole)',
+    };
+  }
+  return { success: true, serverVersion: 'v1.29.4', mode: 'token' };
 }
 
 export function mockAdminInstrumentations() {

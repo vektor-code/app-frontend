@@ -503,11 +503,14 @@ export default function Admin() {
         apiServer: cluster.apiServer
       });
       if (res.success) {
+        const agentMode = res.mode === 'agent' || cluster.credentialType === 'agent' || cluster.managedByAgent;
         setClusterTestResult({
           kind: 'success',
-          title: 'Cluster connection healthy',
+          title: agentMode ? 'Agent connection healthy' : 'Cluster connection healthy',
           message: `${cluster.displayName || cluster.id} is reachable.`,
-          details: `Kubernetes API server: ${res.serverVersion || 'unknown'}`,
+          details: agentMode
+            ? (res.message || 'Agent heartbeat OK (in-cluster ClusterRole)')
+            : `Kubernetes API server: ${res.serverVersion || 'unknown'}`,
         });
       } else {
         setClusterTestResult({
@@ -1356,7 +1359,19 @@ export default function Admin() {
 
           <div className="admin-cluster-grid">
             {(isEditingClusters ? editableClusters : clusterInventory).map((item, idx) => {
-              const credentialsReady = Boolean(item.hasCredentials || (item.token && item.token !== '******'));
+              // Agent clusters use in-cluster ClusterRole — no central kubeconfig is expected.
+              const agentManaged = Boolean(
+                item.managedByAgent
+                || item.credentialType === 'agent'
+                || item.accessMode === 'agent',
+              );
+              const credentialsReady = agentManaged
+                || Boolean(item.hasCredentials || (item.token && item.token !== '******'));
+              const accessLabel = agentManaged
+                ? t('Agent (in-cluster)')
+                : credentialsReady
+                  ? t('Configured')
+                  : t('Not set');
               return (
                 <div
                   key={`${item.id || 'cluster'}-${idx}`}
@@ -1391,18 +1406,18 @@ export default function Admin() {
                     <>
                       <div className="admin-cluster-meta-grid">
                         <div>
-                          <span>{t('Credentials')}</span>
+                          <span>{t('Access')}</span>
                           <strong className={credentialsReady ? 'ready' : 'missing'}>
-                            {credentialsReady ? t('Configured') : t('Not set')}
+                            {accessLabel}
                           </strong>
                         </div>
                         <div>
                           <span>{t('Type')}</span>
-                          <strong>{item.credentialType || 'kubeconfig'}</strong>
+                          <strong>{agentManaged ? 'agent' : (item.credentialType || 'kubeconfig')}</strong>
                         </div>
                         <div>
                           <span>{t('Agent namespace')}</span>
-                          <strong>{item.agentNamespace || 'trace-prod'}</strong>
+                          <strong>{item.agentNamespace || '—'}</strong>
                         </div>
                       </div>
                       <div className="admin-cluster-actions">
@@ -1428,7 +1443,7 @@ export default function Admin() {
                       <div className="admin-cluster-edit-grid">
                         <label>
                           <span>{t('Cluster ID')}</span>
-                          {item.managedByAgent ? (
+                          {agentManaged ? (
                             <div className="admin-cluster-managed">
                               <code>{item.id}</code>
                               <em>{t('Set by agent')}</em>
@@ -1474,44 +1489,51 @@ export default function Admin() {
                         </label>
                       </div>
 
-                      <div className="admin-cluster-credential-panel">
-                        <span>{t('Credentials')}</span>
-                        <AdminSegmented
-                          value={item.credentialType || 'kubeconfig'}
-                          options={[
-                            { value: 'kubeconfig', label: 'Kubeconfig' },
-                            { value: 'bearer', label: 'Bearer token' },
-                          ]}
-                          onChange={(value) => {
-                            const next = [...editableClusters];
-                            next[idx].credentialType = value;
-                            setEditableClusters(next);
-                          }}
-                        />
-                        {item.credentialType === 'bearer' && (
-                          <input
-                            type="text"
-                            placeholder="https://host:6443"
-                            className="form-input"
-                            value={item.apiServer || ''}
-                            onChange={(event) => {
+                      {agentManaged ? (
+                        <div className="admin-cluster-managed-access">
+                          <strong>{t('Agent (in-cluster)')}</strong>
+                          <p>{t('This cluster is reached through agent-backend’s ServiceAccount and ClusterRole. No kubeconfig is stored in APM.')}</p>
+                        </div>
+                      ) : (
+                        <div className="admin-cluster-credential-panel">
+                          <span>{t('Credentials')}</span>
+                          <AdminSegmented
+                            value={item.credentialType || 'kubeconfig'}
+                            options={[
+                              { value: 'kubeconfig', label: 'Kubeconfig' },
+                              { value: 'bearer', label: 'Bearer token' },
+                            ]}
+                            onChange={(value) => {
                               const next = [...editableClusters];
-                              next[idx].apiServer = event.target.value;
+                              next[idx].credentialType = value;
                               setEditableClusters(next);
                             }}
                           />
-                        )}
-                        <textarea
-                          placeholder={item.credentialType === 'bearer' ? t('Bearer token') : t('Kubeconfig YAML')}
-                          className="form-input"
-                          value={item.token === '******' ? '' : (item.token || '')}
-                          onChange={(event) => {
-                            const next = [...editableClusters];
-                            next[idx].token = event.target.value;
-                            setEditableClusters(next);
-                          }}
-                        />
-                      </div>
+                          {item.credentialType === 'bearer' && (
+                            <input
+                              type="text"
+                              placeholder="https://host:6443"
+                              className="form-input"
+                              value={item.apiServer || ''}
+                              onChange={(event) => {
+                                const next = [...editableClusters];
+                                next[idx].apiServer = event.target.value;
+                                setEditableClusters(next);
+                              }}
+                            />
+                          )}
+                          <textarea
+                            placeholder={item.credentialType === 'bearer' ? t('Bearer token') : t('Kubeconfig YAML')}
+                            className="form-input"
+                            value={item.token === '******' ? '' : (item.token || '')}
+                            onChange={(event) => {
+                              const next = [...editableClusters];
+                              next[idx].token = event.target.value;
+                              setEditableClusters(next);
+                            }}
+                          />
+                        </div>
+                      )}
 
                       <div className="admin-cluster-actions">
                         <button

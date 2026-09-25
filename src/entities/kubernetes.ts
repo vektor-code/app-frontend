@@ -8,6 +8,8 @@ export interface ClusterInventoryItem {
   agentNamespace?: string;
   hasCredentials?: boolean;
   managedByAgent?: boolean;
+  /** How Admin reaches the cluster: agent (in-cluster), kubeconfig/bearer, or none. */
+  accessMode?: string;
 }
 
 export interface ClusterNamespace {

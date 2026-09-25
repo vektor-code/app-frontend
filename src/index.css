@@ -5963,6 +5963,27 @@ body.dark-theme .flowing-line {
   font-weight: 750;
 }
 
+.admin-cluster-managed-access {
+  padding: var(--space-md);
+  border: 1px solid color-mix(in srgb, var(--accent-emerald) 28%, var(--border-primary));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent-emerald) 8%, var(--bg-primary));
+  display: grid;
+  gap: 4px;
+}
+
+.admin-cluster-managed-access strong {
+  font-size: 13px;
+  color: var(--accent-emerald);
+}
+
+.admin-cluster-managed-access p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
 .admin-cluster-credential-panel {
   padding: var(--space-md);
   border: 1px solid var(--border-primary);

@@ -2,71 +2,15 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import { LoadingState, NoDataState } from '../components/DataState';
 import { useTranslation } from '../utils/i18n';
+import {
+  normalizePlatformHealthReport,
+  platformHealthPods,
+  type PlatformHealthReport,
+  type PlatformPod,
+  type PlatformSeverity,
+} from '../utils/platformHealth';
 
-type Severity = 'ok' | 'info' | 'warning' | 'critical';
-
-interface PlatformIssue {
-  severity: Severity;
-  source: string;
-  code?: string;
-  message: string;
-  detail?: string;
-  at?: string;
-}
-
-interface PlatformPod {
-  name: string;
-  namespace: string;
-  cluster?: string;
-  component: string;
-  phase: string;
-  nodeName?: string;
-  ready: boolean;
-  restarts: number;
-  status: Severity;
-  containers: {
-    name: string;
-    ready: boolean;
-    restartCount: number;
-    state: string;
-    reason?: string;
-    message?: string;
-    exitCode?: number;
-  }[];
-  events: { type: string; reason: string; message: string; count: number; lastSeen?: string }[];
-  issues: PlatformIssue[];
-  logErrors: { severity: Severity; line: string }[];
-  recentLogs: string[];
-  previousLogErrors?: { severity: Severity; line: string }[];
-  logFetchError?: string;
-}
-
-interface PlatformComponent {
-  id: string;
-  status: Severity;
-  podCount: number;
-  pods: PlatformPod[];
-  issues: PlatformIssue[];
-}
-
-interface PlatformHealthReport {
-  namespace: string;
-  generatedAt: string;
-  summary: {
-    status: Severity;
-    critical: number;
-    warning: number;
-    info: number;
-    healthy: number;
-    pods: number;
-  };
-  components: PlatformComponent[];
-  notes?: string[];
-  sources?: string[];
-  clusters?: { id: string; status: string; mode: string; detail?: string; lastSeen?: string }[];
-}
-
-function severityClass(s: Severity) {
+function severityClass(s: PlatformSeverity) {
   switch (s) {
     case 'critical':
       return 'critical';
@@ -96,12 +40,12 @@ export default function AdminPlatformHealth() {
     setLoading(true);
     setError(null);
     try {
-      const data = (await api.getPlatformHealth(namespace || undefined)) as PlatformHealthReport;
+      const data = normalizePlatformHealthReport(await api.getPlatformHealth(namespace || undefined));
       setReport(data);
       if (!selectedPod) {
-        const firstBad = data.components
-          .flatMap((c: PlatformComponent) => c.pods)
-          .find((p: PlatformPod) => p.status === 'critical' || p.status === 'warning');
+        const firstBad = platformHealthPods(data).find(
+          p => p.status === 'critical' || p.status === 'warning',
+        );
         if (firstBad) setSelectedPod(podKey(firstBad));
       }
     } catch (err: any) {
@@ -120,14 +64,14 @@ export default function AdminPlatformHealth() {
 
   const pods = useMemo(() => {
     if (!report) return [];
-    const all = report.components.flatMap(c => c.pods);
+    const all = platformHealthPods(report);
     if (!onlyProblems) return all;
     return all.filter(p => p.status !== 'ok' || p.issues.length > 0 || p.logErrors.length > 0);
   }, [report, onlyProblems]);
 
   const activePod = useMemo(() => {
     if (!report) return null;
-    const all = report.components.flatMap(c => c.pods);
+    const all = platformHealthPods(report);
     return all.find(p => podKey(p) === selectedPod) || all[0] || null;
   }, [report, selectedPod]);
 
