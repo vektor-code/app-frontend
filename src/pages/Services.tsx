@@ -474,7 +474,11 @@ export default function Services({ namespace }: ServicesProps) {
                 key={service.key}
                 service={service}
                 gridStyle={tableGridStyle}
-                onClick={() => navigate(`/traces?service=${encodeURIComponent(service.serviceName)}`)}
+                onClick={() => {
+                  const ns = service.environments[0] || namespace;
+                  navigate(`/services/${encodeURIComponent(ns)}/${encodeURIComponent(service.serviceName)}`);
+                }}
+                onTraces={() => navigate(`/traces?service=${encodeURIComponent(service.serviceName)}`)}
               />
             ))}
           </div>
@@ -488,10 +492,12 @@ function ServiceRow({
   service,
   gridStyle,
   onClick,
+  onTraces,
 }: {
   service: AggregatedService;
   gridStyle: CSSProperties;
   onClick: () => void;
+  onTraces: () => void;
 }) {
   const tone = healthTone(service.status, service.healthScore);
   const latencyTone = service.p99Ms > 1200 ? 'critical' : service.p95Ms > 500 ? 'warning' : 'neutral';
@@ -516,6 +522,24 @@ function ServiceRow({
             ))}
             {service.environments.length > 3 && <em>+{service.environments.length - 3}</em>}
           </div>
+          <span
+            role="link"
+            tabIndex={0}
+            className="service-row-traces-link"
+            onClick={event => {
+              event.stopPropagation();
+              onTraces();
+            }}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                event.stopPropagation();
+                onTraces();
+              }
+            }}
+          >
+            Traces
+          </span>
         </div>
       </div>
 

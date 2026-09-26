@@ -2831,7 +2831,9 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
           <button
             className="service-map-context-item"
             onClick={() => {
-              navigate(`/services?service=${encodeURIComponent(contextMenu.nodeName)}`);
+              navigate(
+                `/services/${encodeURIComponent(namespace || '')}/${encodeURIComponent(contextMenu.nodeName)}`,
+              );
               setContextMenu(null);
             }}
           >

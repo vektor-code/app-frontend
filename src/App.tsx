@@ -26,6 +26,7 @@ const Alerts = lazyWithRetry(() => import('./pages/Alerts'));
 const Issues = lazyWithRetry(() => import('./pages/Issues'));
 const Infrastructure = lazyWithRetry(() => import('./pages/Infrastructure'));
 const Services = lazyWithRetry(() => import('./pages/Services'));
+const ServiceDetail = lazyWithRetry(() => import('./pages/ServiceDetail'));
 
 function PageFallback() {
   return <div style={{ minHeight: '240px' }} />;
@@ -398,6 +399,7 @@ export default function App() {
                 <Route path="/login" element={<Navigate to="/" replace />} />
                 <Route path="/" element={<Dashboard namespaces={namespaces} selectedNamespace={selectedNamespace} />} />
                 <Route path="/services" element={<Services namespace={selectedNamespace} />} />
+                <Route path="/services/:namespace/:serviceName" element={<ServiceDetail />} />
                 <Route path="/traces" element={<TraceExplorer namespace={selectedNamespace} cluster={selectedCluster} />} />
                 <Route path="/traces/:traceId" element={<TraceDetail />} />
                 <Route path="/servicemap" element={<ServiceMap namespace={selectedNamespace} />} />
