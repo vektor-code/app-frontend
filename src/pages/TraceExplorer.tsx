@@ -230,6 +230,7 @@ export default function TraceExplorer({ namespace, cluster }: TraceExplorerProps
       if (hasBodyFilter) params.hasBody = hasBodyFilter;
       if (showProbes) params.excludeProbes = 'false';
       params.startTime = getStartTimeISO(timeRangeFilter);
+      params.endTime = new Date().toISOString();
 
       if (activeTab === 'top') {
         params.limit = '500';

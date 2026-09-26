@@ -104,13 +104,13 @@ export default function ServiceDetail() {
     if (!namespace || !serviceName) return;
     setLoading(true);
     setLoadError(false);
+    const endTime = new Date().toISOString();
     const startTime = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000).toISOString();
 
     try {
       const [
         servicesRes,
         endpointsRes,
-        tracesRes,
         mapRes,
         issuesRes,
         podsRes,
@@ -123,9 +123,9 @@ export default function ServiceDetail() {
           namespace,
           service: serviceName,
           startTime,
+          endTime,
           limit: '200',
         }),
-        api.getTraces({ namespace, service: serviceName, limit: '40' }),
         api.getServiceMap(namespace),
         api.getIssues(namespace, WINDOW_MINUTES),
         api.getPods(namespace),
@@ -187,8 +187,6 @@ export default function ServiceDetail() {
         timeseries: timeseriesRes,
         dbMetrics,
       });
-
-      void tracesRes;
     } catch (err) {
       console.error('ServiceDetail load error:', err);
       setLoadError(true);

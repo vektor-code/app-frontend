@@ -80,6 +80,18 @@ function shouldRefreshToken(token: string, skewMs = 60_000): boolean {
   return tokenMsUntilExpiry(token) <= skewMs;
 }
 
+/** Default 1h window when callers omit startTime — avoids unbounded backend scans. */
+function withDefaultQueryWindow(params?: Record<string, string>): Record<string, string> {
+  const p = { ...(params ?? {}) };
+  if (!p.startTime) {
+    p.startTime = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  }
+  if (!p.endTime) {
+    p.endTime = new Date().toISOString();
+  }
+  return p;
+}
+
 class ApiClient {
   private refreshPromise: Promise<string> | null = null;
 
@@ -388,22 +400,24 @@ class ApiClient {
   }
 
   getTraces(params?: Record<string, string>) {
+    const p = withDefaultQueryWindow(params);
     if (shouldUseMockTelemetry()) {
       return new Promise<{ traces: TraceListItem[]; total: number }>(resolve => {
-        window.setTimeout(() => resolve(mockTraces(params)), 280);
+        window.setTimeout(() => resolve(mockTraces(p)), 280);
       });
     }
-    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    const qs = '?' + new URLSearchParams(p).toString();
     return this.get<{ traces: TraceListItem[]; total: number }>(`/traces${qs}`);
   }
 
   getTopEndpoints(params?: Record<string, string>) {
+    const p = withDefaultQueryWindow(params);
     if (shouldUseMockTelemetry()) {
       return new Promise<{ endpoints: EndpointStat[]; total: number }>(resolve => {
-        window.setTimeout(() => resolve(mockTopEndpoints(params)), 280);
+        window.setTimeout(() => resolve(mockTopEndpoints(p)), 280);
       });
     }
-    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    const qs = '?' + new URLSearchParams(p).toString();
     return this.get<{ endpoints: EndpointStat[]; total: number }>(`/endpoints${qs}`);
   }
 

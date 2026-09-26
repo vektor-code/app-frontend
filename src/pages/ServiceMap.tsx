@@ -747,7 +747,9 @@ export default function ServiceMap({ namespace }: ServiceMapProps) {
     }
     setLoadingTraces(true);
     
-    const params: Record<string, string> = { limit: '15' };
+    const endTime = new Date().toISOString();
+    const startTime = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const params: Record<string, string> = { limit: '15', startTime, endTime };
     if (namespace) params.namespace = namespace;
     if (selectedService) params.service = selectedService;
 
