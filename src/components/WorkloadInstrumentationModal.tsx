@@ -259,9 +259,10 @@ export default function WorkloadInstrumentationModal({
             visible.map(app => {
               const busy = togglingApp === app.name;
               const needsStack = !app.instrumented && isUnknownStack(app.language) && isUnknownStack(app.detectedLanguage);
-              const nginxBlocked = app.injectCompatible === false
+              const webserverBlocked = app.injectCompatible === false
                 && !!app.injectBlockedReason
-                && (app.language === 'nginx' || app.detectedLanguage === 'nginx');
+                && (app.language === 'nginx' || app.detectedLanguage === 'nginx'
+                  || app.language === 'apache-httpd' || app.detectedLanguage === 'apache-httpd');
               const language = app.language || app.detectedLanguage || 'unknown';
               const logo = languageLogoFor(language);
               const tone = podTone(app.ready, app.replicas);
@@ -305,12 +306,22 @@ export default function WorkloadInstrumentationModal({
                           ) : null}
                         </p>
                       ) : null}
-                      {nginxBlocked ? (
+                      {webserverBlocked ? (
                         <p className="wl-blocker">
                           {app.injectBlockedReason}
                           {app.nginxVersion ? (
                             <span className="wl-blocker-msg" title={app.nginxVersion}>
                               {' '}(nginx {app.nginxVersion})
+                            </span>
+                          ) : null}
+                          {app.apacheVersion ? (
+                            <span className="wl-blocker-msg" title={app.apacheVersion}>
+                              {' '}(httpd {app.apacheVersion})
+                            </span>
+                          ) : null}
+                          {app.supportedModuleVersions ? (
+                            <span className="wl-blocker-msg" title={app.supportedModuleVersions}>
+                              {' '}Supported modules: {app.supportedModuleVersions}
                             </span>
                           ) : null}
                         </p>
@@ -350,11 +361,11 @@ export default function WorkloadInstrumentationModal({
                         {app.instrumented ? t('Active') : t('Off')}
                       </span>
                       {busy ? <span className="admin-workload-spinner" /> : null}
-                      <label className={`admin-switch ${busy || needsStack || nginxBlocked ? 'disabled' : ''}`}>
+                      <label className={`admin-switch ${busy || needsStack || webserverBlocked ? 'disabled' : ''}`}>
                         <input
                           type="checkbox"
                           checked={app.instrumented}
-                          disabled={busy || needsStack || nginxBlocked}
+                          disabled={busy || needsStack || webserverBlocked}
                           onChange={() => onToggle(app)}
                         />
                         <i />
