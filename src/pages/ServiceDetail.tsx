@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Activity, GitBranch, AlertTriangle, BarChart3, ListTree } from 'lucide-react';
+import { ArrowLeft, Activity, Box, Cloud } from 'lucide-react';
 import { api } from '../api/client';
 import type {
   DatabaseQueryMetric,
@@ -13,15 +13,29 @@ import type {
 } from '../entities';
 import { LoadingState, NoDataState } from '../components/DataState';
 import LanguageIcon from '../components/LanguageIcon';
-import { KpiCard } from '../components/KpiCard';
 import { useTranslation } from '../utils/i18n';
 import { displayOperationName } from '../utils/operationName';
 import { formatDuration } from '../utils/traceDisplay';
 import type { MiniTrendTone } from '../components/MiniTrend';
 
-type DetailTab = 'overview' | 'transactions' | 'dependencies' | 'errors' | 'metrics';
+type DetailTab =
+  | 'overview'
+  | 'transactions'
+  | 'dependencies'
+  | 'errors'
+  | 'metrics'
+  | 'infrastructure'
+  | 'logs';
 
-const VALID_TABS: DetailTab[] = ['overview', 'transactions', 'dependencies', 'errors', 'metrics'];
+const VALID_TABS: DetailTab[] = [
+  'overview',
+  'transactions',
+  'dependencies',
+  'errors',
+  'metrics',
+  'infrastructure',
+  'logs',
+];
 const WINDOW_MINUTES = 60;
 
 interface ServiceEdge {
@@ -71,14 +85,20 @@ export default function ServiceDetail() {
   const [loadError, setLoadError] = useState(false);
   const [data, setData] = useState<ServiceDetailData>(emptyData);
 
-  const setTab = useCallback((tab: DetailTab) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev);
-      if (tab === 'overview') next.delete('tab');
-      else next.set('tab', tab);
-      return next;
-    }, { replace: true });
-  }, [setSearchParams]);
+  const setTab = useCallback(
+    (tab: DetailTab) => {
+      setSearchParams(
+        prev => {
+          const next = new URLSearchParams(prev);
+          if (tab === 'overview') next.delete('tab');
+          else next.set('tab', tab);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
   const load = useCallback(async () => {
     if (!namespace || !serviceName) return;
@@ -168,7 +188,6 @@ export default function ServiceDetail() {
         dbMetrics,
       });
 
-      // tracesRes fetched for potential future use; keeps parity with spec parallel load
       void tracesRes;
     } catch (err) {
       console.error('ServiceDetail load error:', err);
@@ -186,7 +205,6 @@ export default function ServiceDetail() {
   }, [load]);
 
   const service = data.service;
-  const health = useMemo(() => (service ? deriveHealth(service) : null), [service]);
   const errorSeries = useMemo(() => {
     if (!data.timeseries?.serviceErrors) return null;
     return data.timeseries.serviceErrors.find(
@@ -198,18 +216,47 @@ export default function ServiceDetail() {
     () => (data.timeseries?.buckets || []).map(b => b.avgMs),
     [data.timeseries],
   );
-  const throughputTrend = useMemo(
-    () => (data.timeseries?.buckets || []).map(b => b.spans),
+  const throughputTrend = useMemo(() => {
+    if (errorSeries?.spans) return errorSeries.spans;
+    return (data.timeseries?.buckets || []).map(b => b.spans);
+  }, [errorSeries, data.timeseries]);
+  const errorTrend = useMemo(() => {
+    if (errorSeries?.errors) return errorSeries.errors;
+    return (data.timeseries?.buckets || []).map(b => b.errors);
+  }, [errorSeries, data.timeseries]);
+  const failedRateTrend = useMemo(() => {
+    const spans = errorSeries?.spans;
+    const errors = errorSeries?.errors;
+    if (spans && errors && spans.length === errors.length) {
+      return spans.map((s, i) => (s > 0 ? (errors[i] / s) * 100 : 0));
+    }
+    return (data.timeseries?.buckets || []).map(b =>
+      b.spans > 0 ? (b.errors / b.spans) * 100 : 0,
+    );
+  }, [errorSeries, data.timeseries]);
+  const dependencyTrend = useMemo(
+    () =>
+      (data.timeseries?.buckets || []).map(b =>
+        Number.isFinite(b.dbCalls) && Number.isFinite(b.dbAvgMs) ? b.dbCalls * b.dbAvgMs : 0,
+      ),
     [data.timeseries],
   );
-  const errorTrend = useMemo(
-    () => errorSeries?.errors || (data.timeseries?.buckets || []).map(b => b.errors),
-    [errorSeries, data.timeseries],
-  );
+
   const identity = useMemo(
     () => buildServiceIdentity(service, data.pods, data.infraNodes),
     [service, data.pods, data.infraNodes],
   );
+
+  const dependencyTimeMs = useMemo(
+    () =>
+      data.downstream.reduce((sum, edge) => sum + edge.callCount * edge.avgDurationMs, 0) +
+      data.dbMetrics.reduce((sum, row) => sum + row.callCount * row.avgDurationMs, 0),
+    [data.downstream, data.dbMetrics],
+  );
+
+  const serviceMapHref = `/servicemap?service=${encodeURIComponent(serviceName)}&namespace=${encodeURIComponent(namespace)}`;
+  const issueCount = data.issues.reduce((s, i) => s + i.count, 0);
+  const depCount = data.upstream.length + data.downstream.length;
 
   if (!namespace || !serviceName) {
     return (
@@ -244,89 +291,30 @@ export default function ServiceDetail() {
     );
   }
 
-  const langLabel = languageLabel(service?.language);
-  const statusTone = health ? healthToneToKind(health.status, health.healthScore) : 'neutral';
-
   return (
     <div className="service-detail-page apm-dashboard animate-fade-in">
       <ServiceDetailBack />
 
       <header className="service-detail-hero">
         <div className="service-detail-title-row">
-          <div className="service-detail-icon">
-            <LanguageIcon language={service?.language} size={28} />
-          </div>
-          <div className="service-detail-title-block">
-            <h1>{serviceName}</h1>
-            <div className="service-detail-meta">
-              <span>{namespace}</span>
-              <span aria-hidden="true">·</span>
-              <span>{service?.cluster || '—'}</span>
-              <span aria-hidden="true">·</span>
-              <span className={`service-status-pill ${statusTone}`}>
-                <i />
-                {health?.label || t('Unknown')}
-              </span>
-              {langLabel && (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span>{langLabel}</span>
-                </>
-              )}
-            </div>
-          </div>
+          <h1>{serviceName}</h1>
+          <ServiceIdentityChips identity={identity} language={service?.language} />
         </div>
         <p className="service-detail-window">{t('Last 60 minutes')}</p>
       </header>
 
-      <section className="apm-kpi-strip service-detail-kpis" aria-label={t('Service KPIs')}>
-        <KpiCard
-          label={t('Health / Apdex')}
-          value={health ? `${health.healthScore.toFixed(0)}%` : '—'}
-          detail={health ? `Apdex ${health.apdex.toFixed(2)}` : '—'}
-          tone={health ? healthKpiTone(health.status, health.healthScore) : 'neutral'}
-          loading={loading}
-        />
-        <KpiCard
-          label={t('Throughput')}
-          value={service ? formatThroughput(service.requestCount) : '—'}
-          detail={service ? `${formatCompact(service.requestCount)} ${t('requests')}` : '—'}
-          tone="info"
-          trend={throughputTrend.length > 1 ? throughputTrend : undefined}
-          loading={loading}
-        />
-        <KpiCard
-          label={t('Latency p95')}
-          value={service ? formatDuration(service.p95Ms) : '—'}
-          detail={service ? `p50 ${formatDuration(service.p50Ms)} · p99 ${formatDuration(service.p99Ms)}` : '—'}
-          tone={service && service.p95Ms > 500 ? 'warning' : 'info'}
-          trend={latencyTrend.length > 1 ? latencyTrend : undefined}
-          positiveIsGood={false}
-          loading={loading}
-        />
-        <KpiCard
-          label={t('Error rate')}
-          value={service ? formatPercent(service.errorRate) : '—'}
-          detail={service ? `${formatCompact(service.errorCount)} ${t('errors')}` : '—'}
-          tone={service && service.errorRate > 5 ? 'critical' : service && service.errorRate > 0 ? 'warning' : 'healthy'}
-          trend={errorTrend && errorTrend.length > 1 ? errorTrend : undefined}
-          positiveIsGood={false}
-          loading={loading}
-        />
-      </section>
-
-      <ServiceIdentityCard identity={identity} loading={loading} />
-
-      <InstancesPanel pods={data.pods} loading={loading} />
-
       <nav className="service-detail-tabs" aria-label={t('Service sections')}>
-        {([
-          ['overview', t('Overview'), null],
-          ['transactions', t('Transactions'), data.endpoints.length],
-          ['dependencies', t('Dependencies'), data.upstream.length + data.downstream.length],
-          ['errors', t('Errors'), data.issues.reduce((s, i) => s + i.count, 0)],
-          ['metrics', t('Metrics'), null],
-        ] as const).map(([id, label, count]) => (
+        {(
+          [
+            ['overview', t('Overview'), null],
+            ['transactions', t('Transactions'), data.endpoints.length || null],
+            ['dependencies', t('Dependencies'), depCount || null],
+            ['errors', t('Errors'), issueCount || null],
+            ['metrics', t('Metrics'), null],
+            ['infrastructure', t('Infrastructure'), data.pods.length || null],
+            ['logs', t('Logs'), null],
+          ] as const
+        ).map(([id, label, count]) => (
           <button
             key={id}
             type="button"
@@ -335,20 +323,30 @@ export default function ServiceDetail() {
             onClick={() => setTab(id)}
           >
             {label}
-            {count != null && count > 0 && <span className="service-detail-tab-badge">{count}</span>}
+            {count != null && count > 0 && (
+              <span className="service-detail-tab-count">{count}</span>
+            )}
           </button>
         ))}
+        <Link to={serviceMapHref} className="service-detail-tab-link">
+          {t('Service Map')}
+        </Link>
       </nav>
 
       <section className="service-detail-panel">
         {activeTab === 'overview' && (
           <OverviewTab
             service={service!}
+            namespace={namespace}
+            serviceName={serviceName}
             endpoints={data.endpoints}
-            issues={data.issues}
-            upstream={data.upstream}
-            downstream={data.downstream}
-            onNavigateTab={setTab}
+            loading={loading}
+            navigate={navigate}
+            latencyTrend={latencyTrend}
+            throughputTrend={throughputTrend}
+            failedRateTrend={failedRateTrend}
+            dependencyTrend={dependencyTrend}
+            dependencyTimeMs={dependencyTimeMs}
           />
         )}
         {activeTab === 'transactions' && (
@@ -374,6 +372,10 @@ export default function ServiceDetail() {
             loading={loading}
           />
         )}
+        {activeTab === 'infrastructure' && (
+          <InfrastructureTab pods={data.pods} loading={loading} />
+        )}
+        {activeTab === 'logs' && <LogsTab />}
       </section>
     </div>
   );
@@ -397,62 +399,149 @@ interface ServiceIdentity {
   cloudSummary: string | null;
   nodeSummaries: string[];
   instrumentation: string;
+  serviceVersion: string | null;
+  os: string | null;
+  kernel: string | null;
+  architecture: string | null;
+  containerRuntime: string | null;
+  instanceCount: number;
+  /** true when any matched node has a cloud provider label */
+  isCloud: boolean;
+  hostingLabel: string;
+  cloudProvider: string | null;
+  region: string | null;
+  zone: string | null;
+  instanceType: string | null;
 }
 
-function ServiceIdentityCard({
+function ServiceIdentityChips({
   identity,
-  loading,
+  language,
 }: {
   identity: ServiceIdentity;
-  loading: boolean;
+  language?: string;
 }) {
   const { t } = useTranslation();
-  const hasContent =
-    identity.techStack ||
-    identity.containerImages.length > 0 ||
-    identity.cluster ||
-    identity.cloudSummary ||
-    identity.nodeSummaries.length > 0 ||
-    identity.instrumentation !== 'Unknown';
-
-  if (!loading && !hasContent) return null;
 
   return (
-    <section className="service-detail-identity card" aria-label={t('Service details')}>
-      <h2>{t('Service details')}</h2>
-      {loading && !hasContent ? (
-        <LoadingState height={80} label={t('Loading service details…')} />
-      ) : (
-        <dl className="service-detail-identity-grid">
-          <IdentityFact label={t('Tech stack')} value={identity.techStack || '—'} />
-          <IdentityFact
-            label={t('Containers')}
-            value={
-              identity.containerImages.length > 0
-                ? identity.containerImages.join(', ')
-                : '—'
-            }
-            mono={identity.containerImages.length > 0}
+    <div className="service-detail-chips-row">
+      <IdentityChip
+        label={t('Service')}
+        ariaLabel={t('Service runtime details')}
+        icon={<LanguageIcon language={language} size={18} />}
+      >
+        <PopoverTitle>{t('Service')}</PopoverTitle>
+        {identity.serviceVersion && (
+          <PopoverFact label={t('Service version')} value={identity.serviceVersion} />
+        )}
+        {identity.techStack && (
+          <PopoverFact label={t('Runtime name & version')} value={identity.techStack} />
+        )}
+        <PopoverFact label={t('Agent name & version')} value={identity.instrumentation} />
+      </IdentityChip>
+
+      <IdentityChip
+        label={t('Container')}
+        ariaLabel={t('Container details')}
+        icon={<Box size={18} aria-hidden="true" />}
+      >
+        <PopoverTitle>{t('Container')}</PopoverTitle>
+        <PopoverFact label={t('OS')} value={identity.os || '—'} />
+        {identity.architecture && (
+          <PopoverFact label={t('Architecture')} value={identity.architecture} />
+        )}
+        <PopoverFact
+          label={t('Total number of instances')}
+          value={String(identity.instanceCount)}
+        />
+        {identity.containerImages.length > 0 && (
+          <PopoverFact
+            label={t('Container images')}
+            value={truncateList(identity.containerImages, 120)}
+            mono
           />
-          <IdentityFact label={t('Cluster')} value={identity.cluster || '—'} />
-          <IdentityFact label={t('Namespace')} value={identity.namespace} />
-          <IdentityFact label={t('Cloud / VM')} value={identity.cloudSummary || '—'} />
-          <IdentityFact
+        )}
+      </IdentityChip>
+
+      <IdentityChip
+        label={identity.isCloud ? t('Cloud') : t('Host')}
+        ariaLabel={identity.isCloud ? t('Cloud and node details') : t('On-prem host details')}
+        icon={<Cloud size={18} aria-hidden="true" />}
+      >
+        <PopoverTitle>{identity.isCloud ? t('Cloud') : t('Host')}</PopoverTitle>
+        <PopoverFact label={t('Environment')} value={identity.hostingLabel} />
+        {identity.isCloud && identity.cloudProvider && (
+          <PopoverFact label={t('Provider')} value={formatCloudProvider(identity.cloudProvider)} />
+        )}
+        {identity.isCloud && identity.region && (
+          <PopoverFact label={t('Region')} value={identity.region} />
+        )}
+        {identity.isCloud && identity.zone && (
+          <PopoverFact label={t('Zone')} value={identity.zone} />
+        )}
+        {identity.isCloud && identity.instanceType && (
+          <PopoverFact label={t('Instance type')} value={identity.instanceType} />
+        )}
+        {!identity.isCloud && identity.os && (
+          <PopoverFact label={t('OS')} value={identity.os} />
+        )}
+        {!identity.isCloud && identity.kernel && (
+          <PopoverFact label={t('Kernel')} value={identity.kernel} />
+        )}
+        {!identity.isCloud && identity.architecture && (
+          <PopoverFact label={t('Architecture')} value={identity.architecture} />
+        )}
+        {identity.containerRuntime && (
+          <PopoverFact label={t('Container runtime')} value={identity.containerRuntime} />
+        )}
+        {identity.nodeSummaries.length > 0 && (
+          <PopoverFact
             label={t('Nodes')}
-            value={
-              identity.nodeSummaries.length > 0
-                ? identity.nodeSummaries.join(' · ')
-                : '—'
-            }
+            value={truncateList(identity.nodeSummaries, 140)}
           />
-          <IdentityFact label={t('Instrumentation')} value={identity.instrumentation} />
-        </dl>
-      )}
-    </section>
+        )}
+        {identity.cluster && (
+          <PopoverFact label={t('Cluster')} value={identity.cluster} />
+        )}
+      </IdentityChip>
+    </div>
   );
 }
 
-function IdentityFact({
+function IdentityChip({
+  label,
+  ariaLabel,
+  icon,
+  children,
+}: {
+  label: string;
+  ariaLabel: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="service-detail-identity-chip-wrap">
+      <button
+        type="button"
+        className="service-detail-identity-chip"
+        aria-label={ariaLabel}
+        aria-describedby={undefined}
+      >
+        {icon}
+        <span className="sr-only">{label}</span>
+      </button>
+      <div className="service-detail-popover" role="tooltip">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function PopoverTitle({ children }: { children: React.ReactNode }) {
+  return <div className="service-detail-popover-title">{children}</div>;
+}
+
+function PopoverFact({
   label,
   value,
   mono,
@@ -462,20 +551,266 @@ function IdentityFact({
   mono?: boolean;
 }) {
   return (
-    <div className="service-detail-identity-item">
-      <dt>{label}</dt>
-      <dd className={mono ? 'service-detail-identity-mono' : undefined} title={value}>
-        {value}
-      </dd>
+    <div className="service-detail-popover-fact">
+      <span>{label}</span>
+      <strong className={mono ? 'service-detail-identity-mono' : undefined}>{value}</strong>
     </div>
   );
 }
 
-function InstancesPanel({ pods, loading }: { pods: PodMetricInfo[]; loading: boolean }) {
+function OverviewTab({
+  service,
+  namespace,
+  serviceName,
+  endpoints,
+  loading,
+  navigate,
+  latencyTrend,
+  throughputTrend,
+  failedRateTrend,
+  dependencyTrend,
+  dependencyTimeMs,
+}: {
+  service: ServiceStats;
+  namespace: string;
+  serviceName: string;
+  endpoints: EndpointStat[];
+  loading: boolean;
+  navigate: ReturnType<typeof useNavigate>;
+  latencyTrend: number[];
+  throughputTrend: number[];
+  failedRateTrend: number[];
+  dependencyTrend: number[];
+  dependencyTimeMs: number;
+}) {
+  const { t } = useTranslation();
+  const recentDepTime =
+    dependencyTrend.length > 0 ? dependencyTrend[dependencyTrend.length - 1] : dependencyTimeMs;
+
+  const previewEndpoints = endpoints.slice(0, 8);
+
+  return (
+    <div className="service-detail-overview">
+      <section className="service-detail-chart-grid" aria-label={t('Service metrics')}>
+        <OverviewMetricPanel
+          title={t('Latency')}
+          value={formatDuration(service.p95Ms)}
+          detail={`p50 ${formatDuration(service.p50Ms)} · p99 ${formatDuration(service.p99Ms)}`}
+          tone={service.p95Ms > 500 ? 'warning' : 'info'}
+          data={latencyTrend}
+          loading={loading}
+        />
+        <OverviewMetricPanel
+          title={t('Throughput')}
+          value={formatThroughput(service.requestCount)}
+          detail={`${formatCompact(service.requestCount)} ${t('requests')}`}
+          tone="info"
+          data={throughputTrend}
+          loading={loading}
+        />
+        <OverviewMetricPanel
+          title={t('Failed transaction rate')}
+          value={formatPercent(service.errorRate)}
+          detail={`${formatCompact(service.errorCount)} ${t('errors')}`}
+          tone={
+            service.errorRate > 5 ? 'critical' : service.errorRate > 0 ? 'warning' : 'healthy'
+          }
+          data={failedRateTrend}
+          loading={loading}
+        />
+        <OverviewMetricPanel
+          title={t('Time spent by dependency')}
+          value={formatDuration(recentDepTime)}
+          detail={
+            dependencyTimeMs > 0
+              ? `${formatDuration(dependencyTimeMs)} ${t('total')}`
+              : t('From service map & DB calls')
+          }
+          tone="info"
+          data={dependencyTrend}
+          loading={loading}
+        />
+      </section>
+
+      <section className="service-detail-transactions-preview">
+        <div className="service-detail-section-header">
+          <h2>{t('Top transactions')}</h2>
+          {endpoints.length > previewEndpoints.length && (
+            <span className="service-detail-section-meta">
+              {endpoints.length} {t('total')}
+            </span>
+          )}
+        </div>
+        {loading && endpoints.length === 0 ? (
+          <LoadingState height={180} label={t('Loading transactions…')} />
+        ) : endpoints.length === 0 ? (
+          <NoDataState
+            title={t('No transactions')}
+            hint={t('Endpoints appear when this service handles traced requests.')}
+            height={160}
+          />
+        ) : (
+          <div className="service-detail-table-scroller">
+            <table className="data-table service-detail-table">
+              <thead>
+                <tr>
+                  <th align="left">{t('Transaction')}</th>
+                  <th align="right">{t('Count')}</th>
+                  <th align="right">{t('Errors')}</th>
+                  <th align="right">{t('Avg')}</th>
+                  <th align="right">p95</th>
+                </tr>
+              </thead>
+              <tbody>
+                {previewEndpoints.map(ep => {
+                  const op = displayOperationName(ep.operationName || '');
+                  return (
+                    <tr
+                      key={`${ep.operationName}:${ep.count}`}
+                      className="service-detail-clickable-row"
+                      tabIndex={0}
+                      role="link"
+                      onClick={() =>
+                        navigate(
+                          `/traces?service=${encodeURIComponent(serviceName)}&operation=${encodeURIComponent(ep.operationName)}&namespace=${encodeURIComponent(namespace)}`,
+                        )
+                      }
+                      onKeyDown={event => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          navigate(
+                            `/traces?service=${encodeURIComponent(serviceName)}&operation=${encodeURIComponent(ep.operationName)}&namespace=${encodeURIComponent(namespace)}`,
+                          );
+                        }
+                      }}
+                    >
+                      <td>
+                        <strong>{op}</strong>
+                      </td>
+                      <td align="right">{formatCompact(ep.count)}</td>
+                      <td align="right">{formatCompact(ep.errorCount)}</td>
+                      <td align="right">{formatDuration(ep.avgDurationMs)}</td>
+                      <td align="right">{formatDuration(ep.p95DurationMs)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function OverviewMetricPanel({
+  title,
+  value,
+  detail,
+  tone,
+  data,
+  loading,
+}: {
+  title: string;
+  value: string;
+  detail: string;
+  tone: MiniTrendTone;
+  data: number[];
+  loading: boolean;
+}) {
+  return (
+    <article className={`service-detail-metric-panel ${tone}`}>
+      <header className="service-detail-metric-header">
+        <h3>{title}</h3>
+        <div className="service-detail-metric-summary">
+          <strong>{loading && data.length < 2 ? '—' : value}</strong>
+          <span>{detail}</span>
+        </div>
+      </header>
+      <div className="service-detail-metric-chart">
+        <ServiceAreaChart data={data} tone={tone} />
+      </div>
+    </article>
+  );
+}
+
+function ServiceAreaChart({ data, tone }: { data: number[]; tone: MiniTrendTone }) {
+  const fillId = useId().replace(/:/g, '');
+  const width = 400;
+  const height = 100;
+  const color = toneColorFor(tone);
+  const series = data.filter(value => Number.isFinite(value));
+
+  if (series.length < 2) {
+    return (
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+        className="service-detail-area-chart"
+        aria-hidden="true"
+      >
+        <line
+          x1="0"
+          y1={height / 2}
+          x2={width}
+          y2={height / 2}
+          stroke="var(--border-secondary)"
+          strokeWidth="1"
+          strokeDasharray="4 4"
+        />
+      </svg>
+    );
+  }
+
+  const maxValue = Math.max(...series, 1);
+  const minValue = Math.min(...series, 0);
+  const span = Math.max(maxValue - minValue, maxValue * 0.08, 1e-6);
+  const points = series.map((value, idx, arr) => {
+    const x = arr.length <= 1 ? 0 : (idx / (arr.length - 1)) * width;
+    const y = height - ((value - minValue) / span) * (height - 8) - 4;
+    return { x, y };
+  });
+  const stroke = smoothPath(points);
+  const fillPath = `M 0 ${height} L ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}${stroke.replace(/^M\s+[-\d.eE+]+\s+[-\d.eE]+/, '')} L ${width} ${height} Z`;
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      className="service-detail-area-chart"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.22} />
+          <stop offset="100%" stopColor={color} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <path d={fillPath} fill={`url(#${fillId})`} />
+      <path
+        d={stroke}
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function InfrastructureTab({ pods, loading }: { pods: PodMetricInfo[]; loading: boolean }) {
   const { t } = useTranslation();
   return (
-    <section className="service-detail-instances card">
-      <h2>{t('Instances')}</h2>
+    <section className="service-detail-infrastructure">
+      <div className="service-detail-section-header">
+        <h2>{t('Instances')}</h2>
+        {pods.length > 0 && (
+          <span className="service-detail-section-meta">
+            {pods.length} {t('running')}
+          </span>
+        )}
+      </div>
       {loading && pods.length === 0 ? (
         <LoadingState height={120} label={t('Loading instances…')} />
       ) : pods.length === 0 ? (
@@ -502,13 +837,17 @@ function InstancesPanel({ pods, loading }: { pods: PodMetricInfo[]; loading: boo
             <tbody>
               {pods.map(pod => (
                 <tr key={pod.name}>
-                  <td><code>{pod.name}</code></td>
+                  <td>
+                    <code>{pod.name}</code>
+                  </td>
                   <td>
                     {pod.containerImages && pod.containerImages.length > 0 ? (
                       <span className="service-detail-muted" title={pod.containerImages.join(', ')}>
                         {pod.containerImages.join(', ')}
                       </span>
-                    ) : '—'}
+                    ) : (
+                      '—'
+                    )}
                   </td>
                   <td>{pod.phase || '—'}</td>
                   <td>{pod.nodeName || '—'}</td>
@@ -526,54 +865,33 @@ function InstancesPanel({ pods, loading }: { pods: PodMetricInfo[]; loading: boo
   );
 }
 
-function OverviewTab({
-  service,
-  endpoints,
-  issues,
-  upstream,
-  downstream,
-  onNavigateTab,
-}: {
-  service: ServiceStats;
-  endpoints: EndpointStat[];
-  issues: ErrorGroup[];
-  upstream: ServiceEdge[];
-  downstream: ServiceEdge[];
-  onNavigateTab: (tab: DetailTab) => void;
-}) {
+function LogsTab() {
   const { t } = useTranslation();
-  const issueCount = issues.reduce((s, i) => s + i.count, 0);
-
   return (
-    <div className="service-detail-overview">
-      <div className="service-detail-summary card">
-        <h3>{t('Summary')}</h3>
-        <p>
-          {formatThroughput(service.requestCount)} · p95 {formatDuration(service.p95Ms)} ·{' '}
-          {formatPercent(service.errorRate)} {t('errors')}
-        </p>
+    <div className="service-detail-logs">
+      <div className="service-detail-logs-toolbar">
+        <span className="service-detail-window">{t('Last 60 minutes')}</span>
       </div>
-
-      <div className="service-detail-chips">
-        <button type="button" className="service-detail-chip" onClick={() => onNavigateTab('transactions')}>
-          <ListTree size={14} />
-          {t('Transactions')}
-          <em>{endpoints.length}</em>
-        </button>
-        <button type="button" className="service-detail-chip" onClick={() => onNavigateTab('dependencies')}>
-          <GitBranch size={14} />
-          {t('Dependencies')}
-          <em>{upstream.length + downstream.length}</em>
-        </button>
-        <button type="button" className="service-detail-chip" onClick={() => onNavigateTab('errors')}>
-          <AlertTriangle size={14} />
-          {t('Errors')}
-          <em>{issueCount}</em>
-        </button>
-        <button type="button" className="service-detail-chip" onClick={() => onNavigateTab('metrics')}>
-          <BarChart3 size={14} />
-          {t('Metrics')}
-        </button>
+      <div className="service-detail-table-scroller">
+        <table className="data-table service-detail-table service-detail-logs-table">
+          <thead>
+            <tr>
+              <th align="left">{t('Timestamp')}</th>
+              <th align="left">{t('Message')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td colSpan={2}>
+                <NoDataState
+                  title={t('No logs')}
+                  hint={t('Log correlation is not configured for this service yet.')}
+                  height={120}
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -641,7 +959,9 @@ function TransactionsTab({
                   }
                 }}
               >
-                <td><strong>{op}</strong></td>
+                <td>
+                  <strong>{op}</strong>
+                </td>
                 <td align="right">{formatCompact(ep.count)}</td>
                 <td align="right">{formatCompact(ep.errorCount)}</td>
                 <td align="right">{formatDuration(ep.avgDurationMs)}</td>
@@ -676,7 +996,11 @@ function DependenciesTab({
   return (
     <div className="service-detail-deps">
       <DependencyList title={t('Upstream')} subtitle={t('Services that call this service')} edges={upstream} />
-      <DependencyList title={t('Downstream')} subtitle={t('Services this service calls')} edges={downstream} />
+      <DependencyList
+        title={t('Downstream')}
+        subtitle={t('Services this service calls')}
+        edges={downstream}
+      />
     </div>
   );
 }
@@ -706,9 +1030,15 @@ function DependencyList({
                 {edge.peerNamespace && <span>{edge.peerNamespace}</span>}
               </div>
               <div className="service-detail-dep-metrics">
-                <span>{formatCompact(edge.callCount)} {t('calls')}</span>
-                <span>{formatCompact(edge.errorCount)} {t('errors')}</span>
-                <span>{formatDuration(edge.avgDurationMs)} {t('avg')}</span>
+                <span>
+                  {formatCompact(edge.callCount)} {t('calls')}
+                </span>
+                <span>
+                  {formatCompact(edge.errorCount)} {t('errors')}
+                </span>
+                <span>
+                  {formatDuration(edge.avgDurationMs)} {t('avg')}
+                </span>
               </div>
             </li>
           ))}
@@ -774,7 +1104,9 @@ function ErrorsTab({
                   >
                     {issue.exampleTraceId.slice(0, 8)}…
                   </button>
-                ) : '—'}
+                ) : (
+                  '—'
+                )}
               </td>
             </tr>
           ))}
@@ -865,9 +1197,7 @@ function MetricsTab({
       {isJvm && (
         <section className="card service-detail-jvm-notice">
           <Activity size={18} aria-hidden="true" />
-          <p>
-            {t('Runtime JVM metrics are not collected yet (OTel metrics export is off).')}
-          </p>
+          <p>{t('Runtime JVM metrics are not collected yet (OTel metrics export is off).')}</p>
         </section>
       )}
     </div>
@@ -898,25 +1228,68 @@ function buildServiceIdentity(
   for (const pod of pods) {
     if (pod.nodeName) nodeNames.add(pod.nodeName);
   }
+  // When pods lack nodeName, still surface cluster-wide node OS if only one node family.
+  const nodesForFacts =
+    nodeNames.size > 0
+      ? [...nodeNames].map(n => nodeByName.get(n)).filter((n): n is InfraNode => Boolean(n))
+      : infraNodes;
 
   const cloudParts = new Set<string>();
   const nodeSummaries: string[] = [];
+  const providers = new Set<string>();
+  const regions = new Set<string>();
+  const zones = new Set<string>();
+  const instanceTypes = new Set<string>();
+  const osImages = new Set<string>();
+  const kernels = new Set<string>();
+  const archs = new Set<string>();
+  const runtimes = new Set<string>();
+
   for (const name of [...nodeNames].sort()) {
     const node = nodeByName.get(name);
     const parts: string[] = [name];
     if (node) {
+      if (node.cloudProvider) providers.add(String(node.cloudProvider));
+      if (node.region) regions.add(String(node.region));
+      if (node.zone) zones.add(String(node.zone));
+      if (node.instanceType) instanceTypes.add(String(node.instanceType));
+
       const vmParts = [node.cloudProvider, node.region, node.zone, node.instanceType]
         .filter(Boolean)
         .map(String);
       if (vmParts.length > 0) {
         parts.push(`(${vmParts.join(' / ')})`);
         cloudParts.add(vmParts.join(' / '));
+      } else if (node.osImage) {
+        parts.push(`(${node.osImage})`);
       } else if (node.role) {
         parts.push(`(${node.role})`);
       }
     }
     nodeSummaries.push(parts.join(' '));
   }
+
+  for (const node of nodesForFacts) {
+    if (node.cloudProvider) providers.add(String(node.cloudProvider));
+    if (node.region) regions.add(String(node.region));
+    if (node.zone) zones.add(String(node.zone));
+    if (node.instanceType) instanceTypes.add(String(node.instanceType));
+    if (node.osImage) osImages.add(String(node.osImage));
+    else if (node.operatingSystem) osImages.add(String(node.operatingSystem));
+    if (node.kernelVersion) kernels.add(String(node.kernelVersion));
+    if (node.architecture) archs.add(String(node.architecture));
+    if (node.containerRuntime) runtimes.add(shortRuntime(String(node.containerRuntime)));
+  }
+
+  const isCloud = providers.size > 0;
+  const os =
+    osImages.size === 1
+      ? [...osImages][0]
+      : osImages.size > 1
+        ? [...osImages].join(', ')
+        : pods.length > 0
+          ? 'Linux'
+          : null;
 
   const instrumentedCount = pods.filter(p => p.instrumented).length;
   let instrumentation = 'Unknown';
@@ -933,6 +1306,19 @@ function buildServiceIdentity(
     instrumentation += ` · ${[...instTypes][0]}`;
   }
 
+  let serviceVersion: string | null = null;
+  for (const pod of pods) {
+    const labels = pod.labels || {};
+    const v = labels['app.kubernetes.io/version'] || labels.version;
+    if (v) {
+      serviceVersion = v;
+      break;
+    }
+  }
+
+  const pickSet = (s: Set<string>) =>
+    s.size === 1 ? [...s][0] : s.size > 1 ? [...s].join(', ') : null;
+
   return {
     techStack,
     containerImages,
@@ -941,7 +1327,89 @@ function buildServiceIdentity(
     cloudSummary: cloudParts.size > 0 ? [...cloudParts].join(' · ') : null,
     nodeSummaries,
     instrumentation,
+    serviceVersion,
+    os,
+    kernel: pickSet(kernels),
+    architecture: pickSet(archs),
+    containerRuntime: pickSet(runtimes),
+    instanceCount: pods.length,
+    isCloud,
+    hostingLabel: isCloud
+      ? formatCloudProvider(pickSet(providers) || 'cloud')
+      : os
+        ? `On-prem · ${os}`
+        : 'On-prem',
+    cloudProvider: pickSet(providers),
+    region: pickSet(regions),
+    zone: pickSet(zones),
+    instanceType: pickSet(instanceTypes),
   };
+}
+
+function formatCloudProvider(raw: string): string {
+  const key = raw.toLowerCase().trim();
+  const map: Record<string, string> = {
+    aws: 'AWS',
+    azure: 'Azure',
+    gcp: 'Google Cloud',
+    ocp: 'OpenShift',
+    ibm: 'IBM Cloud',
+    oci: 'Oracle Cloud',
+    digitalocean: 'DigitalOcean',
+    linode: 'Linode',
+    vsphere: 'vSphere',
+  };
+  if (map[key]) return map[key];
+  return raw;
+}
+
+function shortRuntime(raw: string): string {
+  // containerd://1.7.0 → containerd 1.7.0
+  const m = raw.match(/^([a-z0-9]+)(?::\/\/|\/)(.+)$/i);
+  if (m) return `${m[1]} ${m[2]}`;
+  return raw;
+}
+
+function truncateList(items: string[], maxLen: number): string {
+  const joined = items.join(', ');
+  if (joined.length <= maxLen) return joined;
+  return `${joined.slice(0, maxLen - 1)}…`;
+}
+
+function toneColorFor(tone: MiniTrendTone) {
+  switch (tone) {
+    case 'healthy':
+      return 'var(--success-emerald)';
+    case 'warning':
+      return 'var(--warning-amber)';
+    case 'critical':
+      return 'var(--critical-rose)';
+    case 'info':
+      return 'var(--accent-indigo)';
+    default:
+      return 'var(--neutral-muted)';
+  }
+}
+
+function smoothPath(points: { x: number; y: number }[]) {
+  if (points.length === 0) return '';
+  if (points.length === 1) return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+  if (points.length === 2) {
+    return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)} L ${points[1].x.toFixed(2)} ${points[1].y.toFixed(2)}`;
+  }
+  let path = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+  for (let idx = 0; idx < points.length - 1; idx += 1) {
+    const p0 = points[idx - 1] || points[idx];
+    const p1 = points[idx];
+    const p2 = points[idx + 1];
+    const p3 = points[idx + 2] || p2;
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    path += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+  return path;
 }
 
 function podMatchesService(pod: PodMetricInfo, serviceName: string): boolean {
@@ -951,47 +1419,6 @@ function podMatchesService(pod: PodMetricInfo, serviceName: string): boolean {
   if (pod.name === serviceName) return true;
   if (pod.name.startsWith(`${serviceName}-`)) return true;
   return false;
-}
-
-function deriveHealth(service: ServiceStats) {
-  const errorRate =
-    service.requestCount > 0
-      ? (service.errorCount / service.requestCount) * 100
-      : service.errorRate;
-  const healthScore = finiteNumber(service.healthScore)
-    ? service.healthScore
-    : inferHealthScore(service.requestCount, errorRate, service.p95Ms, service.p99Ms);
-  const apdex = finiteNumber(service.apdex)
-    ? service.apdex
-    : inferApdex(service.requestCount, errorRate, service.p50Ms, service.p95Ms, service.p99Ms);
-  const status = service.status || inferStatus(service.requestCount, healthScore);
-  return {
-    healthScore: clamp(healthScore, 0, 100),
-    apdex: clamp(apdex, 0, 1),
-    status,
-    label: healthLabel(status, healthScore),
-  };
-}
-
-function healthLabel(status: string, score: number): string {
-  if (status === 'unknown') return 'No traffic';
-  if (status === 'critical' || score < 70) return 'Critical';
-  if (status === 'degraded' || score < 90) return 'Degraded';
-  return 'Healthy';
-}
-
-function healthToneToKind(status: string, score: number): string {
-  if (status === 'unknown') return 'neutral';
-  if (status === 'critical' || score < 70) return 'critical';
-  if (status === 'degraded' || score < 90) return 'warning';
-  return 'healthy';
-}
-
-function healthKpiTone(status: string, score: number): MiniTrendTone {
-  if (status === 'unknown') return 'neutral';
-  if (status === 'critical' || score < 70) return 'critical';
-  if (status === 'degraded' || score < 90) return 'warning';
-  return 'healthy';
 }
 
 function languageLabel(language?: string): string | null {
@@ -1033,36 +1460,4 @@ function formatCompact(value: number) {
 function formatPercent(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0.0%';
   return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
-}
-
-function inferHealthScore(requestCount: number, errorRate: number, p95Ms: number, p99Ms: number) {
-  if (requestCount <= 0) return 100;
-  const latencyPenalty = Math.min(30, Math.max(0, p95Ms - 300) / 30) + Math.min(15, Math.max(0, p99Ms - 1200) / 120);
-  const errorPenalty = Math.min(70, errorRate * 4.5);
-  return clamp(100 - latencyPenalty - errorPenalty, 0, 100);
-}
-
-function inferApdex(requestCount: number, errorRate: number, p50Ms: number, p95Ms: number, p99Ms: number) {
-  if (requestCount <= 0) return 1;
-  let score = 1;
-  if (p50Ms > 300) score -= Math.min(0.3, ((p50Ms - 300) / 300) * 0.2);
-  if (p95Ms > 300) score -= Math.min(0.25, ((p95Ms - 300) / 900) * 0.25);
-  if (p95Ms > 1200) score -= Math.min(0.25, ((p95Ms - 1200) / 1200) * 0.25);
-  if (p99Ms > 2400) score -= Math.min(0.1, ((p99Ms - 2400) / 2400) * 0.1);
-  return clamp(score - Math.min(0.4, (errorRate / 100) * 0.75), 0, 1);
-}
-
-function inferStatus(requestCount: number, healthScore: number): string {
-  if (requestCount <= 0) return 'unknown';
-  if (healthScore >= 90) return 'healthy';
-  if (healthScore >= 70) return 'degraded';
-  return 'critical';
-}
-
-function finiteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
 }

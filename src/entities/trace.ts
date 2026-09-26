@@ -255,6 +255,12 @@ export interface InfraNode {
   region?: string;
   zone?: string;
   instanceType?: string;
+  operatingSystem?: string;
+  osImage?: string;
+  kernelVersion?: string;
+  architecture?: string;
+  containerRuntime?: string;
+  kubeletVersion?: string;
 }
 
 export interface InfraSummary {
