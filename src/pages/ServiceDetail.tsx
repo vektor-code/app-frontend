@@ -6,6 +6,7 @@ import type {
   DatabaseQueryMetric,
   EndpointStat,
   ErrorGroup,
+  InfraNode,
   PodMetricInfo,
   ServiceStats,
   TimeseriesData,
@@ -38,6 +39,7 @@ interface ServiceDetailData {
   upstream: ServiceEdge[];
   downstream: ServiceEdge[];
   pods: PodMetricInfo[];
+  infraNodes: InfraNode[];
   timeseries: TimeseriesData | null;
   dbMetrics: DatabaseQueryMetric[];
 }
@@ -49,6 +51,7 @@ const emptyData: ServiceDetailData = {
   upstream: [],
   downstream: [],
   pods: [],
+  infraNodes: [],
   timeseries: null,
   dbMetrics: [],
 };
@@ -91,6 +94,7 @@ export default function ServiceDetail() {
         mapRes,
         issuesRes,
         podsRes,
+        infraRes,
         timeseriesRes,
         dbRes,
       ] = await Promise.all([
@@ -105,6 +109,7 @@ export default function ServiceDetail() {
         api.getServiceMap(namespace),
         api.getIssues(namespace, WINDOW_MINUTES),
         api.getPods(namespace),
+        api.getInfrastructure(namespace),
         api.getTimeseries(namespace, WINDOW_MINUTES),
         api.getDatabaseMetrics(namespace),
       ]);
@@ -158,6 +163,7 @@ export default function ServiceDetail() {
         upstream,
         downstream,
         pods,
+        infraNodes: infraRes?.nodes || [],
         timeseries: timeseriesRes,
         dbMetrics,
       });
@@ -199,6 +205,10 @@ export default function ServiceDetail() {
   const errorTrend = useMemo(
     () => errorSeries?.errors || (data.timeseries?.buckets || []).map(b => b.errors),
     [errorSeries, data.timeseries],
+  );
+  const identity = useMemo(
+    () => buildServiceIdentity(service, data.pods, data.infraNodes),
+    [service, data.pods, data.infraNodes],
   );
 
   if (!namespace || !serviceName) {
@@ -305,11 +315,7 @@ export default function ServiceDetail() {
         />
       </section>
 
-      {langLabel && (
-        <p className="service-detail-tech">
-          {t('Tech stack')}: <strong>{langLabel}</strong>
-        </p>
-      )}
+      <ServiceIdentityCard identity={identity} loading={loading} />
 
       <InstancesPanel pods={data.pods} loading={loading} />
 
@@ -383,6 +389,88 @@ function ServiceDetailBack() {
   );
 }
 
+interface ServiceIdentity {
+  techStack: string | null;
+  containerImages: string[];
+  cluster: string | null;
+  namespace: string;
+  cloudSummary: string | null;
+  nodeSummaries: string[];
+  instrumentation: string;
+}
+
+function ServiceIdentityCard({
+  identity,
+  loading,
+}: {
+  identity: ServiceIdentity;
+  loading: boolean;
+}) {
+  const { t } = useTranslation();
+  const hasContent =
+    identity.techStack ||
+    identity.containerImages.length > 0 ||
+    identity.cluster ||
+    identity.cloudSummary ||
+    identity.nodeSummaries.length > 0 ||
+    identity.instrumentation !== 'Unknown';
+
+  if (!loading && !hasContent) return null;
+
+  return (
+    <section className="service-detail-identity card" aria-label={t('Service details')}>
+      <h2>{t('Service details')}</h2>
+      {loading && !hasContent ? (
+        <LoadingState height={80} label={t('Loading service details…')} />
+      ) : (
+        <dl className="service-detail-identity-grid">
+          <IdentityFact label={t('Tech stack')} value={identity.techStack || '—'} />
+          <IdentityFact
+            label={t('Containers')}
+            value={
+              identity.containerImages.length > 0
+                ? identity.containerImages.join(', ')
+                : '—'
+            }
+            mono={identity.containerImages.length > 0}
+          />
+          <IdentityFact label={t('Cluster')} value={identity.cluster || '—'} />
+          <IdentityFact label={t('Namespace')} value={identity.namespace} />
+          <IdentityFact label={t('Cloud / VM')} value={identity.cloudSummary || '—'} />
+          <IdentityFact
+            label={t('Nodes')}
+            value={
+              identity.nodeSummaries.length > 0
+                ? identity.nodeSummaries.join(' · ')
+                : '—'
+            }
+          />
+          <IdentityFact label={t('Instrumentation')} value={identity.instrumentation} />
+        </dl>
+      )}
+    </section>
+  );
+}
+
+function IdentityFact({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="service-detail-identity-item">
+      <dt>{label}</dt>
+      <dd className={mono ? 'service-detail-identity-mono' : undefined} title={value}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
 function InstancesPanel({ pods, loading }: { pods: PodMetricInfo[]; loading: boolean }) {
   const { t } = useTranslation();
   return (
@@ -402,6 +490,7 @@ function InstancesPanel({ pods, loading }: { pods: PodMetricInfo[]; loading: boo
             <thead>
               <tr>
                 <th align="left">{t('Name')}</th>
+                <th align="left">{t('Images')}</th>
                 <th align="left">{t('Phase')}</th>
                 <th align="left">{t('Node')}</th>
                 <th align="right">{t('CPU')}</th>
@@ -414,6 +503,13 @@ function InstancesPanel({ pods, loading }: { pods: PodMetricInfo[]; loading: boo
               {pods.map(pod => (
                 <tr key={pod.name}>
                   <td><code>{pod.name}</code></td>
+                  <td>
+                    {pod.containerImages && pod.containerImages.length > 0 ? (
+                      <span className="service-detail-muted" title={pod.containerImages.join(', ')}>
+                        {pod.containerImages.join(', ')}
+                      </span>
+                    ) : '—'}
+                  </td>
                   <td>{pod.phase || '—'}</td>
                   <td>{pod.nodeName || '—'}</td>
                   <td align="right">{formatCpu(pod.cpuUsage)}</td>
@@ -776,6 +872,76 @@ function MetricsTab({
       )}
     </div>
   );
+}
+
+function buildServiceIdentity(
+  service: ServiceStats | null,
+  pods: PodMetricInfo[],
+  infraNodes: InfraNode[],
+): ServiceIdentity {
+  const namespace = service?.namespace || pods[0]?.namespace || '';
+  const techStack = languageLabel(service?.language || pods.find(p => p.language)?.language);
+
+  const imageSeen = new Set<string>();
+  const containerImages: string[] = [];
+  for (const pod of pods) {
+    for (const img of pod.containerImages || []) {
+      if (img && !imageSeen.has(img)) {
+        imageSeen.add(img);
+        containerImages.push(img);
+      }
+    }
+  }
+
+  const nodeByName = new Map(infraNodes.map(n => [n.name, n]));
+  const nodeNames = new Set<string>();
+  for (const pod of pods) {
+    if (pod.nodeName) nodeNames.add(pod.nodeName);
+  }
+
+  const cloudParts = new Set<string>();
+  const nodeSummaries: string[] = [];
+  for (const name of [...nodeNames].sort()) {
+    const node = nodeByName.get(name);
+    const parts: string[] = [name];
+    if (node) {
+      const vmParts = [node.cloudProvider, node.region, node.zone, node.instanceType]
+        .filter(Boolean)
+        .map(String);
+      if (vmParts.length > 0) {
+        parts.push(`(${vmParts.join(' / ')})`);
+        cloudParts.add(vmParts.join(' / '));
+      } else if (node.role) {
+        parts.push(`(${node.role})`);
+      }
+    }
+    nodeSummaries.push(parts.join(' '));
+  }
+
+  const instrumentedCount = pods.filter(p => p.instrumented).length;
+  let instrumentation = 'Unknown';
+  if (pods.length > 0) {
+    if (instrumentedCount === pods.length) instrumentation = 'Fully instrumented';
+    else if (instrumentedCount > 0) instrumentation = `Partial (${instrumentedCount}/${pods.length})`;
+    else instrumentation = 'Not instrumented';
+  }
+
+  const instTypes = new Set(
+    pods.map(p => p.instrumentationType).filter((v): v is string => Boolean(v)),
+  );
+  if (instTypes.size === 1) {
+    instrumentation += ` · ${[...instTypes][0]}`;
+  }
+
+  return {
+    techStack,
+    containerImages,
+    cluster: service?.cluster || null,
+    namespace,
+    cloudSummary: cloudParts.size > 0 ? [...cloudParts].join(' · ') : null,
+    nodeSummaries,
+    instrumentation,
+  };
 }
 
 function podMatchesService(pod: PodMetricInfo, serviceName: string): boolean {

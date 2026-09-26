@@ -251,6 +251,10 @@ export interface InfraNode {
   restarts: number;
   atRisk: number;
   metricsAvailable: boolean;
+  cloudProvider?: string;
+  region?: string;
+  zone?: string;
+  instanceType?: string;
 }
 
 export interface InfraSummary {

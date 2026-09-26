@@ -94,6 +94,10 @@ export interface PodMetricInfo {
   memoryUsage: number;
   memoryLimit: number;
   restartCount: number;
+  ready?: boolean;
+  statusReason?: string;
+  statusMessage?: string;
+  containerImages?: string[];
   language?: string;
   instrumented?: boolean;
   instrumentationType?: string;
